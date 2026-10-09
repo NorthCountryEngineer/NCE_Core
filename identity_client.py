@@ -41,12 +41,12 @@ class ResourceClient:
         if not all([self.client_id, self.client_secret, self.organization_id, self.service_id]):
             raise ValueError("Client credentials and expected organization/service IDs are required.")
 
-    def require(self, access_token: str, permission: str) -> dict:
+    def require(self, access_token: str, permission: str, purpose_code: str = "", resource_type: str = "", resource_id: str = "") -> dict:
         if not access_token or not permission:
             raise Unauthenticated("A bearer access token and permission are required.")
         try:
             response = requests.post(
-                self.issuer + "/oauth/introspect/", data={"token": access_token},
+                self.issuer + "/oauth/introspect/", data={"token": access_token, "purpose_code": purpose_code},
                 # OAuth client authentication uses form-encoded credentials in Basic auth.
                 auth=(quote(self.client_id, safe=""), quote(self.client_secret, safe="")),
                 timeout=self.timeout, allow_redirects=False,
@@ -69,4 +69,23 @@ class ResourceClient:
             raise IdentityUnavailable("Malformed authorization response.")
         if permission not in permissions:
             raise Forbidden("The user does not have the required permission.")
+        if resource_type or resource_id:
+            if not resource_type or not resource_id:
+                raise ValueError("Both a registered resource type and ID are required.")
+            try:
+                response = requests.post(self.issuer + "/api/v1/authorize/", data={"token": access_token, "permission": permission,
+                    "organization_id": self.organization_id, "purpose_code": purpose_code,
+                    "resource_type": resource_type, "resource_id": resource_id},
+                    auth=(quote(self.client_id, safe=""), quote(self.client_secret, safe="")), timeout=self.timeout, allow_redirects=False)
+                if response.status_code != 200:
+                    raise IdentityUnavailable("Resource authorization could not be verified.")
+                value = response.json()
+                if not isinstance(value, dict) or type(value.get("allowed")) is not bool:
+                    raise IdentityUnavailable("Malformed resource decision.")
+                if not value["allowed"]:
+                    raise Forbidden("Resource access policy denied this operation.")
+                if value.get("subject") != claims["sub"]:
+                    raise IdentityUnavailable("Resource authorization subject mismatch.")
+            except (requests.RequestException, ValueError) as error:
+                raise IdentityUnavailable("Resource authorization could not be verified.") from error
         return claims

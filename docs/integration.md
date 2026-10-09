@@ -93,6 +93,8 @@ and audience, token expiry, and the required permission. Then scope application
 data queries to the verified organization. For administration, require the
 reserved `admin` permission. A member's role label alone is not a capability.
 Core administrators receive every registered permission for their own services;
+resource tags can further restrict those permissions and administrative controls,
+including for administrators.
 unknown permissions are denied. Tokens without the `authorization` scope carry
 no usable service permissions.
 
@@ -108,6 +110,14 @@ For a direct decision, use the same Basic authentication to POST
 `/api/v1/authorize/`. It returns `{"allowed": true, "subject": "user-uuid"}`
 or `{"allowed": false, "subject": null}`. The calling client's registration
 fixes the service and tenant; request parameters cannot redirect its authority.
+
+To enforce a registered application's resource tags, also submit `resource_type`,
+`resource_id`, and any required `purpose_code`. Both resource identifiers are
+required; unknown or inactive resources deny access. The Python reference client
+accepts the same named arguments. [The security guide](security.md) explains
+registration, inherited tags, MFA evidence, and explicit grants. Core's verified
+`amr`, `acr`, and `auth_time` claims describe authentication assurance; live
+authorization also checks provider/link changes and organization policies.
 
 ## Python reference enforcement
 
@@ -154,10 +164,13 @@ superseded refresh token revokes its token family. Unused refresh tokens expire
 refreshes to avoid treating concurrent refresh retries as token theft.
 
 Use `/oauth/revoke/` to revoke a token and discard it locally. Signing out of the
-Core Identity browser portal ends that browser session; it does not revoke
-already-issued tokens or sign out other applications. Applications must clear
-their own sessions and revoke their tokens on application logout. Disabling
+Core Identity browser portal revokes that session's authentication evidence;
+live authorization and refresh then deny its bound tokens. It does not clear
+other applications' sessions or recall offline ID-token assertions. Applications
+must clear their own sessions and revoke their tokens on application logout. Disabling
 membership immediately denies further introspection, userinfo, and refresh.
+Refresh cannot extend the authentication-evidence lifetime or strengthen its MFA
+assurance. Configured organization session limits require a fresh sign-in.
 
 Keep the issuer stable during product renames. Retain old public signing keys
 through the lifetime of issued ID tokens plus client JWKS cache time when rotating

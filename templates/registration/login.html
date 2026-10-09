@@ -2,6 +2,11 @@
 {% block content %}
 <section>
   <h1>Sign in to {{ product_name }}</h1>
+  {% for provider in identity_providers %}<form method="get" action="{% url 'provider_begin' provider.pk %}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Access purpose (if required)<input name="purpose_code" maxlength="80" placeholder="Configured purpose code"></label>
+    <button type="submit">Sign in with {{ provider.name }} · {{ provider.organization.name }}</button>
+  </form>{% endfor %}
   <form method="post">{% csrf_token %}{{ form.as_p }}
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Sign in</button>

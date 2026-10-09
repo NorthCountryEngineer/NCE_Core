@@ -70,7 +70,11 @@ credentials receive the installation's current approved core capabilities and
 never impersonate a human administrator. Removing a grant, disabling a service,
 disabling its installation/organization, or revoking a key takes effect on the
 next API check. Each organization's datasets and agent definitions remain private
-to that organization; capabilities currently apply to all its datasets.
+to that organization. Resource permission tags further restrict datasets,
+pipelines, agents, workflows, installations, deployments, and runtimes. Machine
+access needs explicit tag grants and workload allowance; workloads cannot claim
+human MFA. Supply `X-Core-Purpose` when a tag requires a purpose; `CoreClient`
+accepts `purpose_code` or `CORE_PURPOSE_CODE`. See [the security guide](security.md).
 
 ## Connect Kubernetes
 

@@ -39,6 +39,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "identity.access.SecurityContextMiddleware",
     "platform_services.middleware.DeveloperOnboardingMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -99,6 +100,7 @@ if os.environ.get("CORE_TRUST_PROXY") == "1":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 OAUTH2_PROVIDER_APPLICATION_MODEL = "identity.Application"
 OAUTH2_PROVIDER = {
+    "OAUTH2_BACKEND_CLASS": "identity.oauth_backend.EvidenceOAuthLibCore",
     "OAUTH2_VALIDATOR_CLASS": "identity.oauth.OrganizationValidator",
     "OIDC_ENABLED": True,
     "OIDC_ISS_ENDPOINT": ISSUER,
@@ -126,3 +128,7 @@ OAUTH2_PROVIDER = {
     ]},
     "COMPLIANT_BCP_RFC9700_REDIRECT_URI_SCHEME": not DEBUG,
 }
+
+# Tenant administrators cannot make the broker fetch arbitrary internal URLs or files.
+CORE_IDP_ALLOWED_HOSTS = [value.strip().lower() for value in os.environ.get("CORE_IDP_ALLOWED_HOSTS", "").split(",") if value.strip()]
+CORE_IDP_SECRET_ROOT = os.environ.get("CORE_IDP_SECRET_ROOT", str(BASE_DIR / ".local" / "idp-secrets") if DEBUG else "/run/secrets/identity-providers")

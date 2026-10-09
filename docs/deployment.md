@@ -17,6 +17,8 @@ registrations. Deploying or migrating a live customer system is a separate step.
 | `CORE_OIDC_PREVIOUS_KEY_FILES` | Comma-separated old signing-key file paths for key-rotation overlap. |
 | `DATABASE_URL` | PostgreSQL connection URL. Required in production; supports query options such as `sslmode=verify-full`. |
 | `CORE_TRUST_PROXY` | Set `1` only if a trusted proxy strips and sets `X-Forwarded-Proto`. |
+| `CORE_IDP_ALLOWED_HOSTS` | Additional exact upstream OIDC endpoint hostnames, comma-separated. |
+| `CORE_IDP_SECRET_ROOT` | Mounted provider secret root, with one folder per organization UUID; production default `/run/secrets/identity-providers`. |
 
 Generate unique production secrets through your secret management system. Use an
 RSA key of at least 3072 bits. Mount secret files read-only and make them readable
@@ -108,9 +110,12 @@ Operator-approved developers may create their own organization through onboardin
 this does not grant platform privileges or access to existing organizations.
 
 Each customer may deploy its own instance with its own stable issuer and keys.
-Services explicitly trust that configured issuer. The current provider uses its
-own user accounts. Trusting an upstream customer IdP, MFA, email delivery/account
-recovery, OAuth client-credentials grants, and token exchange require additional
+Services explicitly trust that configured issuer. Core supports local accounts
+and upstream OIDC sign-in, including Keycloak, cloud identity providers, and
+other Core deployments. Set up mounted client secrets, exact subject links, and
+verified MFA mappings as described in [the security guide](security.md). Live
+authorization remains in Core. Email delivery/account recovery, native MFA
+enrollment, OAuth client-credentials grants, and token exchange require additional
 implementation. Scoped workload identities for core APIs are supported separately.
 
 Changing the display name is supported without breaking trust. Changing issuer

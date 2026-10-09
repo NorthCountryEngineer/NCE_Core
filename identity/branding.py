@@ -15,4 +15,5 @@ def context(request):
             if client:
                 organization = client.service.organization
     return {"product_name": organization.brand if organization else settings.PRODUCT_NAME,
-            "brand_organization": organization}
+            "brand_organization": organization,
+            "access_purpose": request.session.get("access_purposes", {}).get(str(organization.pk), "") if organization else ""}

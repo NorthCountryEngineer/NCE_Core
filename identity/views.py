@@ -11,7 +11,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.hashers import check_password
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -32,7 +32,12 @@ from .policy import authorization_for, membership_for
 
 
 def audit(request, action, target):
-    AuditEvent.objects.create(organization=request.organization, actor=request.user, action=action, target=str(target))
+    from .access import request_principal
+    import re
+    purpose = request_principal(request).purpose
+    AuditEvent.objects.create(organization=request.organization, actor=request.user, action=action, target=str(target),
+                              request_id=getattr(request, "security_request_id", None),
+                              purpose_code=purpose if re.fullmatch(r"[-a-zA-Z0-9_]{1,80}", purpose or "") else "")
 
 
 def organization_admin(view):
@@ -47,6 +52,8 @@ def organization_admin(view):
         if not allowed:
             raise PermissionDenied
         request.organization = organization
+        from .security_portal import enforce_portal_access
+        enforce_portal_access(request, organization, view.__name__, kwargs)
         return view(request, organization, *args, **kwargs)
     return wrapped
 
@@ -63,16 +70,19 @@ def home(request):
     ).values_list("organization_id", flat=True))
     for organization in organizations:
         organization.can_administer = request.user.is_superuser or organization.pk in admin_ids
+        organization.access_purpose = request.session.get("access_purposes", {}).get(str(organization.pk), "")
     return render(request, "identity/home.html", {"organizations": organizations})
 
 
 @organization_admin
 def organization_detail(request, organization):
+    from .access import request_principal, visible_resources
+    principal = request_principal(request)
     return render(request, "identity/organization.html", {
         "organization": organization,
-        "memberships": organization.memberships.select_related("user").prefetch_related("roles"),
-        "services": organization.services.all(), "roles": organization.roles.all(),
-        "invitations": organization.invitations.filter(accepted=False, expires__gt=timezone.now()),
+        "memberships": visible_resources(principal, organization.memberships.select_related("user").prefetch_related("roles")),
+        "services": visible_resources(principal, organization.services.all()), "roles": visible_resources(principal, organization.roles.all()),
+        "invitations": visible_resources(principal, organization.invitations.filter(accepted=False, expires__gt=timezone.now())),
         "audit_events": organization.audit_events.select_related("actor")[:30],
     })
 
@@ -85,6 +95,8 @@ def edit_form(request, form, title, target, action):
                 audit(request, action, instance.pk)
         except IntegrityError:
             form.add_error(None, "This name already exists in this organization.")
+        except ValidationError as error:
+            form.add_error(None, str(error))
         else:
             messages.success(request, "Saved.")
             return redirect(target)
@@ -108,7 +120,7 @@ def invite(request, organization):
             invitation.token_hash = Invitation.digest(raw)
             invitation.expires = timezone.now() + timedelta(days=2)
             invitation.save()
-            audit(request, "invitation.created", invitation.email)
+            audit(request, "invitation.created", invitation.pk)
         link = settings.ISSUER + reverse("accept_invitation", args=[raw])
         response = render(request, "identity/credential.html", {
             "title": "Invitation created", "invitation_link": link,
@@ -211,8 +223,11 @@ def service_edit(request, organization, pk=None):
 @organization_admin
 def service_detail(request, organization, pk):
     service = get_object_or_404(organization.services, pk=pk)
+    from .access import request_principal, visible_resources
     return render(request, "identity/service.html", {"service": service,
-        "applications": service.applications.all(), "permissions": service.permissions.all()})
+        "applications": visible_resources(request_principal(request), service.applications.all()),
+        "permissions": visible_resources(request_principal(request), service.permissions.all()),
+        "protected_resources": visible_resources(request_principal(request), service.protected_resources.all())})
 
 
 @organization_admin
@@ -277,6 +292,9 @@ class TenantAuthorizationView(AuthorizationView):
             request.organization = application.service.organization
             if request.user.is_authenticated and membership_for(request.user, application.service) is None:
                 raise PermissionDenied("You do not have an active membership for this application.")
+            if request.user.is_authenticated:
+                from .access import request_principal, require_access
+                require_access(request_principal(request), application, "oauth.authorize")
         # Tokens are audience-bound by registration. Arbitrary resource indicators are not accepted.
         if request.GET.get("resource") or request.POST.get("resource"):
             return JsonResponse({"error": "invalid_target"}, status=400)
@@ -326,7 +344,7 @@ def authenticate_resource_client(request):
     return None
 
 
-def token_claims(raw, resource_client):
+def token_claims(raw, resource_client, purpose="", request_id=None):
     token = get_access_token_model().objects.select_related("application__service__organization", "user").filter(
         token_checksum=hashlib.sha256(raw.encode()).hexdigest(),
     ).first()
@@ -337,7 +355,13 @@ def token_claims(raw, resource_client):
     membership = membership_for(token.user, token.application.service)
     if membership is None:
         return None
-    authorization = authorization_for(membership, token.application.service) if "authorization" in token.scopes else {
+    from .access import Principal, require_access, evidence_for
+    principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose, request_id=request_id)
+    try:
+        require_access(principal, token.application, "oauth.introspection")
+    except PermissionDenied:
+        return None
+    authorization = authorization_for(membership, token.application.service, principal) if "authorization" in token.scopes else {
         "roles": [], "permissions": [],
     }
     return {
@@ -346,6 +370,9 @@ def token_claims(raw, resource_client):
         "organization_id": str(token.application.service.organization_id),
         "service_id": str(token.application.service_id),
         "scope": token.scope, "token_type": "Bearer", "exp": int(token.expires.timestamp()),
+        "authentication": {"mfa": bool(principal.evidence and principal.evidence.mfa),
+            "method": "oidc" if principal.evidence and principal.evidence.identity_id else "local",
+            "auth_time": int(principal.evidence.authenticated_at.timestamp()) if principal.evidence and principal.evidence.authenticated_at else None},
         **authorization,
     }
 
@@ -358,7 +385,8 @@ def introspect(request):
         return machine_response({"error": "invalid_client"}, 401)
     if not request.POST.get("token"):
         return machine_response({"error": "invalid_request"}, 400)
-    return machine_response(token_claims(request.POST["token"], application) or {"active": False})
+    return machine_response(token_claims(request.POST["token"], application, request.POST.get("purpose_code", ""),
+                                         getattr(request, "security_request_id", None)) or {"active": False})
 
 
 @csrf_exempt
@@ -369,11 +397,26 @@ def authorize_permission(request):
         return machine_response({"error": "invalid_client"}, 401)
     if not request.POST.get("token") or not request.POST.get("permission") or not request.POST.get("organization_id"):
         return machine_response({"error": "invalid_request"}, 400)
-    claims = token_claims(request.POST["token"], application)
+    claims = token_claims(request.POST["token"], application, request.POST.get("purpose_code", ""), getattr(request, "security_request_id", None))
     permission = request.POST["permission"]
     # admin means service administration. It is not a wildcard for unknown permission names.
     allowed = bool(claims and claims["organization_id"] == request.POST["organization_id"] and
                    permission in claims["permissions"])
+    from .access import Principal, evidence_for, record_decision, effective_tags
+    resource = ServicePermission.objects.filter(service=application.service, codename=permission).first() or application.service
+    evidence = evidence_for(request.POST["token"])
+    principal = Principal(user=User.objects.filter(pk=claims["sub"]).first() if claims else evidence.user if evidence else None,
+                          evidence=evidence, purpose=request.POST.get("purpose_code", ""),
+                          request_id=getattr(request, "security_request_id", None))
+    if request.POST.get("resource_type") or request.POST.get("resource_id"):
+        from .models import ProtectedResource
+        from .access import decision
+        registered = ProtectedResource.objects.filter(service=application.service, resource_type=request.POST.get("resource_type"),
+                                                      external_id=request.POST.get("resource_id"), active=True).first()
+        allowed = bool(allowed and registered and decision(principal, registered)[0])
+        if registered:
+            resource = registered
+    record_decision(principal, resource, "authorization.decision", allowed, "policy_satisfied" if allowed else "permission_denied", effective_tags(resource))
     return machine_response({"allowed": allowed, "subject": claims["sub"] if allowed else None})
 
 

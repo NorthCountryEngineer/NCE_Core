@@ -24,6 +24,13 @@ def onboarding(request):
         if not state.organization.active or not state.organization.memberships.filter(
             user=request.user, active=True, kind="administrator").exists():
             raise PermissionDenied("Administrator membership is required to continue onboarding.")
+        from identity.access import request_principal, require_access
+        principal = request_principal(request)
+        require_access(principal, state.organization, "onboarding.resume")
+        for name in ["profile", "billing", "deployment_configuration"]:
+            resource = getattr(state.organization, name, None)
+            if resource:
+                require_access(principal, resource, "onboarding.metadata_read")
     if request.method == "POST" and state.step == 5 and request.POST.get("action") == "reconnect":
         with transaction.atomic():
             locked = Onboarding.objects.select_for_update().get(pk=state.pk)

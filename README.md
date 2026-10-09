@@ -9,6 +9,9 @@ user, and service identifiers establish trust.
 
 The implementation uses Django and Django OAuth Toolkit. Identity is established
 in this deployment and federated to applications through OpenID Connect/OAuth 2.0.
+Organizations can also broker sign-in from Keycloak, cloud identity providers,
+another Core deployment, or another compatible OIDC provider. Explicit subject
+links keep Core memberships and permissions authoritative.
 Applications consume the core services over authenticated HTTPS APIs, wherever
 they run. Marketplace deployments receive organization-bound configuration,
 OIDC registration, and workload credentials automatically.
@@ -58,6 +61,13 @@ Custom roles group permissions such as `read` and `reports-edit`. Permissions ar
 defined per service. The reserved `admin` permission comes only from the built-in
 organization administrator role. Unknown permission names are denied, including
 for administrators.
+
+Permission tags add resource requirements and explicit access grants, verified
+MFA, recent authentication, purpose codes, and workload restrictions. Tags apply
+through the portal, OAuth authorization, core APIs, and workflow execution;
+administrators must satisfy them too. Application-owned records can register
+their resource policy centrally. See [identity and security configuration](docs/security.md)
+for provider setup, enforcement rules, audit export, and compliance preparation.
 
 Organizations are logical tenants in a shared database. Deployed services must
 also scope their own data queries and administration to the trusted organization
@@ -175,7 +185,8 @@ CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
 Tests exercise signed OIDC tokens, PKCE, service and organization isolation,
 multi-organization membership, live permission changes, token revocation and
 refresh replay protection, invitations, administrative CSRF, and the reference
-resource service, core APIs, data ingestion, durable workflows, onboarding,
+resource service, upstream OIDC exchanges, account-link isolation, MFA evidence,
+tag enforcement, audit preservation, core APIs, data ingestion, durable workflows, onboarding,
 deployment lifecycle, and tenant isolation. The same suite can run against
 PostgreSQL by setting `DATABASE_URL`. The GitHub Actions workflow uses PostgreSQL
 and is manual-only so pushes do not start potentially billable jobs. A separate
@@ -184,8 +195,9 @@ see [the platform guide](docs/platform.md#validation).
 
 Deployment instructions and configuration are in [docs/deployment.md](docs/deployment.md).
 The repository contains the initial implementation; it has not been deployed to
-a customer environment. MFA, account recovery/email delivery, upstream identity
-brokering, OAuth client-credentials grants, and OAuth token exchange are future additions.
+a customer environment. Upstream provider credentials and MFA assurance mappings
+must be configured per organization. Native MFA enrollment, account recovery/email
+delivery, OAuth client-credentials grants, and OAuth token exchange are future additions.
 Billing adapters for Stripe, Paddle, Adyen, and Braintree are inactive stand-ins.
 Machine-to-core access currently uses scoped, revocable workload credentials.
 The current SSO model uses a fresh, service-specific code exchange for each

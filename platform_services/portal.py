@@ -16,19 +16,24 @@ from .forms import (
 from .models import AgentDefinition, Dataset, Deployment, DeploymentConfiguration, Installation, MarketplacePackage, Pipeline, RuntimeNode, Workflow
 from .services import create_deployment, install_package, issue_workload_credential, upgrade_installation
 from .workflows import enqueue, snapshot_agents
+from identity.access import request_principal, visible_resources
 
 
 @organization_admin
 def dashboard(request, organization):
-    return render(request, "platform_services/dashboard.html", {"organization": organization,
-        "installations": organization.installations.select_related("package"),
-        "deployments": Deployment.objects.select_related("installation__package", "node").filter(installation__organization=organization),
-        "nodes": organization.runtime_nodes.all(), "datasets": organization.datasets.all(),
-        "pipelines": organization.pipelines.select_related("dataset"), "agents": organization.agents.all(),
-        "workflows": organization.workflows.all(), "runs": organization.workflow_runs.order_by("-created")[:25],
-        "billing": getattr(organization, "billing", None),
-        "config": getattr(organization, "deployment_configuration", None),
-    })
+    principal = request_principal(request)
+    values = {"organization": organization,
+        "installations": visible_resources(principal, organization.installations.select_related("package")),
+        "deployments": visible_resources(principal, Deployment.objects.select_related("installation__package", "node").filter(installation__organization=organization)),
+        "nodes": visible_resources(principal, organization.runtime_nodes.all()), "datasets": visible_resources(principal, organization.datasets.all()),
+        "pipelines": visible_resources(principal, organization.pipelines.select_related("dataset")), "agents": visible_resources(principal, organization.agents.all()),
+        "workflows": visible_resources(principal, organization.workflows.all()), "runs": visible_resources(principal, organization.workflow_runs.order_by("-created")[:25])}
+    for name in ["billing", "deployment_configuration"]:
+        resource = getattr(organization, name, None)
+        values["billing" if name == "billing" else "config"] = resource if resource and visible_resources(principal, [resource]) else None
+    for installation in values["installations"]:
+        installation.visible_credentials = visible_resources(principal, installation.credentials.filter(active=True))
+    return render(request, "platform_services/dashboard.html", values)
 
 
 @organization_admin
@@ -265,7 +270,8 @@ def run_workflow(request, organization, pk):
             form.add_error(None, "Install and enable Core Workflows first.")
         else:
             enqueue(organization, secrets.token_hex(32), workflow.name, "workflow",
-                    snapshot_agents(organization, workflow.steps), form.cleaned_data["input"], actor=request.user)
+                    snapshot_agents(organization, workflow.steps), form.cleaned_data["input"], actor=request.user,
+                    principal=request_principal(request), resource=workflow)
             return redirect("platform_dashboard", slug=organization.slug)
     return render(request, "identity/form.html", {"form": form, "title": f"Run {workflow.name}"})
 

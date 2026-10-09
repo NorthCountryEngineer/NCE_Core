@@ -36,12 +36,13 @@ class PlatformUserAdmin(PlatformOnly, UserAdmin):
 @admin.register(Organization)
 class OrganizationAdmin(PlatformOnly, admin.ModelAdmin):
     list_display = ["name", "slug", "active"]
+    exclude = ["permission_tags"]  # Tenant tag changes use the policy-enforced portal.
 
 
 @admin.register(AuditEvent)
 class AuditAdmin(PlatformOnly, admin.ModelAdmin):
     list_display = ["created", "organization", "actor", "action", "target"]
-    readonly_fields = ["organization", "actor", "action", "target", "created"]
+    readonly_fields = ["organization", "actor", "actor_subject", "principal_id", "principal_kind", "request_id", "action", "target", "created", "outcome", "reason_code", "purpose_code", "tags"]
 
     def has_add_permission(self, request):
         return False

@@ -12,6 +12,7 @@ from .data import IdempotencyConflict, publish, transform
 from .models import AgentDefinition, Dataset, Deployment, Pipeline, RuntimeNode, Workflow, WorkflowRun, WorkloadCredential
 from .services import credential_allows, feature_enabled, integration_document
 from .workflows import enqueue, snapshot_agents
+from identity.access import Principal, require_access
 
 
 def response(data, status=200):
@@ -56,7 +57,10 @@ def workload_api(capabilities=(), methods=("GET",)):
                 return response({"error": "insufficient_permission"}, 403)
             request.credential = credential
             request.organization = credential.installation.organization
+            request.access_principal = Principal(credential=credential, purpose=request.headers.get("X-Core-Purpose", ""),
+                                                 request_id=getattr(request, "security_request_id", None))
             try:
+                require_access(request.access_principal, credential, "core.api_access")
                 return view(request, *args, **kwargs)
             except ValidationError as error:
                 return response({"error": "invalid_request", "detail": error.messages[0]}, 400)
@@ -78,6 +82,7 @@ def ingest(request, slug):
     pipeline = get_object_or_404(Pipeline.objects.select_related("dataset__organization"),
         organization=request.organization, slug=slug, active=True, dataset__active=True)
     values = body(request)
+    require_access(request.access_principal, pipeline, "data.ingest")
     record, created = publish(pipeline.dataset, values.get("event_id"), transform(values.get("data"), pipeline.transforms))
     return response({"record_id": record.pk, "created": created}, 201 if created else 200)
 
@@ -85,6 +90,7 @@ def ingest(request, slug):
 @workload_api(["data.read"])
 def records(request, slug):
     dataset = get_object_or_404(Dataset, organization=request.organization, slug=slug, active=True)
+    require_access(request.access_principal, dataset, "data.read")
     try:
         after, limit = int(request.GET.get("after", 0)), int(request.GET.get("limit", 100))
         if after < 0 or not 1 <= limit <= 200:
@@ -100,8 +106,9 @@ def records(request, slug):
 def run_agent(request, slug):
     agent = get_object_or_404(AgentDefinition, organization=request.organization, slug=slug, active=True)
     values = body(request)
+    require_access(request.access_principal, agent, "agent.submit")
     run, created = enqueue(request.organization, values.get("request_id"), agent.name, "agent",
-        snapshot_agents(request.organization, [slug]), values.get("input"), credential=request.credential)
+        snapshot_agents(request.organization, [slug]), values.get("input"), credential=request.credential, principal=request.access_principal)
     return response({"run_id": str(run.pk), "status": run.status, "created": created}, 202 if created else 200)
 
 
@@ -110,8 +117,10 @@ def run_workflow(request, slug):
     workflow = get_object_or_404(Workflow, organization=request.organization, slug=slug, active=True)
     workflow.full_clean()
     values = body(request)
+    require_access(request.access_principal, workflow, "workflow.submit")
     run, created = enqueue(request.organization, values.get("request_id"), workflow.name, "workflow",
-        snapshot_agents(request.organization, workflow.steps), values.get("input"), credential=request.credential)
+        snapshot_agents(request.organization, workflow.steps), values.get("input"), credential=request.credential,
+        principal=request.access_principal, resource=workflow)
     return response({"run_id": str(run.pk), "status": run.status, "created": created}, 202 if created else 200)
 
 
@@ -120,6 +129,7 @@ def run_status(request, pk):
     run = get_object_or_404(WorkflowRun, pk=pk, organization=request.organization)
     if run.credential_id != request.credential.pk and not credential_allows(request.credential, ["workflows.read"]):
         raise PermissionDenied
+    require_access(request.access_principal, run, "workflow.result_read")
     return response({"run_id": str(run.pk), "status": run.status, "output": run.output,
         "error": run.error, "steps": list(run.step_results.values("index", "agent_slug", "tool", "output"))})
 
@@ -134,6 +144,8 @@ def runtime_sync(request):
     if node is None:
         return response({"error": "invalid_runtime"}, 401)
     try:
+        principal = Principal(runtime=node, request_id=getattr(request, "security_request_id", None))
+        require_access(principal, node, "runtime.sync")
         values = body(request)
         reports = values.get("reports", [])
         if not isinstance(reports, list) or len(reports) > 100:
@@ -149,13 +161,28 @@ def runtime_sync(request):
         node.save(update_fields=["last_seen", "cluster_version"])
         for report in reports:
             # A runtime can observe only its explicitly assigned instances in its namespace.
-            Deployment.objects.filter(pk=report.get("deployment_id"), node=node,
-                installation__organization=node.organization, revision=report["revision"]).update(
+            deployment = Deployment.objects.filter(pk=report.get("deployment_id"), node=node, namespace=node.namespace,
+                installation__organization=node.organization, revision=report["revision"]).first()
+            if deployment is None:
+                continue
+            try:
+                require_access(principal, deployment, "runtime.health_report")
+            except PermissionDenied:
+                continue
+            Deployment.objects.filter(pk=deployment.pk, revision=report["revision"]).update(
                 observed_state=report["state"], observed_revision=report["revision"], healthy=report["healthy"],
                 last_seen=timezone.now(), message="Kubernetes reconciliation failed." if report["state"] == "failed" else "")
         deployments = Deployment.objects.select_related("installation__package", "installation__organization", "installation__service", "application").filter(
             node=node, installation__organization=node.organization, namespace=node.namespace)
-        return response({"version": 1, "node_id": str(node.pk), "namespace": node.namespace,
-                         "deployments": [deployment_spec(d) for d in deployments]})
+        visible = []
+        for deployment in deployments:
+            try:
+                require_access(principal, deployment, "runtime.deployment_config")
+            except PermissionDenied:
+                continue
+            visible.append(deployment_spec(deployment))
+        return response({"version": 1, "node_id": str(node.pk), "namespace": node.namespace, "deployments": visible})
+    except PermissionDenied:
+        return response({"error": "insufficient_permission"}, 403)
     except (ValidationError, ValueError, TypeError):
         return response({"error": "invalid_request"}, 400)

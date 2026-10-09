@@ -1,0 +1,12 @@
+{% extends "identity/base.html" %}{% block content %}
+<h1>{{ organization.name }} · Identity and access policy</h1>
+<p>Organization ID: <code>{{ organization.pk }}</code></p>
+<div class="actions"><a href="{% url 'authentication_policy' organization.slug %}">Authentication policy</a><a href="{% url 'provider_add' organization.slug %}">Add OIDC provider</a><a href="{% url 'identity_link_add' organization.slug %}">Link external account</a><a href="{% url 'permission_tag_add' organization.slug %}">Create permission tag</a></div>
+<section><h2>Providers</h2><p>Local Core accounts remain available. Organization policy controls whether local authentication can access this workspace. Provider secrets are mounted by the operator; email and external groups never grant access automatically.</p>
+{% for provider in providers %}<p><a href="{% url 'provider_edit' organization.slug provider.pk %}">{{ provider.name }}</a> · {{ provider.get_kind_display }} · {{ provider.active|yesno:"enabled,disabled" }} · <a href="{% url 'provider_begin' provider.pk %}?reauth=1">Authenticate again</a><br>Registered callback: <code>{{ issuer }}{% url 'provider_callback' provider.pk %}</code></p>{% empty %}<p>No upstream provider configured.</p>{% endfor %}
+<ul>{% for identity in identities %}<li><a href="{% url 'identity_link' organization.slug identity.pk %}">{{ identity.provider.name }} · {{ identity.user.email }}</a> · {{ identity.active|yesno:"linked,disabled" }}</li>{% endfor %}</ul></section>
+<section><h2>Permission tags</h2><p>Tags restrict resources. Access-tag grants on members, roles, installations, and runtimes authorize those tags. Administrators must satisfy the same tag, MFA, freshness, and purpose checks.</p>
+{% for tag in tags %}<p><a href="{% url 'permission_tag' organization.slug tag.pk %}">{{ tag.name }}</a> · {{ tag.classification }}{% if tag.requires_mfa %} · MFA required{% endif %}{% if tag.max_auth_age %} · authentication age {{ tag.max_auth_age }}s{% endif %}</p>{% empty %}<p>No tags defined yet.</p>{% endfor %}
+<form method="get"><label for="resource-type">Resource type</label><select id="resource-type" name="resource_type">{% for name in resource_types %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select><label for="resource-id">Resource ID</label><input id="resource-id" name="resource_id" required><button type="submit">Manage tags and grants</button></form></section>
+<a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
+{% endblock %}

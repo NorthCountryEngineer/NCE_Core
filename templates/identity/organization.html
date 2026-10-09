@@ -2,25 +2,26 @@
 {% block content %}
 <h1>{{ organization.name }} administration</h1>
 <a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
+<a href="{% url 'security' organization.slug %}">Identity providers and permission tags</a>
 <p>Manage access to {{ product_name }} and applications in this organization.</p>
 <div class="actions"><a href="{% url 'branding' organization.slug %}">Organization settings</a><a href="{% url 'invite' organization.slug %}">Invite a user</a></div>
 <section><h2>Users</h2>
 <table><tr><th>Email</th><th>Organization role</th><th>Access</th></tr>
 {% for membership in memberships %}<tr>
-  <td><a href="{% url 'membership' organization.slug membership.pk %}">{{ membership.user.email }}</a></td>
+  <td><a href="{% url 'membership' organization.slug membership.pk %}">{{ membership.user.email }}</a> · <a href="{% url 'resource_tags' organization.slug 'membership' membership.pk %}">Tags and grants</a></td>
   <td>{{ membership.get_kind_display }}{% for role in membership.roles.all %} · {{ role.name }}{% endfor %}</td>
   <td>{% if membership.active %}Active{% else %}Disabled{% endif %}</td>
 </tr>{% endfor %}</table></section>
 <section><h2>Services</h2><a href="{% url 'service_add' organization.slug %}">Register a service</a>
-<ul>{% for service in services %}<li><a href="{% url 'service' organization.slug service.pk %}">{{ service.name }}</a>{% if not service.active %} (disabled){% endif %}</li>{% empty %}<li>No services registered.</li>{% endfor %}</ul></section>
+<ul>{% for service in services %}<li><a href="{% url 'service' organization.slug service.pk %}">{{ service.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'service' service.pk %}">Tags and grants</a>{% if not service.active %} (disabled){% endif %}</li>{% empty %}<li>No services registered.</li>{% endfor %}</ul></section>
 <section><h2>Roles</h2>
 <p>Organization administrators manage this organization and every registered service. Members receive only explicitly assigned service permissions.</p>
 <a href="{% url 'role_add' organization.slug %}">Create a role</a>
-<ul>{% for role in roles %}<li><a href="{% url 'role' organization.slug role.pk %}">{{ role.name }}</a></li>{% empty %}<li>No custom roles.</li>{% endfor %}</ul></section>
+<ul>{% for role in roles %}<li><a href="{% url 'role' organization.slug role.pk %}">{{ role.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'role' role.pk %}">Tags and grants</a></li>{% empty %}<li>No custom roles.</li>{% endfor %}</ul></section>
 <section><h2>Pending invitations</h2>
 {% for invitation in invitations %}<p>{{ invitation.email }} · {{ invitation.get_kind_display }} · expires {{ invitation.expires }}
   <form class="inline" method="post" action="{% url 'revoke_invitation' organization.slug invitation.pk %}">{% csrf_token %}<button type="submit">Revoke</button></form>
 </p>{% empty %}<p>No pending invitations.</p>{% endfor %}</section>
 <section><h2>Recent administration activity</h2>
-<ul>{% for event in audit_events %}<li>{{ event.created }} · {{ event.actor.email|default:"Platform" }} · {{ event.action }} · {{ event.target }}</li>{% empty %}<li>No activity yet.</li>{% endfor %}</ul></section>
+<ul>{% for event in audit_events %}<li>{{ event.created }} · {{ event.actor_subject|default:event.principal_id }} · {{ event.action }} · {{ event.target }} · {{ event.outcome }}{% if event.reason_code %} · {{ event.reason_code }}{% endif %}{% if event.purpose_code %} · {{ event.purpose_code }}{% endif %}</li>{% empty %}<li>No activity yet.</li>{% endfor %}</ul></section>
 {% endblock %}

@@ -51,6 +51,22 @@ class ResourceClientTests(SimpleTestCase):
                 ResourceClient(issuer, "client", "secret", "org", "svc", allow_local_http=True)
         ResourceClient("http://localhost:8000", "client", "secret", "org", "svc", allow_local_http=True)
 
+    def test_registered_resource_decision_checks_subject_purpose_and_fails_closed(self):
+        with patch("identity_client.requests.post", side_effect=[self.response(), self.response({"allowed": True, "subject": "user"})]) as post:
+            self.client.require("access-token", "read", purpose_code="treatment", resource_type="record", resource_id="opaque-id")
+            self.assertEqual(post.call_args.kwargs["data"]["organization_id"], "org")
+            self.assertEqual(post.call_args.kwargs["data"]["purpose_code"], "treatment")
+            self.assertFalse(post.call_args.kwargs["allow_redirects"])
+        for value, exception in [({"allowed": False, "subject": None}, Forbidden),
+                                 ({"allowed": True, "subject": "other-user"}, IdentityUnavailable),
+                                 ({"allowed": "true", "subject": "user"}, IdentityUnavailable)]:
+            with patch("identity_client.requests.post", side_effect=[self.response(), self.response(value)]):
+                with self.assertRaises(exception):
+                    self.client.require("access-token", "read", resource_type="record", resource_id="opaque-id")
+        with patch("identity_client.requests.post", side_effect=[self.response(), requests.Timeout]):
+            with self.assertRaises(IdentityUnavailable):
+                self.client.require("access-token", "read", resource_type="record", resource_id="opaque-id")
+
     def test_example_service_admin_requires_admin_permission(self):
         app = make_application(self.client)
         with patch("identity_client.requests.post", return_value=self.response()):

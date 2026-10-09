@@ -3,6 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import include, path
 from oauth2_provider import views as oauth_views
 from identity import views
+from identity import federation
 
 oauth_patterns = [
     path("authorize/", views.TenantAuthorizationView.as_view(), name="authorize"),
@@ -14,7 +15,9 @@ oauth_patterns = [
 ]
 urlpatterns = [
     path("platform-admin/", admin.site.urls),
-    path("accounts/login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),
+    path("accounts/login/", federation.ProviderLoginView.as_view(), name="login"),
+    path("accounts/providers/<uuid:pk>/begin/", federation.begin, name="provider_begin"),
+    path("accounts/providers/<uuid:pk>/callback/", federation.callback, name="provider_callback"),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("accounts/password/", auth_views.PasswordChangeView.as_view(template_name="identity/form.html",
          extra_context={"title": "Change password"}, success_url="/"), name="password_change"),

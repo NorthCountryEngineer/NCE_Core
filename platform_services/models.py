@@ -6,11 +6,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from identity.models import Organization, Service, User
+from identity.models import Organization, Service, User, TaggedResource
 from .validation import CORE_PACKAGES, validate_endpoint, validate_manifest, validate_schema, validate_transforms
 
 
-class OrganizationProfile(models.Model):
+class OrganizationProfile(TaggedResource):
     organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="profile")
     legal_name = models.CharField(max_length=200)
     country = models.CharField(max_length=2)
@@ -18,7 +18,7 @@ class OrganizationProfile(models.Model):
     timezone = models.CharField(max_length=80, default="UTC")
 
 
-class BillingProfile(models.Model):
+class BillingProfile(TaggedResource):
     PROVIDERS = [("placeholder", "Configure later"), ("stripe", "Stripe"), ("paddle", "Paddle"), ("adyen", "Adyen"), ("braintree", "Braintree")]
     organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="billing")
     provider = models.CharField(max_length=20, choices=PROVIDERS, default="placeholder")
@@ -38,7 +38,7 @@ class Onboarding(models.Model):
     runtime = models.ForeignKey("RuntimeNode", on_delete=models.SET_NULL, null=True, blank=True)
 
 
-class DeploymentConfiguration(models.Model):
+class DeploymentConfiguration(TaggedResource):
     organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="deployment_configuration")
     environment = models.CharField(max_length=20, choices=[("development", "Development"), ("staging", "Staging"), ("production", "Production")])
     namespace = models.CharField(max_length=63)
@@ -78,13 +78,14 @@ class MarketplacePackage(models.Model):
         return f"{self.name} {self.version}"
 
 
-class Installation(models.Model):
+class Installation(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="installations")
     package = models.ForeignKey(MarketplacePackage, on_delete=models.PROTECT)
     service = models.OneToOneField(Service, on_delete=models.PROTECT)
     version = models.CharField(max_length=40)
     manifest = models.JSONField(default=dict)
+    access_tags = models.ManyToManyField("identity.PermissionTag", blank=True, related_name="workload_grants")
     granted_capabilities = models.JSONField(default=list)
     enabled = models.BooleanField(default=True)
     created = models.DateTimeField(auto_now_add=True)
@@ -93,12 +94,13 @@ class Installation(models.Model):
         constraints = [models.UniqueConstraint(fields=["organization", "package"], name="unique_package_installation")]
 
 
-class RuntimeNode(models.Model):
+class RuntimeNode(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="runtime_nodes")
     name = models.CharField(max_length=100)
     namespace = models.CharField(max_length=63)
     credential_hash = models.CharField(max_length=64, unique=True)
+    access_tags = models.ManyToManyField("identity.PermissionTag", blank=True, related_name="runtime_grants")
     active = models.BooleanField(default=True)
     last_seen = models.DateTimeField(null=True, blank=True)
     cluster_version = models.CharField(max_length=100, blank=True)
@@ -108,7 +110,7 @@ class RuntimeNode(models.Model):
         return self.active and self.last_seen is not None and self.last_seen > timezone.now() - timedelta(seconds=90)
 
 
-class Deployment(models.Model):
+class Deployment(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     installation = models.ForeignKey(Installation, on_delete=models.CASCADE, related_name="deployments")
     parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="children")
@@ -141,7 +143,7 @@ class Deployment(models.Model):
         return self.observed_state
 
 
-class WorkloadCredential(models.Model):
+class WorkloadCredential(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     installation = models.ForeignKey(Installation, on_delete=models.CASCADE, related_name="credentials")
     name = models.CharField(max_length=100)
@@ -154,7 +156,7 @@ class WorkloadCredential(models.Model):
         return hashlib.sha256(token.encode()).hexdigest()
 
 
-class Dataset(models.Model):
+class Dataset(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="datasets")
     slug = models.SlugField()
@@ -169,7 +171,7 @@ class Dataset(models.Model):
         return self.name
 
 
-class Pipeline(models.Model):
+class Pipeline(TaggedResource):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="pipelines")
     slug = models.SlugField()
     name = models.CharField(max_length=160)
@@ -196,7 +198,7 @@ class DataRecord(models.Model):
         ordering = ["pk"]
 
 
-class AgentDefinition(models.Model):
+class AgentDefinition(TaggedResource):
     KINDS = [("inspect", "Inspect a JSON record"), ("select", "Select record fields"), ("publish", "Publish a data record"),
              ("rules", "Choose a tool using record rules")]
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="agents")
@@ -214,7 +216,7 @@ class AgentDefinition(models.Model):
         constraints = [models.UniqueConstraint(fields=["organization", "slug"], name="unique_agent")]
 
 
-class Workflow(models.Model):
+class Workflow(TaggedResource):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="workflows")
     slug = models.SlugField()
     name = models.CharField(max_length=160)
@@ -231,7 +233,7 @@ class Workflow(models.Model):
         constraints = [models.UniqueConstraint(fields=["organization", "slug"], name="unique_workflow")]
 
 
-class WorkflowRun(models.Model):
+class WorkflowRun(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="workflow_runs")
     credential = models.ForeignKey(WorkloadCredential, on_delete=models.SET_NULL, null=True, blank=True)
@@ -239,10 +241,13 @@ class WorkflowRun(models.Model):
     request_id = models.CharField(max_length=160)
     definition_name = models.CharField(max_length=160)
     source = models.CharField(max_length=20, choices=[("agent", "Agent"), ("workflow", "Workflow")])
+    source_workflow = models.ForeignKey(Workflow, on_delete=models.PROTECT, null=True, blank=True)
     snapshot = models.JSONField()
     input = models.JSONField(default=dict)
     output = models.JSONField(null=True, blank=True)
     status = models.CharField(max_length=20, default="queued")
+    purpose_code = models.SlugField(max_length=80, blank=True)
+    authentication_evidence = models.ForeignKey("identity.AuthenticationEvidence", on_delete=models.PROTECT, null=True, blank=True)
     required_capabilities = models.JSONField(default=list)
     lease_owner = models.UUIDField(null=True, blank=True)
     lease_until = models.DateTimeField(null=True, blank=True)
