@@ -6,3 +6,8 @@ __pycache__
 **/__pycache__
 *.sqlite3
 staticfiles
+.ci-tools
+artifacts
+ci
+.github
+docs

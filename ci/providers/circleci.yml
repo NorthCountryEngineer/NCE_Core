@@ -1,0 +1,29 @@
+# Copy to .circleci/config.yml. The approval gate runs before any executor.
+version: 2.1
+parameters:
+  mode:
+    type: enum
+    enum: [verify, publish, deploy]
+    default: verify
+  config:
+    type: string
+    default: ci/environments/example.json
+jobs:
+  core:
+    machine: true
+    resource_class: YOUR_ORGANIZATION/core-ci
+    # Existing self-hosted runner, with Python 3.12, Docker/buildx and kubectl.
+    environment:
+      CORE_CI_MODE: << pipeline.parameters.mode >>
+      CORE_CI_CONFIG: << pipeline.parameters.config >>
+    steps:
+      - checkout
+      - run: bash ci/run.sh
+workflows:
+  core:
+    jobs:
+      - approve:
+          type: approval
+      - core:
+          requires: [approve]
+          context: core-ci-protected

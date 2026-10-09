@@ -1,0 +1,51 @@
+# Register this file as a pipeline. Use an existing approved self-hosted pool.
+trigger: none
+pr: none
+parameters:
+  - name: mode
+    type: string
+    default: verify
+    values: [verify, publish, deploy]
+  - name: config
+    type: string
+    default: ci/environments/example.json
+pool:
+  name: core-ci
+variables:
+  - group: core-ci-settings
+stages:
+  - stage: CorePipeline
+    jobs:
+      - deployment: CoreRelease
+        environment: $(CORE_CI_ENVIRONMENT)
+        timeoutInMinutes: 60
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  fetchDepth: 0
+                  persistCredentials: true
+                - bash: bash ci/run.sh
+                  env:
+                    CORE_CI_MODE: verify
+                    CORE_CI_CONFIG: ${{ parameters.config }}
+                    CORE_CI_ENVIRONMENT: $(CORE_CI_ENVIRONMENT)
+                    DATABASE_URL: $(DATABASE_URL)
+                    CORE_CI_ALLOW_PUBLISH: $(CORE_CI_ALLOW_PUBLISH)
+                    CORE_CI_ALLOW_DEPLOY: $(CORE_CI_ALLOW_DEPLOY)
+                - ${{ if ne(parameters.mode, 'verify') }}:
+                    - bash: .venv/bin/python ci/pipeline.py publish --config "$CORE_CI_CONFIG"
+                      env:
+                        CORE_CI_CONFIG: ${{ parameters.config }}
+                        CORE_CI_ENVIRONMENT: $(CORE_CI_ENVIRONMENT)
+                        CORE_CI_ALLOW_PUBLISH: $(CORE_CI_ALLOW_PUBLISH)
+                        REGISTRY_USERNAME: $(REGISTRY_USERNAME)
+                        REGISTRY_PASSWORD: $(REGISTRY_PASSWORD)
+                - ${{ if eq(parameters.mode, 'deploy') }}:
+                    - bash: .venv/bin/python ci/pipeline.py deploy --config "$CORE_CI_CONFIG"
+                      env:
+                        CORE_CI_CONFIG: ${{ parameters.config }}
+                        CORE_CI_ENVIRONMENT: $(CORE_CI_ENVIRONMENT)
+                        CORE_CI_ALLOW_DEPLOY: $(CORE_CI_ALLOW_DEPLOY)
+                        KUBECONFIG: $(CORE_KUBECONFIG_PATH)

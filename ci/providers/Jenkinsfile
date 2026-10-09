@@ -1,0 +1,41 @@
+// Use an existing approved Linux agent; no SCM polling or scheduled triggers.
+pipeline {
+    agent { label 'core-ci' }
+    options { disableConcurrentBuilds(); timeout(time: 60, unit: 'MINUTES') }
+    parameters {
+        choice(name: 'CORE_CI_MODE', choices: ['verify', 'publish', 'deploy'], description: 'Shared pipeline mode')
+        string(name: 'CORE_CI_CONFIG', defaultValue: 'ci/environments/example.json', description: 'Tracked environment configuration')
+        booleanParam(name: 'APPROVED_PUBLISH', defaultValue: false, description: 'Enable only with approved registry costs')
+        booleanParam(name: 'APPROVED_DEPLOY', defaultValue: false, description: 'Enable only with approved deployment costs')
+    }
+    stages {
+        stage('Checkout') { steps { checkout scm } }
+        stage('Verify') {
+            steps {
+                withCredentials([string(credentialsId: 'core-ci-test-database', variable: 'DATABASE_URL')]) {
+                    withEnv(['CORE_CI_MODE=verify']) { sh 'bash ci/run.sh' }
+                }
+            }
+        }
+        stage('Publish') {
+            when { expression { params.CORE_CI_MODE != 'verify' } }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'core-ci-registry', usernameVariable: 'REGISTRY_USERNAME', passwordVariable: 'REGISTRY_PASSWORD')]) {
+                    withEnv(["CORE_CI_ALLOW_PUBLISH=${params.APPROVED_PUBLISH ? '1' : '0'}"]) {
+                        sh '.venv/bin/python ci/pipeline.py publish --config "$CORE_CI_CONFIG"'
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            when { expression { params.CORE_CI_MODE == 'deploy' } }
+            steps {
+                withCredentials([file(credentialsId: 'core-ci-kubeconfig', variable: 'KUBECONFIG')]) {
+                    withEnv(["CORE_CI_ALLOW_DEPLOY=${params.APPROVED_DEPLOY ? '1' : '0'}"]) {
+                        sh '.venv/bin/python ci/pipeline.py deploy --config "$CORE_CI_CONFIG"'
+                    }
+                }
+            }
+        }
+    }
+}

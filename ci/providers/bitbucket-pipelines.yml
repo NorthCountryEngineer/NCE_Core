@@ -1,0 +1,16 @@
+# Copy to bitbucket-pipelines.yml. Only custom manual pipelines are declared.
+pipelines:
+  custom:
+    core:
+      - variables:
+          - name: CORE_CI_MODE
+            default: verify
+            allowed-values: [verify, publish, deploy]
+          - name: CORE_CI_CONFIG
+            default: ci/environments/example.json
+      - step:
+          name: Shared Core CI/CD
+          runs-on: [self.hosted, linux.shell, core.ci]
+          deployment: staging
+          script:
+            - bash ci/run.sh

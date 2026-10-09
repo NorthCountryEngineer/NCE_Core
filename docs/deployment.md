@@ -4,6 +4,11 @@ The development server is prepared locally. A customer deployment requires a
 domain, TLS termination, PostgreSQL, securely mounted keys, and application client
 registrations. Deploying or migrating a live customer system is a separate step.
 
+For configured releases through GitHub Actions, GitLab, Azure Pipelines, Jenkins,
+CircleCI, Bitbucket, or AWS CodeBuild/CodePipeline, see [the CI/CD guide](cicd.md).
+It supplies shared stages, digest-pinned Kubernetes resources, a migration gate,
+web/worker rollout checks, and HTTPS smoke checks against existing infrastructure.
+
 ## Configuration
 
 | Variable | Use |

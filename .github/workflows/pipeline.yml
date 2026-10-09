@@ -1,0 +1,68 @@
+name: Core Platform CI/CD
+# No push/PR triggers. Configure approved runner/cost settings before manual use.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [verify, publish, deploy]
+        default: verify
+      config:
+        type: string
+        default: ci/environments/example.json
+permissions:
+  contents: read
+concurrency:
+  group: core-release-${{ inputs.config }}
+  cancel-in-progress: false
+jobs:
+  pipeline:
+    runs-on: ${{ fromJSON(vars.CORE_RUNNER_LABELS || '["self-hosted","linux","x64","core-ci"]') }}
+    timeout-minutes: 60
+    environment: ${{ vars.CORE_CI_ENVIRONMENT || 'staging' }}
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: core_test
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: core_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U core_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://core_test:isolated-ci-only@localhost:5432/core_test
+      CORE_CI_CONFIG: ${{ inputs.config }}
+      CORE_CI_ENVIRONMENT: ${{ vars.CORE_CI_ENVIRONMENT || 'staging' }}
+      CORE_CI_MODE: verify
+      CORE_CI_ALLOW_PUBLISH: ${{ vars.CORE_CI_ALLOW_PUBLISH || '0' }}
+      CORE_CI_ALLOW_DEPLOY: ${{ vars.CORE_CI_ALLOW_DEPLOY || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run shared pipeline
+        run: bash ci/run.sh
+      - name: Publish verified image
+        if: inputs.mode != 'verify'
+        run: .venv/bin/python ci/pipeline.py publish --config "$CORE_CI_CONFIG"
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Deploy verified digest
+        if: inputs.mode == 'deploy'
+        run: .venv/bin/python ci/pipeline.py deploy --config "$CORE_CI_CONFIG"
+        env:
+          KUBECONFIG: ${{ vars.CORE_KUBECONFIG_PATH }}
+          CORE_CI_CA_BUNDLE: ${{ vars.CORE_CI_CA_BUNDLE }}
+      - uses: actions/upload-artifact@v4
+        if: always() && vars.CORE_CI_ALLOW_ARTIFACT_UPLOAD == '1'
+        with:
+          name: core-release-${{ github.sha }}
+          path: artifacts/
+          retention-days: 1
+          if-no-files-found: ignore

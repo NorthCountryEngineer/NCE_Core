@@ -1,0 +1,24 @@
+# Copy to .gitlab-ci.yml. Manual web/API/parent invocation only, never on push.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api" || $CI_PIPELINE_SOURCE == "pipeline"'
+    - when: never
+stages: [pipeline]
+variables:
+  CORE_CI_MODE: verify
+  CORE_CI_CONFIG: ci/environments/example.json
+  CORE_CI_ENVIRONMENT: staging
+  CORE_CI_ALLOW_PUBLISH: '0'
+  CORE_CI_ALLOW_DEPLOY: '0'
+  GIT_DEPTH: '0'
+core:
+  stage: pipeline
+  tags: [core-ci]
+  # Existing Linux shell runner: Python 3.12, Docker/buildx, PostgreSQL and kubectl.
+  # Set DATABASE_URL, registry credentials, and KUBECONFIG as protected variables.
+  resource_group: core-release
+  environment:
+    name: $CORE_CI_ENVIRONMENT
+  timeout: 1h
+  script:
+    - bash ci/run.sh

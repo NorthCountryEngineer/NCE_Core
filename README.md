@@ -177,6 +177,11 @@ service for introspection. Keep all confidential client secrets on the backend.
 
 ## Validate
 
+[The CI/CD guide](docs/cicd.md) defines the shared PostgreSQL test, container build,
+registry publication, and Kubernetes release pipeline, with adapters for GitHub
+Actions, GitLab CI, Azure Pipelines, Jenkins, CircleCI, Bitbucket, and AWS
+CodeBuild/CodePipeline. Execution is manual and external release steps default off.
+
 ```sh
 CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests
 CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
@@ -189,7 +194,8 @@ resource service, upstream OIDC exchanges, account-link isolation, MFA evidence,
 tag enforcement, audit preservation, core APIs, data ingestion, durable workflows, onboarding,
 deployment lifecycle, and tenant isolation. The same suite can run against
 PostgreSQL by setting `DATABASE_URL`. The GitHub Actions workflow uses PostgreSQL
-and is manual-only so pushes do not start potentially billable jobs. A separate
+and is manual-only, with an existing self-hosted runner by default, so pushes do
+not start potentially billable jobs. A separate
 opt-in test verifies real reconciliation against a disposable local kind cluster;
 see [the platform guide](docs/platform.md#validation).
 

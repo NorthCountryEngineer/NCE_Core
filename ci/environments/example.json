@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "environment": "staging",
+  "image_repository": "ghcr.io/northcountryengineer/nce-core",
+  "release_branch": "main",
+  "kubernetes": {
+    "context": "customer-staging",
+    "namespace": "core-platform",
+    "release_name": "core-platform",
+    "issuer": "https://core.customer.example",
+    "ingress_class": "nginx",
+    "tls_secret": "core-platform-tls",
+    "runtime_secret": "core-platform-runtime",
+    "database_secret": "core-platform-database",
+    "pull_secrets": [],
+    "provider_secrets": [],
+    "web_replicas": 1,
+    "worker_replicas": 1,
+    "rollout_timeout_seconds": 600,
+    "migration_timeout_seconds": 600,
+    "extra_environment": {"CORE_PRODUCT_NAME": "Core Platform"}
+  }
+}

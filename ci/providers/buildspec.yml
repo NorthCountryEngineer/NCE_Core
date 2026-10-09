@@ -1,0 +1,17 @@
+# AWS CodeBuild is billable: do not create/start a project without cost approval.
+# Configure a Git source, Linux image, privileged Docker, and protected variables.
+version: 0.2
+env:
+  shell: bash
+  variables:
+    CORE_CI_MODE: verify
+    CORE_CI_CONFIG: ci/environments/example.json
+    CORE_CI_ALLOW_PUBLISH: '0'
+    CORE_CI_ALLOW_DEPLOY: '0'
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+  build:
+    commands:
+      - bash ci/run.sh

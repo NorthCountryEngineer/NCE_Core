@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "environment", "image_repository", "release_branch", "kubernetes"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "environment": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$"},
+    "image_repository": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+(?::[0-9]+)?/[a-z0-9][a-z0-9_./-]+$"},
+    "release_branch": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,120}$"},
+    "kubernetes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["context", "namespace", "release_name", "issuer", "ingress_class", "tls_secret", "runtime_secret", "database_secret"],
+      "properties": {
+        "context": {"type": "string", "minLength": 1, "maxLength": 200},
+        "namespace": {"$ref": "#/$defs/name"},
+        "release_name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,34}[a-z0-9]$"},
+        "issuer": {"type": "string", "pattern": "^https://[a-zA-Z0-9.-]+(?::[0-9]+)?$"},
+        "ingress_class": {"$ref": "#/$defs/name"},
+        "tls_secret": {"$ref": "#/$defs/name"},
+        "runtime_secret": {"$ref": "#/$defs/name"},
+        "database_secret": {"$ref": "#/$defs/name"},
+        "organization_id": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+        "pull_secrets": {"type": "array", "maxItems": 10, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+        "provider_secrets": {"type": "array", "maxItems": 50, "items": {
+          "type": "object", "additionalProperties": false, "required": ["secret_name", "organization_id", "key", "filename"],
+          "properties": {
+            "secret_name": {"$ref": "#/$defs/name"},
+            "organization_id": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+            "key": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$"},
+            "filename": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$"}
+          }
+        }},
+        "web_replicas": {"type": "integer", "minimum": 1, "maximum": 10},
+        "worker_replicas": {"type": "integer", "minimum": 1, "maximum": 5},
+        "rollout_timeout_seconds": {"type": "integer", "minimum": 60, "maximum": 1800},
+        "migration_timeout_seconds": {"type": "integer", "minimum": 60, "maximum": 1800},
+        "extra_environment": {"type": "object", "additionalProperties": false, "properties": {
+          "CORE_PRODUCT_NAME": {"type": "string", "maxLength": 160},
+          "CORE_IDP_ALLOWED_HOSTS": {"type": "string", "maxLength": 2000}
+        }}
+      }
+    }
+  },
+  "$defs": {"name": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"}}
+}
