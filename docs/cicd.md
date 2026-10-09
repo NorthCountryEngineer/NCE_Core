@@ -20,7 +20,7 @@ builds independently of this repository; disable those until approved.
 | Stage | Required result |
 | --- | --- |
 | Configure | Validate the selected JSON configuration against `ci/config.schema.json`. |
-| Check | Initialize development-only test keys, run Django checks, and reject migration drift. |
+| Check | Scan tracked files for secrets, initialize development-only test keys, run Django checks, and reject migration drift. |
 | Test | Run the application suite against isolated PostgreSQL and the CI/CD guard tests. |
 | Build | Use frozen dependencies and a digest-pinned Python base; label and tag with the full Git commit. |
 | Publish | Require explicit enablement and the current release branch tip; authenticate with stdin or an existing credential helper; capture the registry digest. |
@@ -54,11 +54,26 @@ runs `uv sync --frozen`. Test keys and generated artifacts stay out of Git and
 container build contexts. Never run the pipeline in a production application's
 working directory.
 
+Verification runs pinned `detect-secrets` against every tracked file before
+building. Its baseline contains reviewed false positives: secret resource names,
+credential binding names, and route names. It contains hashes, never credential
+values. A new finding fails verification; do not baseline a real credential.
+To check before committing, run `.venv/bin/python ci/scan_secrets.py`. Enable the
+repository's local guard with `git config core.hooksPath .githooks` after setup.
+Network
+credential verification is disabled, and scanner diagnostics are captured to
+avoid exposing newly detected values in CI logs.
+
 Supply a **dedicated, disposable PostgreSQL** connection as `DATABASE_URL` with
 permission to create/drop its Django test database. Isolate it per runner/job;
 never point this at a customer database or share its test database across parallel
-jobs. GitHub supplies a job-local PostgreSQL service. Other adapters use the
-runner's configured isolated PostgreSQL service through protected variables.
+jobs. GitHub runs `python3 ci/verify_with_postgres.py` to start a loopback-only
+Docker PostgreSQL container with a cryptographically random password per run.
+It passes the password through Docker stdin, keeps the connection URL in the
+verification subprocess environment, and removes the container and its volume
+afterward. Other adapters use the runner's configured isolated PostgreSQL service
+through protected variables, or can use this same wrapper for their verification
+stage and keep publication/deployment as separate steps.
 
 ## Environment configuration
 

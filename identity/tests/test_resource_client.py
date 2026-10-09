@@ -1,3 +1,4 @@
+import secrets
 import time
 from unittest.mock import Mock, patch
 
@@ -10,7 +11,7 @@ from identity_client import Forbidden, IdentityUnavailable, ResourceClient, Unau
 
 class ResourceClientTests(SimpleTestCase):
     def setUp(self):
-        self.client = ResourceClient("https://identity.example.test", "backend-client", "test-secret", "org", "svc")
+        self.client = ResourceClient("https://identity.example.test", "backend-client", secrets.token_urlsafe(32), "org", "svc")
         self.claims = {"active": True, "iss": self.client.issuer, "organization_id": "org", "service_id": "svc",
                        "aud": "urn:core:service:svc", "exp": int(time.time()) + 300, "sub": "user", "permissions": ["read"]}
 
@@ -46,10 +47,11 @@ class ResourceClientTests(SimpleTestCase):
                 self.client.require("access-token", "read")
 
     def test_requires_tls_except_explicit_loopback_development(self):
-        for issuer in ["http://identity.example.test", "https://example.test/path", "https://user:pass@example.test"]:
+        invalid_credentials = secrets.token_urlsafe(32)
+        for issuer in ["http://identity.example.test", "https://example.test/path", f"https://user:{invalid_credentials}@example.test"]:
             with self.assertRaises(ValueError):
-                ResourceClient(issuer, "client", "secret", "org", "svc", allow_local_http=True)
-        ResourceClient("http://localhost:8000", "client", "secret", "org", "svc", allow_local_http=True)
+                ResourceClient(issuer, "client", secrets.token_urlsafe(32), "org", "svc", allow_local_http=True)
+        ResourceClient("http://localhost:8000", "client", secrets.token_urlsafe(32), "org", "svc", allow_local_http=True)
 
     def test_registered_resource_decision_checks_subject_purpose_and_fails_closed(self):
         with patch("identity_client.requests.post", side_effect=[self.response(), self.response({"allowed": True, "subject": "user"})]) as post:

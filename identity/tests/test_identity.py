@@ -15,14 +15,17 @@ from oauth2_provider.models import AccessToken, RefreshToken, set_token_value
 from identity.models import Application, AuditEvent, Invitation, Membership, Organization, Role, Service, ServicePermission, User
 
 
+TEST_PASSWORD = secrets.token_urlsafe(32)
+
+
 class IdentityTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.org = Organization.objects.create(slug="north", name="North", identity_name="North Access")
         cls.other_org = Organization.objects.create(slug="south", name="South")
-        cls.admin = User.objects.create_user("admin@example.test", "test-password-long")
-        cls.member = User.objects.create_user("member@example.test", "test-password-long")
-        cls.outsider = User.objects.create_user("other@example.test", "test-password-long")
+        cls.admin = User.objects.create_user("admin@example.test", TEST_PASSWORD)
+        cls.member = User.objects.create_user("member@example.test", TEST_PASSWORD)
+        cls.outsider = User.objects.create_user("other@example.test", TEST_PASSWORD)
         cls.admin_membership = Membership.objects.create(user=cls.admin, organization=cls.org, kind="administrator")
         cls.member_membership = Membership.objects.create(user=cls.member, organization=cls.org)
         cls.other_membership = Membership.objects.create(user=cls.outsider, organization=cls.other_org, kind="administrator")
@@ -302,7 +305,7 @@ class IdentityTests(TestCase):
     def test_introspection_requires_confidential_client_and_post(self):
         raw, _ = self.issue_fixture_token()
         self.assertEqual(self.client.post("/oauth/introspect/", {"token": raw}).status_code, 401)
-        self.assertEqual(self.client.post("/oauth/introspect/", {"token": raw}, **self.basic(secret="wrong")).status_code, 401)
+        self.assertEqual(self.client.post("/oauth/introspect/", {"token": raw}, **self.basic(secret=secrets.token_urlsafe(32))).status_code, 401)
         self.assertEqual(self.client.get("/oauth/introspect/", {"token": raw}, **self.basic()).status_code, 405)
         public = self.create_app(self.service, "Public app", self.raw_secret, "public")
         self.assertEqual(self.introspect(raw, public).status_code, 401)
@@ -403,7 +406,7 @@ class IdentityTests(TestCase):
         self.assertEqual(invitation.token_hash, Invitation.digest(token))
         visitor = Client()
         response = visitor.post(urlparse(link).path, {
-            "password1": "invited-test-password-long", "password2": "invited-test-password-long",
+            "password1": TEST_PASSWORD, "password2": TEST_PASSWORD,
             "first_name": "New", "last_name": "User",
         })
         self.assertEqual(response.status_code, 302, response.content.decode())

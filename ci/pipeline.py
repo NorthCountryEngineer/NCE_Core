@@ -90,6 +90,7 @@ def test_environment():
 
 
 def check(config):
+    command([PYTHON, 'ci/scan_secrets.py'])
     environment = test_environment()
     command([PYTHON, 'scripts/init_dev.py'], env=environment)
     command([PYTHON, 'manage.py', 'check'], env=environment)

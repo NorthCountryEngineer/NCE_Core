@@ -20,12 +20,15 @@ from platform_services.services import create_deployment, install_core, install_
 from platform_services.workflows import enqueue, process_one, snapshot_agents
 
 
+TEST_PASSWORD = secrets.token_urlsafe(32)
+
+
 class PermissionTagTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.org = Organization.objects.create(name="Protected organization", slug="protected")
         cls.other = Organization.objects.create(name="Other", slug="other-protected")
-        cls.user = User.objects.create_user("security-admin@example.test", "long-test-password")
+        cls.user = User.objects.create_user("security-admin@example.test", TEST_PASSWORD)
         cls.member = Membership.objects.create(user=cls.user, organization=cls.org, kind="administrator")
         cls.tag = PermissionTag.objects.create(organization=cls.org, slug="phi", name="Health records", classification="restricted",
             requires_mfa=True, max_auth_age=300, allowed_purposes=["treatment"])

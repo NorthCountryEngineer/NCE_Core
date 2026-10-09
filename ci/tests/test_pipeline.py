@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from datetime import timedelta
 import json
 import os
+import secrets
 from pathlib import Path
 import tempfile
 import unittest
@@ -34,10 +35,11 @@ class PipelineTests(unittest.TestCase):
             'image': self.image, 'config_hash': p.config_hash(self.config)}))
 
     def test_unknown_secret_values_never_echoed_by_validation(self):
-        self.config['password'] = 'DO-NOT-PRINT-ME'
+        password = secrets.token_urlsafe(32)
+        self.config['password'] = password
         with self.assertRaises(p.PipelineError) as error:
             self.load(self.config)
-        self.assertNotIn('DO-NOT-PRINT-ME', str(error.exception))
+        self.assertNotIn(password, str(error.exception))
 
     def test_bad_issuer_namespace_privileged_settings_and_provider_paths_rejected(self):
         for field, value in [('issuer', 'http://core.example'), ('namespace', '../other'), ('context', ''),
@@ -100,7 +102,7 @@ class PipelineTests(unittest.TestCase):
     def test_ci_environment_does_not_reuse_production_keys_or_issuer(self):
         with patch.dict(os.environ, {'CORE_SECRET_KEY_FILE': '/production/key', 'CORE_OIDC_KEY_FILE': '/production/oidc',
                                     'CORE_ISSUER': 'https://production.example', 'CORE_OIDC_PREVIOUS_KEY_FILES': '/production/old',
-                                    'REGISTRY_PASSWORD': 'registry-secret', 'KUBECONFIG': '/production/kubeconfig'}):
+                                    'REGISTRY_PASSWORD': secrets.token_urlsafe(32), 'KUBECONFIG': '/production/kubeconfig'}):
             environment = p.test_environment()
         self.assertEqual(environment['CORE_ISSUER'], 'http://localhost:8000')
         self.assertNotIn('/production', environment['CORE_SECRET_KEY_FILE'])
@@ -140,17 +142,18 @@ class PipelineTests(unittest.TestCase):
             p.smoke(self.config)
 
     def test_publish_rejects_stale_build_and_passes_password_only_on_stdin(self):
+        password = secrets.token_urlsafe(32)
         build = {'schema_version': 1, 'commit': SHA, 'image_tag': self.config['image_repository'] + ':' + SHA,
                  'dirty': False, 'config_hash': p.config_hash(self.config)}
         (self.artifacts / 'build.json').write_text(json.dumps(build))
         with patch.object(p, 'ARTIFACTS', self.artifacts), patch.object(p, 'trusted_release'), patch.object(p, 'revision', return_value=SHA), \
-             patch.dict(os.environ, {'CORE_CI_ALLOW_PUBLISH': '1', 'REGISTRY_USERNAME': 'test', 'REGISTRY_PASSWORD': 'never-in-argv'}), \
+             patch.dict(os.environ, {'CORE_CI_ALLOW_PUBLISH': '1', 'REGISTRY_USERNAME': 'test', 'REGISTRY_PASSWORD': password}), \
              patch.object(p, 'command', side_effect=['', '', json.dumps({'digest': DIGEST})]) as command:
             result = p.publish(self.config)
             self.assertEqual(result['image'], self.image)
             login = command.call_args_list[0]
-            self.assertNotIn('never-in-argv', login.args[0])
-            self.assertEqual(login.kwargs['data'], 'never-in-argv\n')
+            self.assertNotIn(password, login.args[0])
+            self.assertEqual(login.kwargs['data'], password + '\n')
             build['commit'] = 'c' * 40
             (self.artifacts / 'build.json').write_text(json.dumps(build))
             with self.assertRaises(p.PipelineError):

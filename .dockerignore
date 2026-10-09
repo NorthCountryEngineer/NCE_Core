@@ -10,4 +10,5 @@ staticfiles
 artifacts
 ci
 .github
+.secrets.baseline
 docs

@@ -16,3 +16,6 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = ["detect-secrets==1.5.0"]
