@@ -1,0 +1,39 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.name }} · Central admin</h1>
+<div class="actions">
+<a href="{% url 'marketplace' organization.slug %}">Marketplace</a>
+<a href="{% url 'organization' organization.slug %}">Users and permissions</a>
+<a href="{% url 'deployment_configuration' organization.slug %}">Deployment configuration</a>
+<a href="{% url 'runtime_add' organization.slug %}">Connect Kubernetes</a>
+</div>
+{% if billing %}<p>Billing provider: {{ billing.get_provider_display }} · {{ billing.status }}. Payments are not enabled.</p>{% endif %}
+<section><h2>Installed services and applications</h2>
+{% for installation in installations %}<p><strong>{{ installation.package.name }}</strong> · {{ installation.version }} · {{ installation.enabled|yesno:"enabled,disabled" }}<br>
+<a href="{% url 'installation_settings' organization.slug installation.pk %}">Set service access</a>
+{% if installation.package.kind == 'application' %} · <a href="{% url 'deploy_installation' organization.slug installation.pk %}">Deploy an instance</a> · <a href="{% url 'installation_upgrade' organization.slug installation.pk %}">Review latest release</a>{% endif %}
+<form class="inline" method="post" action="{% url 'issue_workload_key' organization.slug installation.pk %}">{% csrf_token %}<button type="submit">Create integration key</button></form>
+{% for credential in installation.credentials.all %}{% if credential.active %}<form method="post" action="{% url 'revoke_workload_key' organization.slug credential.pk %}">{% csrf_token %}{{ credential.name }} · <button type="submit">Revoke key</button></form>{% endif %}{% endfor %}
+</p>{% empty %}<p>Install Core Platform from the marketplace to activate this workspace.</p>{% endfor %}</section>
+<section><h2>Deployed instances</h2>
+<p>The controller and core services are included in this inventory. A missing or stale report means current health is unknown.</p>
+<a href="{% url 'adopt_controller' organization.slug %}">Connect this controller's Kubernetes deployment</a>
+<table><tr><th>Instance</th><th>Status</th><th>Management</th></tr>
+{% for deployment in deployments %}<tr><td>{{ deployment.installation.package.name }}<br>{{ deployment.get_target_display }}{% if deployment.parent %} · managed by {{ deployment.parent.name }}{% endif %}</td>
+<td>{{ deployment.status }} · desired {{ deployment.desired_state }}<br>Last report: {{ deployment.last_seen|default:"not received" }}{% if deployment.message %}<br>{{ deployment.message }}{% endif %}</td>
+<td>{% if deployment.target != 'embedded' %}<form method="post" action="{% url 'deployment_action' organization.slug deployment.pk %}">{% csrf_token %}
+{% if deployment.target != 'kubernetes-controller' %}<button name="action" value="start">Start</button> <button name="action" value="stop">Stop</button>{% endif %} <button name="action" value="restart">Restart</button>
+</form>{% else %}Managed through installation settings{% endif %}</td></tr>{% empty %}<tr><td colspan="3">No instances registered.</td></tr>{% endfor %}
+</table></section>
+<section><h2>Kubernetes runtimes</h2>
+{% for node in nodes %}<p>{{ node.name }} · {{ node.namespace }} · {% if not node.active %}disabled{% elif node.online %}connected{% else %}awaiting report{% endif %}
+{% if node.active %}<form class="inline" method="post" action="{% url 'runtime_disable' organization.slug node.pk %}">{% csrf_token %}<button type="submit">Revoke runtime access</button></form>{% endif %}</p>{% empty %}<p>No cluster is connected.</p>{% endfor %}</section>
+<section><h2>Data pipeline</h2><div class="actions"><a href="{% url 'dataset_add' organization.slug %}">Create dataset</a><a href="{% url 'pipeline_add' organization.slug %}">Create pipeline</a></div>
+<ul>{% for dataset in datasets %}<li><a href="{% url 'dataset_edit' organization.slug dataset.pk %}">{{ dataset.name }}</a> · {{ dataset.records.count }} records</li>{% endfor %}</ul>
+<ul>{% for pipeline in pipelines %}<li><a href="{% url 'pipeline_edit' organization.slug pipeline.pk %}">{{ pipeline.name }}</a> → {{ pipeline.dataset.name }}</li>{% endfor %}</ul></section>
+<section><h2>Core agents and workflows</h2><div class="actions"><a href="{% url 'agent_add' organization.slug %}">Create agent</a><a href="{% url 'workflow_add' organization.slug %}">Create workflow</a></div>
+<ul>{% for agent in agents %}<li><a href="{% url 'agent_edit' organization.slug agent.pk %}">{{ agent.name }}</a> · {{ agent.get_kind_display }}</li>{% endfor %}</ul>
+<ul>{% for workflow in workflows %}<li><a href="{% url 'workflow_edit' organization.slug workflow.pk %}">{{ workflow.name }}</a> · <a href="{% url 'workflow_run' organization.slug workflow.pk %}">Run workflow</a></li>{% endfor %}</ul>
+<h3>Recent runs</h3><ul>{% for run in runs %}<li><a href="{% url 'run_detail' organization.slug run.pk %}">{{ run.definition_name }}</a> · {{ run.status }} · {{ run.created }}{% if run.error %} · {{ run.error }}{% endif %}</li>{% empty %}<li>No runs yet.</li>{% endfor %}</ul>
+</section>
+{% endblock %}

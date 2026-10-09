@@ -1,0 +1,21 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>Developer onboarding</h1><p>Step {{ state.step }} of 5 · {{ title }}</p>
+<section>
+{% if state.step == 2 %}<p>Billing information prepares your organization for a future integration. No payment method is collected and no payments are enabled.</p>{% endif %}
+{% if state.step == 3 %}<p>Connect an existing Kubernetes cluster. Core does not create a cluster or purchase infrastructure.</p>{% endif %}
+{% if state.step == 4 %}<p>A runtime connector applies approved applications and reports health from your cluster. It needs access only to your configured namespace.</p>{% endif %}
+{% if state.step == 5 %}
+<h2>{{ state.organization.name }}</h2>
+<p>{{ state.organization.profile.legal_name }} · {{ state.organization.profile.country }} · {{ state.organization.profile.timezone }}</p>
+<p>Billing: {{ state.organization.billing.get_provider_display }} · {{ state.organization.billing.currency }} · not configured</p>
+<p>Kubernetes: {{ state.organization.deployment_configuration.namespace }} · {{ state.organization.deployment_configuration.environment }}</p>
+<p>Application address: {{ state.organization.deployment_configuration.application_origin }}</p>
+<p>Automatic deployment: {{ state.organization.deployment_configuration.auto_deploy|yesno:"enabled,disabled" }}</p>
+{% if state.runtime %}<p>Runtime: {{ state.runtime.name }} · {{ state.runtime.online|yesno:"connected,awaiting connection" }}</p>{% else %}<p>Connect your runtime later from the admin panel.</p>{% endif %}
+<p>Core Platform, Core Data, Core Agents, and Core Workflows will be activated through the marketplace in your core workspace. You become its administrator. Assign additional user and application permissions from the central panel.</p>
+{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">{% if state.step == 5 %}Activate workspace{% else %}Continue{% endif %}</button></form>
+{% if state.step == 5 %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="reconnect"><button type="submit">Replace runtime connection</button><p>Use this if you lost the connection key. The previous runtime key will be revoked.</p></form>{% endif %}
+</section>
+{% endblock %}

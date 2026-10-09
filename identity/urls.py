@@ -1,0 +1,23 @@
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path("", views.home, name="home"),
+    path("health/", views.health, name="health"),
+    path("invitations/<str:token>/", views.accept_invitation, name="accept_invitation"),
+    path("organizations/<slug:slug>/", views.organization_detail, name="organization"),
+    path("organizations/<slug:slug>/settings/", views.branding, name="branding"),
+    path("organizations/<slug:slug>/invite/", views.invite, name="invite"),
+    path("organizations/<slug:slug>/invitations/<int:pk>/revoke/", views.revoke_invitation, name="revoke_invitation"),
+    path("organizations/<slug:slug>/members/<int:pk>/", views.membership_edit, name="membership"),
+    path("organizations/<slug:slug>/roles/new/", views.role_edit, name="role_add"),
+    path("organizations/<slug:slug>/roles/<int:pk>/", views.role_edit, name="role"),
+    path("organizations/<slug:slug>/services/new/", views.service_edit, name="service_add"),
+    path("organizations/<slug:slug>/services/<uuid:pk>/", views.service_detail, name="service"),
+    path("organizations/<slug:slug>/services/<uuid:pk>/settings/", views.service_edit, name="service_edit"),
+    path("organizations/<slug:slug>/services/<uuid:pk>/permissions/new/", views.permission_add, name="permission_add"),
+    path("organizations/<slug:slug>/services/<uuid:service_pk>/clients/new/", views.application_edit, name="application_add"),
+    path("organizations/<slug:slug>/services/<uuid:service_pk>/clients/<int:pk>/", views.application_edit, name="application"),
+    path("organizations/<slug:slug>/services/<uuid:service_pk>/clients/<int:pk>/rotate/", views.rotate_client_secret, name="rotate_client_secret"),
+    path("api/v1/authorize/", views.authorize_permission, name="authorize_permission"),
+]

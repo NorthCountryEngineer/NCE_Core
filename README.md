@@ -1,0 +1,192 @@
+# Core Platform
+
+NCE_Core hosts **Core Platform**, an organization control plane with identity,
+authorization, a marketplace, core data services, agents, workflows, and Kubernetes
+instance management.
+Customers can rename it for their deployment or individual organizations. The
+product name is cosmetic; the configured issuer URL and immutable organization,
+user, and service identifiers establish trust.
+
+The implementation uses Django and Django OAuth Toolkit. Identity is established
+in this deployment and federated to applications through OpenID Connect/OAuth 2.0.
+Applications consume the core services over authenticated HTTPS APIs, wherever
+they run. Marketplace deployments receive organization-bound configuration,
+OIDC registration, and workload credentials automatically.
+
+## Core services and central administration
+
+The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**, and
+**Core Workflows** alongside application packages. Core packages currently execute
+inside the core runtime; each organization receives its own installation, service
+identity, permission settings, and monitored instance. The central panel manages
+members and roles, application grants, runtimes, deployment state and health,
+datasets, pipelines, agent definitions, and workflow runs.
+
+Core Data validates JSON records, applies select/rename transformations, accepts
+idempotent events, and exposes cursor-based consumption. Core Agents includes
+inspect, select, publish, and bounded rule-based tool selection. Core Workflows
+persists agent snapshots, execution leases, step traces, and retries. Workers
+recheck the original caller's current permissions before executing each step.
+These initial agents use deterministic rules; no paid model provider is enabled.
+
+The outbound Kubernetes connector reconciles approved, digest-pinned application
+images into an existing namespace and reports actual rollout health. The controller
+appears in its own inventory; an existing Kubernetes controller can be adopted for
+monitoring and rolling restart. Automatic application deployment is an onboarding
+setting, disabled by default. Creating clusters, purchasing infrastructure, and
+charging payments are outside this implementation.
+
+See [the platform guide](docs/platform.md) for onboarding, marketplace publication,
+Kubernetes connection, and the core API contract.
+
+## Access model
+
+| Principal | Core Identity controls | Deployed application controls |
+| --- | --- | --- |
+| Organization administrator | Own organization's users, invitations, roles, branding, services, and client registrations | `admin` and every registered permission for each service in that organization |
+| Organization member | Own account and password | Permissions explicitly assigned through custom organization roles |
+| Platform superuser | Deployment-level organization and account administration | Requires an organization membership to obtain a token for that organization's services |
+| Confidential application client | Introspection of tokens for its own service | Does not receive a human user's administrator privileges |
+
+A user can belong to several organizations with different roles in each. Every
+OAuth client belongs to exactly one service, and every service belongs to one
+organization. Sign-in takes its organization from this registration, never a
+caller-supplied tenant claim. Organization administrators are not Django staff or
+platform superusers.
+
+Custom roles group permissions such as `read` and `reports-edit`. Permissions are
+defined per service. The reserved `admin` permission comes only from the built-in
+organization administrator role. Unknown permission names are denied, including
+for administrators.
+
+Organizations are logical tenants in a shared database. Deployed services must
+also scope their own data queries and administration to the trusted organization
+ID. This service does not change permissions in applications that have not
+integrated with it.
+
+## Run locally
+
+Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required. In this checkout:
+
+```sh
+uv sync --frozen
+uv run python scripts/init_dev.py
+export CORE_DEBUG=1
+uv run python manage.py migrate
+uv run python manage.py bootstrap_organization \
+  --slug example --name "Example Organization" --admin-email admin@example.com
+uv run python manage.py changepassword admin@example.com
+uv run python manage.py runserver 127.0.0.1:8000
+```
+
+Run the durable workflow worker in a second terminal:
+
+```sh
+CORE_DEBUG=1 uv run python manage.py core_worker
+```
+
+Development uses SQLite and unique local secret files generated once under the
+ignored `.local/` directory. No default account or password is installed. The
+bootstrap command is an operator command, not a public signup endpoint; repeat
+runs preserve existing memberships and accounts. The password command validates
+password strength and prompts without storing a password in command history.
+
+Sign in through `/accounts/login/`. Organization administrators can invite users,
+assign roles, register services, and register confidential or public application
+clients. Invitations expire after 48 hours and are single use. The administrator
+shares the invitation link securely; email delivery is not implemented. Existing
+users must sign in to the matching account to accept an invitation. New users
+choose their own password.
+
+Set `CORE_PRODUCT_NAME` to change the deployment's default name. Each organization
+can override it under Organization settings. Platform operators can create a
+separate superuser with `manage.py createsuperuser` for `/platform-admin/`.
+
+For developer onboarding, the platform operator creates an ordinary user in the
+platform account administration and grants `is_developer`, or uses
+`manage.py grant_developer user@example.com` for an existing account. Its next
+sign-in opens a resumable five-step organization, metadata, billing preference,
+deployment, and runtime setup. The developer becomes administrator only of the
+organization they create. `CORE_DEBUG` and URL parameters do not grant this status.
+For an organization provisioned with the bootstrap command instead, install the
+core packages from its Marketplace link.
+
+## Federate sign-in and authorization
+
+See [the integration guide](docs/integration.md) for the complete contract and
+examples. An application uses OpenID Connect Authorization Code with PKCE S256.
+Its user signs in through the central Core Identity deployment. The existing
+central session allows subsequent applications to reuse sign-in; each application
+gets its own service-bound authorization context and consent.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Registered application
+    participant Core as Core Identity
+    User->>App: Open application
+    App->>Core: OIDC authorization request (PKCE)
+    Core->>User: Sign in and consent
+    Core->>Core: Check organization membership
+    Core->>App: Authorization code
+    App->>Core: Exchange code and PKCE verifier
+    Core->>App: Signed ID token and opaque access token
+    User->>App: Protected request with access token
+    App->>Core: Authenticated token introspection
+    Core->>Core: Evaluate current membership and service permissions
+    Core->>App: Subject, organization, audience, permissions
+    App->>User: Allow or deny requested operation
+```
+
+Core Identity exposes:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/.well-known/openid-configuration` | OIDC discovery and fixed issuer |
+| `/.well-known/oauth-authorization-server` | OAuth server metadata |
+| `/oauth/authorize/` | Browser authorization and consent |
+| `/oauth/token/` | Code exchange and rotating refresh tokens |
+| `/oauth/jwks/` | Public signing keys |
+| `/oauth/userinfo/` | Scope-limited identity and current authorization claims |
+| `/oauth/introspect/` | Authenticated, service-bound token introspection |
+| `/oauth/revoke/` | OAuth token revocation |
+| `/api/v1/authorize/` | Central permission decision for a token and organization |
+| `/health/` | Database connectivity readiness check |
+
+ID tokens authenticate a user to their registered client. Access tokens authorize
+resource requests. Services use live introspection or the authorization endpoint
+for privileged operations; an ID token's role snapshot cannot establish current
+authorization. Membership disabling, role removal, client disabling, and service
+disabling take effect on the next central check. Identity outages deny access.
+
+An application written in any language can use these protocols. The
+framework-independent [reference client](identity_client.py) and
+[protected service example](examples/protected_service.py) show server-side
+enforcement. Public clients need a confidential backend registration in the same
+service for introspection. Keep all confidential client secrets on the backend.
+
+## Validate
+
+```sh
+CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests
+CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
+```
+
+Tests exercise signed OIDC tokens, PKCE, service and organization isolation,
+multi-organization membership, live permission changes, token revocation and
+refresh replay protection, invitations, administrative CSRF, and the reference
+resource service, core APIs, data ingestion, durable workflows, onboarding,
+deployment lifecycle, and tenant isolation. The same suite can run against
+PostgreSQL by setting `DATABASE_URL`. The GitHub Actions workflow uses PostgreSQL
+and is manual-only so pushes do not start potentially billable jobs. A separate
+opt-in test verifies real reconciliation against a disposable local kind cluster;
+see [the platform guide](docs/platform.md#validation).
+
+Deployment instructions and configuration are in [docs/deployment.md](docs/deployment.md).
+The repository contains the initial implementation; it has not been deployed to
+a customer environment. MFA, account recovery/email delivery, upstream identity
+brokering, OAuth client-credentials grants, and OAuth token exchange are future additions.
+Billing adapters for Stripe, Paddle, Adyen, and Braintree are inactive stand-ins.
+Machine-to-core access currently uses scoped, revocable workload credentials.
+The current SSO model uses a fresh, service-specific code exchange for each
+application, rather than forwarding a token to unrelated services.

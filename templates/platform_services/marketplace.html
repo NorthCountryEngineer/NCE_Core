@@ -1,0 +1,9 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>Application marketplace</h1><p>Core services and applications are installed and managed in the same place.</p>
+<a href="{% url 'platform_dashboard' organization.slug %}">Admin panel</a>
+{% for package in packages %}<section><h2>{{ package.name }}</h2><p>{{ package.description }}</p>
+<p>{{ package.get_kind_display }} · {{ package.version }}</p>
+{% if package.slug in installed_slugs %}<p>Installed</p>{% else %}<a href="{% url 'package_install' organization.slug package.slug %}">Install and set access</a>{% endif %}
+</section>{% endfor %}
+{% endblock %}

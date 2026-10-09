@@ -1,0 +1,7 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<section><h1>Join {{ invitation.organization.name }}</h1>
+<p>Invited account: {{ invitation.email }}</p>
+<form method="post">{% csrf_token %}{% if form %}{{ form.as_p }}{% endif %}<button type="submit">Accept invitation</button></form>
+</section>
+{% endblock %}

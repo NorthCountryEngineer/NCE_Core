@@ -1,0 +1,26 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.name }} administration</h1>
+<a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
+<p>Manage access to {{ product_name }} and applications in this organization.</p>
+<div class="actions"><a href="{% url 'branding' organization.slug %}">Organization settings</a><a href="{% url 'invite' organization.slug %}">Invite a user</a></div>
+<section><h2>Users</h2>
+<table><tr><th>Email</th><th>Organization role</th><th>Access</th></tr>
+{% for membership in memberships %}<tr>
+  <td><a href="{% url 'membership' organization.slug membership.pk %}">{{ membership.user.email }}</a></td>
+  <td>{{ membership.get_kind_display }}{% for role in membership.roles.all %} · {{ role.name }}{% endfor %}</td>
+  <td>{% if membership.active %}Active{% else %}Disabled{% endif %}</td>
+</tr>{% endfor %}</table></section>
+<section><h2>Services</h2><a href="{% url 'service_add' organization.slug %}">Register a service</a>
+<ul>{% for service in services %}<li><a href="{% url 'service' organization.slug service.pk %}">{{ service.name }}</a>{% if not service.active %} (disabled){% endif %}</li>{% empty %}<li>No services registered.</li>{% endfor %}</ul></section>
+<section><h2>Roles</h2>
+<p>Organization administrators manage this organization and every registered service. Members receive only explicitly assigned service permissions.</p>
+<a href="{% url 'role_add' organization.slug %}">Create a role</a>
+<ul>{% for role in roles %}<li><a href="{% url 'role' organization.slug role.pk %}">{{ role.name }}</a></li>{% empty %}<li>No custom roles.</li>{% endfor %}</ul></section>
+<section><h2>Pending invitations</h2>
+{% for invitation in invitations %}<p>{{ invitation.email }} · {{ invitation.get_kind_display }} · expires {{ invitation.expires }}
+  <form class="inline" method="post" action="{% url 'revoke_invitation' organization.slug invitation.pk %}">{% csrf_token %}<button type="submit">Revoke</button></form>
+</p>{% empty %}<p>No pending invitations.</p>{% endfor %}</section>
+<section><h2>Recent administration activity</h2>
+<ul>{% for event in audit_events %}<li>{{ event.created }} · {{ event.actor.email|default:"Platform" }} · {{ event.action }} · {{ event.target }}</li>{% empty %}<li>No activity yet.</li>{% endfor %}</ul></section>
+{% endblock %}

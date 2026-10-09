@@ -1,0 +1,16 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ service.name }}</h1>
+<p>Audience: <code>{{ service.audience }}</code></p>
+<div class="actions"><a href="{% url 'service_edit' brand_organization.slug service.pk %}">Service settings</a><a href="{% url 'organization' brand_organization.slug %}">Organization administration</a></div>
+<section><h2>Application registrations</h2>
+<a href="{% url 'application_add' brand_organization.slug service.pk %}">Register an application</a>
+<ul>{% for application in applications %}<li>
+<a href="{% url 'application' brand_organization.slug service.pk application.pk %}">{{ application.name }}</a> · {{ application.client_type }}{% if not application.active %} (disabled){% endif %}<br>
+Client ID: <code>{{ application.client_id }}</code>
+{% if application.client_type == 'confidential' %}<form method="post" action="{% url 'rotate_client_secret' brand_organization.slug service.pk application.pk %}">{% csrf_token %}<button type="submit">Rotate client secret</button></form>{% endif %}
+</li>{% empty %}<li>No applications registered.</li>{% endfor %}</ul></section>
+<section><h2>Service permissions</h2><p>The <code>admin</code> permission is granted to organization administrators automatically.</p>
+<a href="{% url 'permission_add' brand_organization.slug service.pk %}">Register a permission</a>
+<ul>{% for permission in permissions %}<li><code>{{ permission.codename }}</code> · {{ permission.name }}</li>{% empty %}<li>No additional permissions registered.</li>{% endfor %}</ul></section>
+{% endblock %}

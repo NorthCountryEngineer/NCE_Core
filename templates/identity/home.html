@@ -1,0 +1,9 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>Your organizations</h1>
+{% for organization in organizations %}
+<section><h2>{{ organization.name }}</h2><p>{{ organization.brand }}</p>
+  {% if organization.can_administer %}<a href="{% url 'platform_dashboard' organization.slug %}">Open central admin panel</a> · <a href="{% url 'organization' organization.slug %}">Users and permissions</a>{% else %}<p>Member access. Sign in through your organization's applications.</p>{% endif %}
+</section>
+{% empty %}<p>You have no active organization memberships. Contact your organization administrator.</p>{% endfor %}
+{% endblock %}

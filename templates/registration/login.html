@@ -1,0 +1,10 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<section>
+  <h1>Sign in to {{ product_name }}</h1>
+  <form method="post">{% csrf_token %}{{ form.as_p }}
+    <input type="hidden" name="next" value="{{ next }}">
+    <button type="submit">Sign in</button>
+  </form>
+</section>
+{% endblock %}

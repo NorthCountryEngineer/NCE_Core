@@ -1,0 +1,18 @@
+[project]
+name = "nce-core"
+version = "0.1.0"
+description = "Organization identity, marketplace, core services, and Kubernetes control plane"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "Django==5.2.18",
+  "django-oauth-toolkit==3.4.1",
+  "gunicorn==23.0.0",
+  "psycopg[binary]==3.3.6",
+  "PyJWT[crypto]==2.15.1",
+  "cryptography==50.0.2",
+  "requests==2.34.2",
+  "jsonschema>=4.23,<5",
+]
+
+[tool.uv]
+package = false

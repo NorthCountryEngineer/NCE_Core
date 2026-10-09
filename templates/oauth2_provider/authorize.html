@@ -1,0 +1,12 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<section>
+{% if error %}<h1>Sign-in request could not be completed</h1><p>{{ error.description }}</p>
+{% else %}<h1>Authorize {{ application.name }}?</h1>
+<p>You are signing in to an application for {{ application.service.organization.name }} through {{ product_name }}.</p>
+<ul>{% for scope in scopes_descriptions %}<li>{{ scope }}</li>{% endfor %}</ul>
+<form method="post">{% csrf_token %}{% for field in form %}{% if field.is_hidden %}{{ field }}{% endif %}{% endfor %}
+{{ form.errors }}{{ form.non_field_errors }}
+<button type="submit" name="allow" value="true">Authorize</button> <button type="submit">Cancel</button>
+</form>{% endif %}</section>
+{% endblock %}
