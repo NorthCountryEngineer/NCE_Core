@@ -58,7 +58,9 @@ Verification runs pinned `detect-secrets` against every tracked file before
 building. Its baseline contains reviewed false positives: secret resource names,
 credential binding names, and route names. It contains hashes, never credential
 values. A new finding fails verification; do not baseline a real credential.
-To check before committing, run `.venv/bin/python ci/scan_secrets.py`. Enable the
+To check before committing, run `.venv/bin/python ci/scan_secrets.py --staged` after
+staging changes. The hook scans index contents, including changes that differ
+from the working copy. Enable the
 repository's local guard with `git config core.hooksPath .githooks` after setup.
 Network
 credential verification is disabled, and scanner diagnostics are captured to
