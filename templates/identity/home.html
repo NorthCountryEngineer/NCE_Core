@@ -3,6 +3,7 @@
 <h1>Your organizations</h1>
 {% for organization in organizations %}
 <section><h2>{{ organization.name }}</h2><p>{{ organization.brand }}</p>
+  <p><a href="{% url 'chat' organization.slug %}">Open chat</a></p>
   {% if organization.can_administer %}<a href="{% url 'platform_dashboard' organization.slug %}">Open central admin panel</a> · <a href="{% url 'organization' organization.slug %}">Users and permissions</a>{% else %}<p>Member access. Sign in through your organization's applications.</p>{% endif %}
   <form method="post" action="{% url 'access_purpose' organization.slug %}">{% csrf_token %}
     <input type="hidden" name="next" value="/">

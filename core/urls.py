@@ -25,5 +25,6 @@ urlpatterns = [
     path(".well-known/oauth-authorization-server", oauth_views.OAuthServerMetadataView.as_view()),
     path("oauth/", include((oauth_patterns, "oauth2_provider"), namespace="oauth2_provider")),
     path("", include("platform_services.urls")),
+    path("", include("core_chat.urls")),
     path("", include("identity.urls")),
 ]

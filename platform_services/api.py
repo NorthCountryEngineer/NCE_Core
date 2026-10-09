@@ -30,7 +30,7 @@ def body(request):
         def reject_constant(value):
             raise ValueError("Non-JSON number")
         value = json.loads(request.body, parse_constant=reject_constant)
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         raise ValidationError("Use a JSON object body.")
     if not isinstance(value, dict):
         raise ValidationError("Use a JSON object body.")

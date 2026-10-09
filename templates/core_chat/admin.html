@@ -1,0 +1,8 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ organization.name }} · Chat administration</h1>
+<div class="actions"><a href="{% url 'chat' organization.slug %}">Your conversations</a><a href="{% url 'chat_connection_add' organization.slug %}">Connect a trusted instance</a></div>
+<section><h2>Conversations</h2><p>Administration exposes conversation controls. Reading messages requires participant access.</p>
+<ul>{% for conversation in conversations %}<li>{{ conversation.title }} · <a href="{% url 'chat_settings' organization.slug conversation.pk %}">Participants</a> · <a href="{% url 'chat_edit' organization.slug conversation.pk %}">Settings</a> · <a href="{% url 'resource_tags' organization.slug 'chatconversation' conversation.pk %}">Tags</a></li>{% endfor %}</ul></section>
+<section><h2>Federated instances</h2><ul>{% for connection in connections %}<li><a href="{% url 'chat_connection_edit' organization.slug connection.pk %}">{{ connection.name }}</a> · {{ connection.issuer }} · {% if connection.active %}enabled{% else %}disabled{% endif %} · <a href="{% url 'resource_tags' organization.slug 'chatconnection' connection.pk %}">Tags</a></li>{% empty %}<li>No trusted instances configured.</li>{% endfor %}</ul></section>
+{% endblock %}

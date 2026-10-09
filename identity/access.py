@@ -76,7 +76,7 @@ def resource_organization(resource):
         return resource
     if hasattr(resource, "organization_id"):
         return resource.organization
-    for field in ["installation", "service", "dataset", "run"]:
+    for field in ["installation", "service", "dataset", "run", "conversation"]:
         parent = getattr(resource, field, None)
         if parent is not None:
             return resource_organization(parent)
@@ -91,7 +91,7 @@ def resource_chain(resource):
             return
         seen.add(key)
         result.append(item)
-        for field in ["organization", "service", "installation", "dataset", "node", "run"]:
+        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection"]:
             parent = getattr(item, field, None)
             if parent is not None:
                 visit(parent)
@@ -109,6 +109,10 @@ def resource_chain(resource):
                     if tool["kind"] == "publish":
                         for dataset in Dataset.objects.filter(organization=item.organization, slug=tool["configuration"]["dataset"]):
                             visit(dataset)
+                    if tool['kind'] == 'chat_send':
+                        from core_chat.models import Conversation
+                        for conversation in Conversation.objects.filter(organization=item.organization, pk=tool['configuration']['conversation_id']):
+                            visit(conversation)
     visit(resource)
     return result
 

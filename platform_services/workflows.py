@@ -31,6 +31,8 @@ def required_capabilities(source, snapshot):
     capabilities = {"agents.run" if source == "agent" else "workflows.run"}
     if any("publish" in possible_tools(step) for step in snapshot):
         capabilities.add("data.write")
+    if any('chat_send' in possible_tools(step) for step in snapshot):
+        capabilities.update(['chat.send', 'chat.ai'])
     return sorted(capabilities)
 
 
@@ -43,6 +45,9 @@ def execution_resources(organization, snapshot):
         for tool in tools:
             if tool["kind"] == "publish":
                 resources.append(Dataset.objects.get(organization=organization, slug=tool["configuration"]["dataset"], active=True))
+            if tool['kind'] == 'chat_send':
+                from core_chat.models import Conversation
+                resources.append(Conversation.objects.get(organization=organization, pk=tool['configuration']['conversation_id'], active=True))
     return resources
 
 
@@ -57,6 +62,9 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
     tags = {}
     for item in resources:
         tags.update({tag.pk: tag for tag in require_access(principal, item, "workflow.enqueue")})
+        if item._meta.label_lower == 'core_chat.conversation':
+            from core_chat.services import authorize
+            authorize(principal, item, 'send', ai=True)
     try:
         with transaction.atomic():
             run, created = WorkflowRun.objects.get_or_create(organization=organization, request_id=request_id,
@@ -98,12 +106,15 @@ def run_allowed(run):
     try:
         for resource in [run, *execution_resources(organization, run.snapshot)]:
             require_access(principal, resource, "workflow.execute")
+            if resource._meta.label_lower == 'core_chat.conversation':
+                from core_chat.services import authorize
+                authorize(principal, resource, 'send', ai=True)
     except PermissionDenied:
         return False
     return True
 
 
-def execute_tool(organization, step, data, event_id):
+def execute_tool(organization, step, data, event_id, principal=None, agent_name=''):
     if not isinstance(data, dict):
         raise ValidationError("Agents require a JSON object.")
     kind, configuration = step["kind"], step["configuration"]
@@ -117,6 +128,12 @@ def execute_tool(organization, step, data, event_id):
         dataset = Dataset.objects.get(organization=organization, slug=configuration["dataset"], active=True)
         publish(dataset, event_id, data)
         return data
+    if kind == 'chat_send':
+        from core_chat.models import Conversation
+        from core_chat.services import send_message
+        conversation = Conversation.objects.get(organization=organization, pk=configuration['conversation_id'], active=True)
+        result = send_message(principal, conversation, event_id, data.get(configuration['text_field']), ai=True, agent_name=agent_name)
+        return {**data, 'chat_message_id': result['message']['id']}
     raise ValidationError("Unsupported agent tool.")
 
 
@@ -148,7 +165,8 @@ def process_one():
                     output = previous.output
                 else:
                     chosen = choose_tool(step, output)
-                    output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}")
+                    principal = Principal(user=run.actor, credential=run.credential, evidence=run.authentication_evidence, purpose=run.purpose_code)
+                    output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal, agent_name=step['slug'])
                     RunStep.objects.create(run=run, index=index, agent_slug=step["slug"], tool=chosen["kind"], output=output)
                 locked.lease_until = timezone.now() + timedelta(seconds=60)
                 locked.save(update_fields=["lease_until"])

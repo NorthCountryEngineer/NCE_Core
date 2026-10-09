@@ -3,6 +3,7 @@
 <h1>{{ organization.name }} administration</h1>
 <a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
 <a href="{% url 'security' organization.slug %}">Identity providers and permission tags</a>
+<a href="{% url 'chat' organization.slug %}">Chat</a>
 <p>Manage access to {{ product_name }} and applications in this organization.</p>
 <div class="actions"><a href="{% url 'branding' organization.slug %}">Organization settings</a><a href="{% url 'invite' organization.slug %}">Invite a user</a></div>
 <section><h2>Users</h2>

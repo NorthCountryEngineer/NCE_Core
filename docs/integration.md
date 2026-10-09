@@ -5,7 +5,7 @@ deployments automatically create the service/client registrations and inject the
 trusted issuer, organization, service, and client settings. Applications still
 implement the OIDC callback and enforce permissions using an OIDC library and the
 central authorization contract. [Core APIs and automatic configuration](platform.md#application-integration)
-also supply data, agents, and workflows to application backends.
+also supply data, agents, workflows, and [Core Chat](chat.md) to application backends.
 
 ## Register the tenant and service
 

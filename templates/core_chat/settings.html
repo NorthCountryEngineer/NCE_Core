@@ -1,0 +1,12 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ conversation.title }} · Participants</h1>
+<p><a href="{% url 'chat_room' organization.slug conversation.pk %}">Conversation</a> · <a href="{% url 'chat_edit' organization.slug conversation.pk %}">Conversation settings</a> · <a href="{% url 'resource_tags' organization.slug 'chatconversation' conversation.pk %}">Permission tags</a></p>
+<p>AI messaging requires approval for the conversation, the participant, and its service permissions. Remote senders are attributed to their trusted instance.</p>
+<ul>{% for participant in participants %}<li>
+<a href="?participant={{ participant.pk }}">{{ participant.user.email|default:participant.installation.package.name }}</a> · {{ participant.role }} · {% if participant.active %}active{% else %}disabled{% endif %}{% if participant.allow_ai %} · AI approved{% endif %}
+{% if participant.federated_issuer %} · {{ participant.federated_issuer }}{% endif %}
+ · <a href="{% url 'resource_tags' organization.slug 'chatparticipant' participant.pk %}">Tags</a>
+</li>{% endfor %}</ul>
+<h2>Add or edit participant</h2><form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save permissions</button></form>
+{% endblock %}

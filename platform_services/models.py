@@ -200,7 +200,7 @@ class DataRecord(models.Model):
 
 class AgentDefinition(TaggedResource):
     KINDS = [("inspect", "Inspect a JSON record"), ("select", "Select record fields"), ("publish", "Publish a data record"),
-             ("rules", "Choose a tool using record rules")]
+             ("rules", "Choose a tool using record rules"), ("chat_send", "Send an AI chat message")]
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="agents")
     slug = models.SlugField()
     name = models.CharField(max_length=160)

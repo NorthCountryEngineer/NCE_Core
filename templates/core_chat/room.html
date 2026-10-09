@@ -1,0 +1,58 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ conversation.title }}</h1>
+<p><a href="{% url 'chat' organization.slug %}">Conversations</a>{% if can_edit %} · <a href="{% url 'chat_settings' organization.slug conversation.pk %}">Participants and permissions</a>{% endif %}</p>
+{% if unavailable %}<p class="notice">The shared chat instance is unavailable. Refresh to reconnect.</p>{% endif %}
+<p role="status" id="chat-status"></p><div aria-live="polite" id="chat-history">
+{% for message in chat_messages %}<section>
+<strong>{{ message.actor_kind }}{% if message.agent_name %} · {{ message.agent_name }}{% endif %}</strong>
+<p>{{ message.text|linebreaksbr }}</p>
+<small>{{ message.created }} · {{ message.actor_id }}{% if conversation.connection_id %} · {{ message.origin_issuer }}{% endif %}</small>
+</section>{% empty %}<p id="chat-empty">No messages yet.</p>{% endfor %}
+</div>
+{% if can_send %}<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Send message</button></form>{% endif %}
+<button type="button" id="chat-refresh">Refresh conversation</button>
+{{ chat_state|json_script:'chat-state' }}
+<script>
+let cursor = JSON.parse(document.getElementById('chat-state').textContent).cursor;
+let fetching = false;
+let revoked = false;
+const chatHistory = document.getElementById('chat-history');
+const chatStatus = document.getElementById('chat-status');
+async function refreshChat() {
+  if (fetching || revoked || document.hidden) return;
+  fetching = true;
+  try {
+    const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?after=' + cursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (response.status === 403 || response.status === 404) {
+      revoked = true;
+      chatHistory.replaceChildren();
+      chatStatus.textContent = 'Conversation access has been revoked.';
+      return;
+    }
+    if (!response.ok) throw new Error('Chat unavailable');
+    const page = await response.json();
+    if (page.messages.length) document.getElementById('chat-empty')?.remove();
+    for (const message of page.messages) {
+      const section = document.createElement('section');
+      const author = document.createElement('strong');
+      author.textContent = message.actor_kind + (message.agent_name ? ' · ' + message.agent_name : '');
+      const text = document.createElement('p');
+      text.style.whiteSpace = 'pre-wrap';
+      text.textContent = message.text;
+      const attribution = document.createElement('small');
+      attribution.textContent = message.created + ' · ' + message.actor_id + ' · ' + message.origin_issuer;
+      section.append(author, text, attribution);
+      chatHistory.append(section);
+    }
+    cursor = page.next_cursor;
+    chatStatus.textContent = '';
+  } catch (error) {
+    chatStatus.textContent = 'Chat is unavailable. Reconnect or sign in again to continue.';
+  } finally { fetching = false; }
+}
+document.getElementById('chat-refresh').addEventListener('click', refreshChat);
+setInterval(refreshChat, 3000);
+refreshChat();
+</script>
+{% endblock %}

@@ -1,7 +1,7 @@
 # Core Platform
 
 NCE_Core hosts **Core Platform**, an organization control plane with identity,
-authorization, a marketplace, core data services, agents, workflows, and Kubernetes
+authorization, a marketplace, core data services, chat, agents, workflows, and Kubernetes
 instance management.
 Customers can rename it for their deployment or individual organizations. The
 product name is cosmetic; the configured issuer URL and immutable organization,
@@ -18,8 +18,8 @@ OIDC registration, and workload credentials automatically.
 
 ## Core services and central administration
 
-The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**, and
-**Core Workflows** alongside application packages. Core packages currently execute
+The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**,
+**Core Workflows**, and **Core Chat** alongside application packages. Core packages currently execute
 inside the core runtime; each organization receives its own installation, service
 identity, permission settings, and monitored instance. The central panel manages
 members and roles, application grants, runtimes, deployment state and health,
@@ -177,13 +177,17 @@ service for introspection. Keep all confidential client secrets on the backend.
 
 ## Validate
 
+[The chat guide](docs/chat.md) covers the native chat UI, application API/SDK,
+permission-tagged conversations, shared history across trusted Core instances,
+and explicitly authorized AI messaging tools.
+
 [The CI/CD guide](docs/cicd.md) defines the shared PostgreSQL test, container build,
 registry publication, and Kubernetes release pipeline, with adapters for GitHub
 Actions, GitLab CI, Azure Pipelines, Jenkins, CircleCI, Bitbucket, and AWS
 CodeBuild/CodePipeline. Execution is manual and external release steps default off.
 
 ```sh
-CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests
+CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests core_chat.tests
 CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
 ```
 

@@ -66,6 +66,12 @@ Network
 credential verification is disabled, and scanner diagnostics are captured to
 avoid exposing newly detected values in CI logs.
 
+The application suite includes Core Chat and a real HTTP federation test with an
+independent disposable authority. Optional `chat_federation_secrets` mount peer
+credentials under `/run/secrets/chat-federation/<organization-uuid>/` using the
+same scoped file structure as `provider_secrets`. Configure approved origins with
+`extra_environment.CORE_CHAT_FEDERATION_ORIGINS`; see [Core Chat](chat.md).
+
 Supply a **dedicated, disposable PostgreSQL** connection as `DATABASE_URL` with
 permission to create/drop its Django test database. Isolate it per runner/job;
 never point this at a customer database or share its test database across parallel

@@ -1,0 +1,9 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ organization.name }} · Chat</h1>
+<p><a href="{% url 'chat_create' organization.slug %}">Create conversation</a></p>
+{% for conversation in conversations %}<section>
+<h2><a href="{% url 'chat_room' organization.slug conversation.pk %}">{{ conversation.title }}</a></h2>
+<p>{% if conversation.connection_id %}Shared conversation{% else %}Hosted here{% endif %}{% if conversation.ai_enabled %} · AI messaging enabled{% endif %}</p>
+</section>{% empty %}<p>No conversations have been shared with you.</p>{% endfor %}
+{% endblock %}

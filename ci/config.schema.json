@@ -30,13 +30,15 @@
             "filename": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$"}
           }
         }},
+        "chat_federation_secrets": {"$ref": "#/properties/kubernetes/properties/provider_secrets"},
         "web_replicas": {"type": "integer", "minimum": 1, "maximum": 10},
         "worker_replicas": {"type": "integer", "minimum": 1, "maximum": 5},
         "rollout_timeout_seconds": {"type": "integer", "minimum": 60, "maximum": 1800},
         "migration_timeout_seconds": {"type": "integer", "minimum": 60, "maximum": 1800},
         "extra_environment": {"type": "object", "additionalProperties": false, "properties": {
           "CORE_PRODUCT_NAME": {"type": "string", "maxLength": 160},
-          "CORE_IDP_ALLOWED_HOSTS": {"type": "string", "maxLength": 2000}
+          "CORE_IDP_ALLOWED_HOSTS": {"type": "string", "maxLength": 2000},
+          "CORE_CHAT_FEDERATION_ORIGINS": {"type": "string", "maxLength": 2000}
         }}
       }
     }

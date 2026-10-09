@@ -5,8 +5,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from jsonschema import Draft202012Validator, SchemaError
 
-CAPABILITIES = {"data.read", "data.write", "agents.run", "workflows.run", "workflows.read"}
-CORE_PACKAGES = {"core-platform", "core-agents", "core-workflows", "core-data"}
+CAPABILITIES = {"data.read", "data.write", "agents.run", "workflows.run", "workflows.read",
+                "chat.read", "chat.send", "chat.manage", "chat.ai", "chat.federate"}
+CORE_PACKAGES = {"core-platform", "core-agents", "core-workflows", "core-data", "core-chat"}
 
 
 def validate_schema(schema):

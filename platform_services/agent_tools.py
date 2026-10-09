@@ -11,6 +11,17 @@ def validate_configuration(organization_id, kind, configuration):
     if kind == "publish" and not Dataset.objects.filter(organization_id=organization_id,
         slug=configuration.get("dataset"), active=True).exists():
         raise ValidationError("The publish tool requires an active dataset in this organization.")
+    if kind == 'chat_send':
+        from core_chat.models import Conversation
+        from uuid import UUID
+        try:
+            conversation_id = UUID(str(configuration.get('conversation_id')))
+        except (ValueError, TypeError):
+            raise ValidationError('The chat tool requires a conversation UUID.')
+        if (set(configuration) != {'conversation_id', 'text_field'} or
+                not isinstance(configuration.get('text_field'), str) or not 1 <= len(configuration['text_field']) <= 160 or
+                not Conversation.objects.filter(pk=conversation_id, organization_id=organization_id, active=True, ai_enabled=True).exists()):
+            raise ValidationError('Choose an active, AI-enabled conversation in this organization and a text field.')
     if kind == "rules":
         rules = configuration.get("rules")
         default = configuration.get("default")
@@ -22,8 +33,8 @@ def validate_configuration(organization_id, kind, configuration):
             if isinstance(rule["equals"], (dict, list)):
                 raise ValidationError("Rule comparisons use a scalar JSON value.")
         for tool in [*rules, default]:
-            if tool.get("tool") not in {"inspect", "select", "publish"}:
-                raise ValidationError("Rule agents can select only inspect, select, or publish.")
+            if tool.get("tool") not in {"inspect", "select", "publish", "chat_send"}:
+                raise ValidationError("Rule agents can select only inspect, select, publish, or chat_send.")
             validate_configuration(organization_id, tool["tool"], tool.get("configuration", {}))
 
 

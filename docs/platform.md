@@ -18,7 +18,7 @@ grants it. A new developer's browser sign-in leads into `/onboarding/`:
    application origin, optional ingress class/TLS secret, and automatic deployment.
 4. Register a runtime connector and save its one-time key, or defer connection when
    automatic deployment is disabled.
-5. Review and activate the four core marketplace services. Automatic deployment
+5. Review and activate the five core marketplace services. Automatic deployment
    requires a connected runtime; no cluster or infrastructure purchase is made.
 
 The wizard persists progress and creates the first organization administrator.
@@ -34,8 +34,8 @@ model calls are created by this application.
 
 ## Marketplace and permissions
 
-Database migrations seed four built-in packages: `core-platform`, `core-data`,
-`core-agents`, and `core-workflows`. They use the same installation and service
+Database migrations seed five built-in packages: `core-platform`, `core-data`,
+`core-agents`, `core-workflows`, and `core-chat`. They use the same installation and service
 registry as applications. Core runtime code executes inside this deployment;
 installing a core package activates its organization workspace and creates its
 monitored instance. Installing it does not start a separate remote container.
@@ -234,7 +234,7 @@ reasoning require additional adapters, credential handling, and billing approval
 ## Validation
 
 ```sh
-CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests
+CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests core_chat.tests
 CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
 ```
 

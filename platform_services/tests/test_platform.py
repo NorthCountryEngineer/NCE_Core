@@ -71,12 +71,12 @@ class PlatformTests(TestCase):
         return self.api("/runtime/sync/", "POST", {"reports": reports or []}, token or self.runtime_token)
 
     def test_core_services_are_real_marketplace_installations_and_idempotent(self):
-        self.assertEqual(self.organization.installations.filter(package__kind="core").count(), 4)
-        self.assertEqual(Deployment.objects.filter(installation__organization=self.organization, target="embedded").count(), 4)
+        self.assertEqual(self.organization.installations.filter(package__kind="core").count(), 5)
+        self.assertEqual(Deployment.objects.filter(installation__organization=self.organization, target="embedded").count(), 5)
         install_core(self.organization)
-        self.assertEqual(self.organization.installations.filter(package__kind="core").count(), 4)
+        self.assertEqual(self.organization.installations.filter(package__kind="core").count(), 5)
         root = Deployment.objects.get(installation__organization=self.organization, installation__package__slug="core-platform")
-        self.assertEqual(root.children.count(), 3)
+        self.assertEqual(root.children.count(), 4)
         heartbeat_embedded()
         root.refresh_from_db()
         self.assertEqual(root.status, "running")
@@ -315,7 +315,7 @@ class PlatformTests(TestCase):
         self.assertEqual(self.client.post(reverse("onboarding"), {"confirm": "on"}).status_code, 302)
         state.refresh_from_db()
         self.assertTrue(state.complete)
-        self.assertEqual(organization.installations.count(), 4)
+        self.assertEqual(organization.installations.count(), 5)
         self.assertEqual(self.client.get(reverse("onboarding")).status_code, 302)
         self.assertTrue(AuditEvent.objects.filter(organization=organization, action="onboarding.completed").exists())
 

@@ -99,6 +99,23 @@ class PipelineTests(unittest.TestCase):
                 p.deploy(self.config)
             command.assert_not_called()
 
+    def test_chat_federation_secrets_use_tenant_scoped_subpaths_and_named_rbac(self):
+        organization = '11223344-5566-4788-9900-aabbccddeeff'
+        reference_name = 'chat-peer'
+        self.config['kubernetes']['chat_federation_secrets'] = [{'secret_name': reference_name,
+            'organization_id': organization, 'key': 'credential', 'filename': 'peer.credential'}]
+        self.load(self.config)
+        _, job, _ = p.manifests(self.config, self.image, SHA)
+        mount = job['spec']['template']['spec']['containers'][0]['volumeMounts'][-1]
+        self.assertEqual(mount['mountPath'], '/run/secrets/chat-federation/' + organization + '/peer.credential')
+        self.assertEqual(mount['subPath'], 'credential')
+        self.assertTrue(mount['readOnly'])
+        rules = p.rbac(self.config)['items'][1]['rules']
+        self.assertIn(reference_name, next(rule['resourceNames'] for rule in rules if rule['resources'] == ['secrets']))
+        self.config['kubernetes']['chat_federation_secrets'][0]['filename'] = '../escape'
+        with self.assertRaises(p.PipelineError):
+            self.load(self.config)
+
     def test_ci_environment_does_not_reuse_production_keys_or_issuer(self):
         with patch.dict(os.environ, {'CORE_SECRET_KEY_FILE': '/production/key', 'CORE_OIDC_KEY_FILE': '/production/oidc',
                                     'CORE_ISSUER': 'https://production.example', 'CORE_OIDC_PREVIOUS_KEY_FILES': '/production/old',

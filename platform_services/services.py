@@ -13,7 +13,8 @@ from .secrets import encrypt_bundle
 from .validation import CAPABILITIES, validate_manifest
 
 CAPABILITY_PACKAGE = {"data.read": "core-data", "data.write": "core-data", "agents.run": "core-agents",
-                      "workflows.run": "core-workflows", "workflows.read": "core-workflows"}
+                      "workflows.run": "core-workflows", "workflows.read": "core-workflows",
+                      **{c: 'core-chat' for c in ['chat.read', 'chat.send', 'chat.manage', 'chat.ai', 'chat.federate']}}
 
 
 def feature_enabled(organization, package_slug):
@@ -64,7 +65,7 @@ def install_package(organization, package, grants=(), actor=None, _path=()):
 
 
 def install_core(organization, actor=None):
-    for slug in ["core-platform", "core-data", "core-agents", "core-workflows"]:
+    for slug in ["core-platform", "core-data", "core-agents", "core-workflows", "core-chat"]:
         install_package(organization, MarketplacePackage.objects.get(slug=slug), actor=actor)
 
 
@@ -139,6 +140,7 @@ def integration_document(installation):
         "service_id": str(installation.service_id), "audience": installation.service.audience,
         "discovery_url": origin + "/.well-known/openid-configuration",
         "core_services_url": origin + "/api/platform/v1",
+        "chat_url": origin + "/api/platform/v1/chat",
         "capabilities": [c for c in installation.granted_capabilities if feature_enabled(installation.organization, CAPABILITY_PACKAGE[c])],
         "services": {i.package.slug: {"service_id": str(i.service_id), "version": i.version}
                      for i in Installation.objects.select_related("package").filter(organization=installation.organization, enabled=True,

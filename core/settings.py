@@ -31,7 +31,7 @@ CSRF_TRUSTED_ORIGINS = [ISSUER]
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "oauth2_provider", "identity", "platform_services",
+    "oauth2_provider", "identity", "platform_services", "core_chat",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -132,3 +132,5 @@ OAUTH2_PROVIDER = {
 # Tenant administrators cannot make the broker fetch arbitrary internal URLs or files.
 CORE_IDP_ALLOWED_HOSTS = [value.strip().lower() for value in os.environ.get("CORE_IDP_ALLOWED_HOSTS", "").split(",") if value.strip()]
 CORE_IDP_SECRET_ROOT = os.environ.get("CORE_IDP_SECRET_ROOT", str(BASE_DIR / ".local" / "idp-secrets") if DEBUG else "/run/secrets/identity-providers")
+CORE_CHAT_SECRET_ROOT = os.environ.get('CORE_CHAT_SECRET_ROOT', str(BASE_DIR / '.local' / 'chat-federation') if DEBUG else '/run/secrets/chat-federation')
+CORE_CHAT_FEDERATION_ORIGINS = [value.strip() for value in os.environ.get('CORE_CHAT_FEDERATION_ORIGINS', '').split(',') if value.strip()]
