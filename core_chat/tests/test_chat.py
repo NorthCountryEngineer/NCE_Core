@@ -202,6 +202,17 @@ class ChatTests(TestCase):
         raw, _ = self.user_token(self.application(self.chat_service))
         self.assertEqual(self.api(f'/conversations/{self.room.pk}/messages/', HTTP_X_CORE_USER_TOKEN=raw).status_code, 401)
 
+    def test_oauth_binding_uses_immutable_service_identity_after_customer_renaming(self):
+        raw, _ = self.user_token(self.application(self.chat_service))
+        self.chat_service.slug = 'customer-messaging'
+        self.chat_service.name = 'Customer Messaging'
+        self.chat_service.save()
+        self.assertEqual(self.api(f'/conversations/{self.room.pk}/messages/', token=raw).status_code, 200)
+        self.installation.service.slug = 'core-chat'
+        self.installation.service.save()
+        unrelated, _ = self.user_token()
+        self.assertEqual(self.api(f'/conversations/{self.room.pk}/messages/', token=unrelated).status_code, 401)
+
     def test_member_needs_live_chat_service_role_and_room_participation(self):
         Participant.objects.create(conversation=self.room, user=self.member)
         self.client.force_login(self.member)

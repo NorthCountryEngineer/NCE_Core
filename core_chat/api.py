@@ -42,7 +42,9 @@ def chat_api(operation, methods=('GET',)):
                     principal = Principal(user=token.user, evidence=evidence_for(delegated), purpose=purpose)
             else:
                 token = get_access_token_model().objects.select_related('application__service__organization', 'user').filter(token_checksum=hashlib.sha256(raw.encode()).hexdigest()).first() if raw else None
-                if (not token or not token.application or token.application.service.slug != 'core-chat' or
+                if (not token or not token.application or not Installation.objects.filter(
+                        organization=token.application.service.organization, service_id=token.application.service_id,
+                        package__slug='core-chat').exists() or
                         'authorization' not in token.scopes or not (token_claims(raw, token.application, purpose) or {}).get('active')):
                     return response({'error': 'invalid_credential'}, 401)
                 organization = token.application.service.organization
