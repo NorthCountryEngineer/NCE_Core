@@ -54,6 +54,9 @@ message, and reply-parent tags. Restricted messages cannot leak through search,
 notification counts, or quoted reply previews. Federation keeps shared history at
 the authoritative instance, including reply relationships; unavailable authorities
 do not supply cached notifications.
+Local inbox refreshes record a conversation-level activity audit instead of
+serializing and auditing every old message again; actual message reads retain
+their individual authorization checks and audit records.
 
 See [Chat testing and deployment](chat-testing.md) for a member creation walkthrough,
 Mac update steps, and the disposable PostgreSQL/web/worker/browser test suite.

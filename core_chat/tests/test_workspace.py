@@ -6,12 +6,12 @@ from unittest.mock import patch
 from django.test import TestCase, override_settings
 
 from core_chat.federation import FederationUnavailable
-from core_chat.models import Conversation, Message, Participant
+from core_chat.models import Conversation, FederationConnection, Message, Participant
 from core_chat.services import create_conversation, send_message
 from core_chat.tests import test_portal as portal_tests
 from core_chat.workspace import mentioned
 from identity.access import Principal
-from identity.models import Membership, PermissionTag, User
+from identity.models import AuditEvent, Membership, PermissionTag, User
 
 
 @override_settings(DEBUG=True, ALLOWED_HOSTS=['localhost'], CSRF_TRUSTED_ORIGINS=['http://localhost:8000'])
@@ -224,8 +224,21 @@ class ChatWorkspaceTests(TestCase):
         self.assertContains(page, 'History 000')
 
     def test_shared_authority_outage_is_explicit_without_cached_notifications(self):
+        connection = FederationConnection.objects.create(organization=self.organization, name='Unavailable peer',
+            issuer='https://peer.example.test', remote_organization_id=uuid.uuid4(), credential_file='/run/chat/unused')
+        self.room.connection = connection
+        self.room.remote_conversation_id = uuid.uuid4()
+        self.room.save()
         with patch('core_chat.workspace.message_page', side_effect=FederationUnavailable):
             state = self.state()
         self.assertTrue(state['rooms'][0]['unavailable'])
         self.assertEqual(state['notifications'], 0)
         self.assertNotIn('messages', state)
+
+    def test_inbox_polls_audit_counts_without_repeating_per_message_reads(self):
+        self.send('Counter-only message')
+        before = AuditEvent.objects.filter(action='chat.message_read').count()
+        for _ in range(3):
+            self.assertEqual(self.state()['unread'], 1)
+        self.assertEqual(AuditEvent.objects.filter(action='chat.message_read').count(), before)
+        self.assertEqual(AuditEvent.objects.filter(action='chat.activity_read').count(), 3)
