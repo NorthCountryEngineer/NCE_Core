@@ -3,6 +3,7 @@ let cursor = chatState.cursor;
 let fetching = false;
 let revoked = false;
 let sending = false;
+let acknowledging = false;
 let lastAcknowledged = 0;
 const chatHistory = document.getElementById('chat-history');
 const chatStatus = document.getElementById('chat-status');
@@ -32,14 +33,16 @@ async function savePreferences(values) {
   if (!response.ok) throw new Error();
 }
 async function acknowledge() {
-  if (revoked || document.hidden || chatState.query || !nearBottom() || cursor <= lastAcknowledged) return;
+  if (acknowledging || revoked || document.hidden || chatState.query || !nearBottom() || cursor <= lastAcknowledged) return;
+  acknowledging = true;
   const snapshot = cursor;
   try { await savePreferences({cursor: snapshot}); lastAcknowledged = Math.max(lastAcknowledged, snapshot); refreshWorkspace(); }
-  catch { chatStatus.textContent = 'Unable to save read status. Reconnect and try again.'; }
+  catch { if (!revoked) chatStatus.textContent = 'Unable to save read status. Reconnect and try again.'; }
+  finally { acknowledging = false; }
 }
 notificationMode.addEventListener('change', async () => {
   try { await savePreferences({notifications: notificationMode.value}); refreshWorkspace(); }
-  catch { chatStatus.textContent = 'Unable to save notification settings.'; }
+  catch { if (!revoked) chatStatus.textContent = 'Unable to save notification settings.'; }
 });
 function localTime(element) {
   const date = new Date(element.dateTime);
@@ -91,14 +94,16 @@ older?.addEventListener('click', async () => {
   const height = chatHistory.scrollHeight;
   try {
     const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?before=' + beforeCursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (revoked) return;
     if (response.status === 403 || response.status === 404) { revokeChat(); return; }
     if (!response.ok) throw new Error();
     const page = await response.json();
+    if (revoked) return;
     const first = chatHistory.querySelector('section');
     for (const message of page.messages) appendMessage(message, first);
     beforeCursor = page.before; older.hidden = !page.has_more;
     chatHistory.scrollTop += chatHistory.scrollHeight - height;
-  } catch { chatStatus.textContent = 'Earlier messages are unavailable. Retry when connected.'; }
+  } catch { if (!revoked) chatStatus.textContent = 'Earlier messages are unavailable. Retry when connected.'; }
   finally { older.disabled = false; }
 });
 async function refreshChat() {
@@ -106,9 +111,11 @@ async function refreshChat() {
   fetching = true;
   try {
     const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?after=' + cursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (revoked) return;
     if (response.status === 403 || response.status === 404) { revokeChat(); return; }
     if (!response.ok) throw new Error();
     const page = await response.json();
+    if (revoked) return;
     const stick = nearBottom();
     setSending(page.can_send);
     for (const message of page.messages) appendMessage(message);
@@ -116,7 +123,7 @@ async function refreshChat() {
     if (stick) chatHistory.scrollTop = chatHistory.scrollHeight;
     chatStatus.textContent = '';
     await acknowledge();
-  } catch { chatStatus.textContent = 'Chat is unavailable. Reconnect or sign in again to continue.'; }
+  } catch { if (!revoked) chatStatus.textContent = 'Chat is unavailable. Reconnect or sign in again to continue.'; }
   finally { fetching = false; }
 }
 if (composer) {
@@ -147,6 +154,7 @@ if (composer) {
     const draft = text.value;
     try {
       const response = await fetch(composer.dataset.post, {method: 'POST', credentials: 'same-origin', redirect: 'error', body: new FormData(composer)});
+      if (revoked) return;
       if (response.status === 403 || response.status === 404) { setSending(false); chatStatus.textContent = 'Sending is no longer permitted. Refresh to check your access.'; return; }
       if (!response.ok) { chatStatus.textContent = response.status === 409 ? 'This message ID was already used. Refresh before sending again.' : 'Message was not sent. Your draft is preserved; retry when connected.'; return; }
       if (text.value === draft) text.value = '';
@@ -156,7 +164,7 @@ if (composer) {
       composer.elements.request_id.value = hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
       cancelReply();
       await refreshChat();
-    } catch { chatStatus.textContent = 'Message was not sent. Your draft is preserved; retry when connected.'; }
+    } catch { if (!revoked) chatStatus.textContent = 'Message was not sent. Your draft is preserved; retry when connected.'; }
     finally { sending = false; button.disabled = revoked || composer.hidden; }
   });
 }

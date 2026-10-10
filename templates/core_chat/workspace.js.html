@@ -19,7 +19,7 @@ function renderWorkspace(state) {
   document.getElementById('notification-count').textContent = state.notifications;
   const list = document.getElementById('chat-room-list');
   list.replaceChildren();
-  for (const [kind, label, icon] of [['channel', 'Channels', '#'], ['direct', 'Direct messages', '↗'], ['group', 'Group messages', '◉']]) {
+  for (const [kind, label, icon] of [['channel', 'Channels', '#'], ['direct', 'Direct messages', '›'], ['group', 'Group messages', '◉']]) {
     const rooms = state.rooms.filter(room => room.kind === kind);
     if (!rooms.length) continue;
     const heading = document.createElement('h2'); heading.textContent = label; list.append(heading);
