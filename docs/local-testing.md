@@ -9,7 +9,7 @@ processes in your own NCE_Core checkout. Use `uv` and Python 3.12 or 3.13;
 To test shared connections and application inheritance, follow
 [Applications and integrations](application-integrations.md#configure-centrally-and-test-it-yourself)
 after starting the platform and establishing your organization below.
-For the shared header, open **Central admin → Shared application header**, then
+For the shared header, open **Central admin → Appearance and header**, then
 set the brand, logo URL, color scheme, widgets, shared app shortcuts, and
 organization links. Review the live preview and select **Save shared header**.
 Users can use **Apps** to pin authorized deployments and **Chat** to open its conversation

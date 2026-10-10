@@ -23,12 +23,12 @@ from django.utils.safestring import mark_safe
 from core_ai.portal import QueryForm
 from core_chat.models import Conversation
 from core_chat.portal import SendForm
-from identity.models import Organization, User
+from identity.models import Organization, PermissionTag, User
 from identity.forms import CoreAuthenticationForm
 from platform_services.forms import DeploymentConfigurationForm, MetadataForm
 from platform_services.header_forms import HeaderForm, LinkForm, LinkFormSet
 from platform_services.header_configuration import DEFAULT, PRESETS, WIDGETS
-from platform_services.models import Deployment, MarketplacePackage
+from platform_services.models import Deployment, DeploymentEnvironment, Installation, MarketplacePackage
 from platform_services.documentation import safe_html
 
 
@@ -62,16 +62,25 @@ class SharedUIBrowserFixture(SimpleTestCase):
         }
         cls.audit_pages = ['/login/', '/ai/', '/chat/']
         fixture_form = MetadataForm()
+        package = MarketplacePackage(slug='example', name='Example application', version='1.0', kind='application', description='A free test application')
+        installation = Installation(organization=org, package=package, version='1.0')
+        installation.visible_credentials = []
+        # Exercise actual table overflow, rather than relying on font size to
+        # make an empty table wider than a phone viewport.
+        environment = DeploymentEnvironment(organization=org, name='sandbox',
+            namespace='mobile-sandbox-' + 'partition' * 5,
+            boundary_tag=PermissionTag(organization=org, slug='environment-mobile-sandbox', name='Sandbox'))
         extra_pages = {
             '/403/': ('403.html', {}),
             '/403-csrf/': ('403_csrf.html', {}),
             '/404/': ('404.html', {}),
             '/500/': ('500.html', {}),
             '/home/': ('identity/home.html', {'organizations': [org]}),
-            '/admin/': ('platform_services/dashboard.html', {}),
+            '/admin/': ('platform_services/dashboard.html', {'installations': [installation],
+                'deployments': [Deployment(installation=installation, target='embedded', environment=environment)]}),
             '/members/': ('identity/organization.html', {}),
-            '/marketplace/': ('platform_services/marketplace.html', {'packages': [MarketplacePackage(slug='example', name='Example application', version='1.0', description='A free test application')]}),
-            '/environments/': ('platform_services/environments.html', {}),
+            '/marketplace/': ('platform_services/marketplace.html', {'packages': [package]}),
+            '/environments/': ('platform_services/environments.html', {'environments': [environment]}),
             '/modernize/': ('platform_services/modernize.html', {'form': fixture_form}),
             '/documentation/': ('platform_services/documentation.html', {}),
             '/documentation-page/': ('platform_services/documentation_page.html', {
@@ -129,7 +138,7 @@ class SharedUIBrowserFixture(SimpleTestCase):
         pages['/generated/'] = (factory / 'index.html').read_bytes()
         pages['/ui.js'] = (factory / 'ui.js').read_bytes()
         pages['/header.js'] = pages['/user-tools/header.js']
-        pages['/ui.css'] = b'\n'.join(path.read_bytes() for path in [factory / 'ui.css',
+        pages['/ui.css'] = b'\n'.join(path.read_bytes() for path in [root / 'templates/identity/design-system.css.html', factory / 'ui.css',
             root / 'templates/identity/mobile-foundation.css.html', root / 'templates/identity/accessibility.css.html'])
         pages['/api/spec'] = json.dumps({'name': 'Accessible application', 'organization_id': str(org.pk),
             'csrf': secrets.token_urlsafe(32), 'resources': [{'slug': 'entries', 'name': 'Entries',

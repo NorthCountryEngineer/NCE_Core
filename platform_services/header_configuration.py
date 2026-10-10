@@ -15,10 +15,11 @@ from .models import Deployment
 WIDGETS = {'apps': 'Application launcher', 'pins': 'Shared shortcuts and personal pins',
     'links': 'Organization links', 'account': 'Account and administrative tools',
     'chat': 'Chat and notifications', 'environment': 'Current deployment environment'}
-PRESETS = {'navy': ('#24263e', '#ffffff', '#6250ac'), 'slate': ('#172b40', '#ffffff', '#2469a0'),
+PRESETS = {'workbench': ('#193d36', '#ffffff', '#245e52'),
+    'navy': ('#24263e', '#ffffff', '#6250ac'), 'slate': ('#172b40', '#ffffff', '#2469a0'),
     'forest': ('#153c31', '#ffffff', '#28775c'), 'light': ('#f3f6fa', '#182b40', '#155c99')}
-DEFAULT = {'logo_url': '', 'show_organization': True, 'density': 'comfortable', 'preset': 'navy',
-    'background': '#24263e', 'foreground': '#ffffff', 'accent': '#6250ac',
+DEFAULT = {'logo_url': '', 'show_organization': True, 'density': 'comfortable', 'preset': 'workbench',
+    'background': '#193d36', 'foreground': '#ffffff', 'accent': '#245e52',
     'widgets': ['apps', 'pins', 'links', 'account', 'chat'], 'shortcuts': [], 'links': []}
 
 

@@ -1,24 +1,25 @@
 {% extends 'identity/base.html' %}
 {% block title %}Ask {{ organization.brand }} · {{ product_name }}{% endblock %}
 {% block content %}
-<h1>Ask {{ organization.brand }}</h1>
-<p>Find evidence across the applications you can access.</p>
-<p class="notice">AI generation is not configured. This service searches literal text in approved fields within a bounded page of records. Your search and results are not saved.</p>
-{% if can_manage %}<a href="{% url 'ai_admin' organization.slug %}">Manage query sources</a>{% endif %}
+<div class="page-heading"><div><h1>Ask {{ organization.brand }}</h1><p>Application evidence</p></div>{% if can_manage %}<a class="button secondary" href="{% url 'ai_admin' organization.slug %}">Manage query sources</a>{% endif %}</div>
+<div class="query-layout">
 <section aria-label="Search applications">
+<h2>Query</h2>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Find evidence</button></form>
-<p>Leave sources unselected to use all accessible sources (up to ten). An empty search browses the next page.</p>
+<p class="helptext">Leave sources unselected to use all accessible sources (up to ten). An empty search browses the next page.</p>
 </section>
+<aside class="query-scope" aria-label="Query capabilities"><h2>Retrieval mode</h2><p>AI generation is not configured.</p><p>Literal text search across approved fields and sources. Results retain application roles and permission tags.</p><p>Your search and results are not saved.</p></aside>
+</div>
 {% if result %}
 <section aria-label="Query results" tabindex="-1" data-query-results>
 <h2>Evidence</h2>
 {% if result.partial %}<p class="notice">Some sources could not be queried. These results are partial; review source status below.</p>{% endif %}
 {% for item in result.evidence %}
-<article><h3>{{ item.source }}</h3><p>{{ item.application }} · {{ item.environment }}{% if item.synthetic %} · Synthetic data{% endif %}</p>
+<article class="evidence-record"><h3>{{ item.source }}</h3><p><span class="status-label">{{ item.application }}</span> <span class="status-label">{{ item.environment }}</span>{% if item.synthetic %} <span class="status-label">Synthetic data</span>{% endif %}</p>
 <dl>{% for field, content in item.data.items %}<dt><strong>{{ field }}</strong></dt><dd>{{ content }}</dd>{% endfor %}</dl>
 <p><small>Citation: <code>{{ item.citation_id }}</code> · Authority: {{ item.authority_organization_id }}</small></p></article>
 {% empty %}<p>No matching accessible evidence in this page.</p>{% endfor %}
-<p>{{ result.usage.inspected_rows }} records inspected · {{ result.usage.tokens }} model tokens · $0 model spend</p>
+<p class="mono">{{ result.usage.inspected_rows }} records inspected · {{ result.usage.tokens }} model tokens · $0 model spend</p>
 <ul>{% for source in result.sources %}<li><code>{{ source.source_id }}</code>: {{ source.status }}{% if source.has_more %} · more may be available{% endif %}</li>{% endfor %}</ul>
 {% if result.has_more %}<form method="post">{% csrf_token %}<input type="hidden" name="text" value="{{ search_text }}"><input type="hidden" name="limit" value="{{ budget }}"><input type="hidden" name="cursors" value="{{ next_cursors_json }}">{% for pk in selected_sources %}<input type="hidden" name="sources" value="{{ pk }}">{% endfor %}<button type="submit">Inspect next page</button></form>{% endif %}
 </section>

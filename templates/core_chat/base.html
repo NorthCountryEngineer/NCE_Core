@@ -1,4 +1,6 @@
 {% extends 'identity/base.html' %}
+{% block body_class %}chat-page{% endblock %}
+{% block workspace_path %}{% endblock %}
 {% block extra_head %}<style>{% include 'core_chat/workspace.css.html' %}</style>{% endblock %}
 {% block access_controls %}
 {% if brand_organization %}<details class="chat-access"><summary>Access purpose</summary>

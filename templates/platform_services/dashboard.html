@@ -1,33 +1,39 @@
 {% extends "identity/base.html" %}
 {% block title %}{{ organization.name }} · Central admin · {{ product_name }}{% endblock %}
 {% block content %}
-<h1>{{ organization.name }} · Central admin</h1>
-<div class="actions">
-<a href="{% url 'marketplace' organization.slug %}">Marketplace</a>
-<a href="{% url 'header_settings' organization.slug %}">Shared application header</a>
-<a href="{% url 'ai_rules_admin' organization.slug %}">AI rules and shared usage</a>
-<a href="{% url 'development_workspace' organization.slug %}">Development operations</a>
-<a href="{% url 'documentation_admin' organization.slug %}">Organization and application documentation</a>
+<div class="page-heading"><div><h1>Central admin</h1><p>{{ organization.name }}</p></div><div class="actions"><a class="button" href="{% url 'marketplace' organization.slug %}">Marketplace</a><a class="button secondary" href="{% url 'organization' organization.slug %}">Users and permissions</a></div></div>
+<div class="admin-layout">
+<nav class="admin-navigation" aria-label="Administration">
+<div><h2>Workspace</h2>
+<a href="{% url 'platform_dashboard' organization.slug %}" aria-current="page">Overview</a>
 <a href="{% url 'integration_settings' organization.slug %}">Applications and integrations</a>
+<a href="{% url 'documentation_admin' organization.slug %}">Documentation</a>
+<a href="{% url 'header_settings' organization.slug %}">Appearance and header</a>
+</div><div><h2>Identity and access</h2>
 <a href="{% url 'organization' organization.slug %}">Users and permissions</a>
-<a href="{% url 'security' organization.slug %}">Identity providers and permission tags</a>
-<a href="{% url 'agent_accounts' organization.slug %}">Agent accounts and task permissions</a>
-<a href="{% url 'training' organization.slug %}">AI training harness</a>
-<a href="{% url 'app_factory' organization.slug %}">AI application creation</a>
+<a href="{% url 'security' organization.slug %}">Identity providers and tags</a>
+<a href="{% url 'agent_accounts' organization.slug %}">Agent accounts</a>
+</div><div><h2>Data and AI</h2>
+<a href="{% url 'development_workspace' organization.slug %}">Development operations</a>
+<a href="{% url 'app_factory' organization.slug %}">Application factory</a>
+<a href="{% url 'ai_rules_admin' organization.slug %}">AI rules and usage</a>
+<a href="{% url 'training' organization.slug %}">Training and evaluation</a>
 <a href="{% url 'fabric' organization.slug %}">Data fabric and federation</a>
+</div><div><h2>Infrastructure</h2>
 <a href="{% url 'deployment_configuration' organization.slug %}">Deployment configuration</a>
-<a href="{% url 'platform_environments' organization.slug %}">Sandbox, development, and production</a>
-<a href="{% url 'modernize_application' organization.slug %}">Modernize a Kubernetes application</a>
+<a href="{% url 'platform_environments' organization.slug %}">Environments</a>
+<a href="{% url 'modernize_application' organization.slug %}">Connect an existing application</a>
 <a href="{% url 'runtime_add' organization.slug %}">Connect Kubernetes</a>
-</div>
-{% if billing %}<p>Billing provider: {{ billing.get_provider_display }} · {{ billing.status }}. Payments are not enabled.</p>{% endif %}
+</div></nav>
+<div class="admin-content">
+{% if billing %}<p class="muted">Billing: {{ billing.get_provider_display }} · {{ billing.status }}. Payments are not enabled.</p>{% endif %}
 <section><h2>Installed services and applications</h2>
-{% for installation in installations %}<p><strong>{{ installation.package.name }}</strong> · {{ installation.version }} · {{ installation.enabled|yesno:"enabled,disabled" }}<br>
+<ul class="record-list">{% for installation in installations %}<li><strong>{{ installation.package.name }}</strong> <span class="mono">{{ installation.version }}</span> <span class="status-label{% if installation.enabled %} active{% endif %}">{{ installation.enabled|yesno:"Enabled,Disabled" }}</span><div class="actions">
 <a href="{% url 'installation_settings' organization.slug installation.pk %}">Set service access</a> · <a href="{% url 'resource_tags' organization.slug 'installation' installation.pk %}">Tags and workload grants</a>
 {% if installation.package.kind == 'application' %} · <a href="{% url 'deploy_installation' organization.slug installation.pk %}">Deploy an instance</a> · <a href="{% url 'installation_upgrade' organization.slug installation.pk %}">Review latest release</a>{% endif %}
-<a href="{% url 'issue_workload_key' organization.slug installation.pk %}">Create environment integration key</a>
+<a href="{% url 'issue_workload_key' organization.slug installation.pk %}">Create environment integration key</a></div>
 {% for credential in installation.visible_credentials %}{% if credential.active %}<form method="post" action="{% url 'revoke_workload_key' organization.slug credential.pk %}">{% csrf_token %}{{ credential.name }} · <button type="submit">Revoke key</button></form>{% endif %}{% endfor %}
-</p>{% empty %}<p>Install Core Platform from the marketplace to activate this workspace.</p>{% endfor %}</section>
+</li>{% empty %}<li>Install Core Platform from the marketplace to activate this workspace.</li>{% endfor %}</ul></section>
 <section><h2>Deployed instances</h2>
 <p>The controller and core services are included in this inventory. A missing or stale report means current health is unknown.</p>
 <a href="{% url 'adopt_controller' organization.slug %}">Connect this controller's Kubernetes deployment</a>
@@ -51,4 +57,5 @@
 <ul>{% for workflow in workflows %}<li><a href="{% url 'workflow_edit' organization.slug workflow.pk %}">{{ workflow.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'workflow' workflow.pk %}">Tags</a> · <a href="{% url 'workflow_run' organization.slug workflow.pk %}">Run workflow</a></li>{% endfor %}</ul>
 <h3>Recent runs</h3><ul>{% for run in runs %}<li><a href="{% url 'run_detail' organization.slug run.pk %}">{{ run.definition_name }}</a> · {{ run.status }} · {{ run.created }}{% if run.error %} · {{ run.error }}{% endif %}</li>{% empty %}<li>No runs yet.</li>{% endfor %}</ul>
 </section>
+</div></div>
 {% endblock %}

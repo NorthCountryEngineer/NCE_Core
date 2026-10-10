@@ -1,6 +1,10 @@
-:root{font-family:system-ui,sans-serif;color:#182b40;background:#f3f6fa;color-scheme:light}
-body{margin:0}.app-title,main{max-width:960px;margin:auto;padding:1.25rem}nav{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
-section{background:#fff;padding:1.5rem;border:1px solid #d8e0e9;border-radius:8px;margin:1.25rem 0}
-a{color:#155c99}label{display:block;font-weight:600;margin-block:.7rem}input:not([type=checkbox]),textarea,select{display:block;padding:.65rem;border:1px solid #67778b;border-radius:4px;max-width:100%}
-button{background:#155c99;color:white;padding:.7rem 1rem;border:0;border-radius:4px;cursor:pointer;min-height:44px}button:disabled{opacity:.7;cursor:default}
-form{margin-block:1rem}pre{padding:.75rem;background:#f3f6fa}
+/* The shared Workbench stylesheet is bundled before these application rules. */
+#app-banner { background: var(--core-chrome); border-bottom: 1px solid var(--core-line); }
+.app-title { max-width: 1360px; margin: auto; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.app-title h1 { font-size: 18px; margin: 0; }
+.app-title nav { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+main > label { display: block; margin-top: 16px; }
+label { display: block; margin-block: 12px; }
+form { margin-block: 16px; }
+#collections section > h2:first-child { margin-bottom: 16px; }
+@media (max-width: 700px) { .app-title { padding: 14px 12px; } }

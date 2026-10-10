@@ -161,7 +161,7 @@ def execute_step(organization, step, data, principal, event_id):
     elif role == 'frontend':
         files['index.html'] = (TEMPLATES / 'index.html').read_text()
         files['ui.js'] = (TEMPLATES / 'ui.js').read_text()
-        files['ui.css'] = '\n'.join(path.read_text() for path in [TEMPLATES / 'ui.css',
+        files['ui.css'] = '\n'.join(path.read_text() for path in [ROOT / 'templates/identity/design-system.css.html', TEMPLATES / 'ui.css',
             ROOT / 'templates/identity/mobile-foundation.css.html', ROOT / 'templates/identity/accessibility.css.html'])
         files['header.js'] = (ROOT / 'platform_services/assets/header.js').read_text()
     elif role == 'security':

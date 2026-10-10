@@ -45,6 +45,11 @@ in a live preview editor, with organization defaults and app overrides.
 Native Core and newly generated apps include it; existing apps use
 the browser component and same-origin backend adapter.
 
+The [Workbench design system](docs/design-system.md) supplies shared typography,
+workspace frames, controls and responsive layouts across administration, the
+marketplace, Chat, Core AI and newly generated apps. Organization header branding
+remains configurable, including the Workbench color preset.
+
 [Core AI](docs/central-ai.md) provides unified, cited retrieval across application datasets
 and bilaterally approved deployment federation. Users and consuming applications retain
 their live roles, tags, and environment boundaries. The conversational workspace performs

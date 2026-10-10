@@ -2,6 +2,7 @@
 {% block title %}Your organizations · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Your organizations</h1>
+<div class="organization-grid">
 {% for organization in organizations %}
 <section><h2>{{ organization.name }}</h2><p>{{ organization.brand }}</p>
   <p><a href="{% url 'chat' organization.slug %}">Open chat</a> · <a href="{% url 'ai' organization.slug %}">Query application data</a> · <a href="{% url 'documentation' organization.slug %}">Organization documentation</a></p>
@@ -13,4 +14,5 @@
   </form>
 </section>
 {% empty %}<p>You have no active organization memberships. Contact your organization administrator.</p>{% endfor %}
+</div>
 {% endblock %}

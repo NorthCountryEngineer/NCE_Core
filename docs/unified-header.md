@@ -1,5 +1,9 @@
 # Shared organization header
 
+The header uses the [Workbench design system](design-system.md), including a
+Workbench color preset, compact framed controls and responsive drawers. Existing
+saved organization colors and widget settings continue to apply.
+
 Core Platform includes a shared header with authorized app links, personal pins,
 account tools, and Chat. Chat opens in a drawer: read conversations, send messages,
 see unread/mention notifications, and change each conversation's notification mode
@@ -8,7 +12,7 @@ available for conversation creation, groups, search, sharing, and administration
 
 ## Configure it as an administrator
 
-1. Open your organization's **Central admin → Shared application header**.
+1. Open your organization's **Central admin → Appearance and header**.
 2. Set the platform name, a public HTTPS logo URL, a color scheme (Navy, Slate,
    Forest, Light, or custom colors), comfortable/compact spacing, and whether to
    show the organization name. Custom header text/background colors must meet

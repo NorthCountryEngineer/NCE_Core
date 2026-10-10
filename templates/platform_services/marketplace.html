@@ -1,12 +1,18 @@
 {% extends "identity/base.html" %}
 {% block title %}Platform marketplace · {{ product_name }}{% endblock %}
 {% block content %}
-<h1>Platform marketplace</h1><p>Core services, applications, and agents are installed and managed in the same place.</p>
-<a href="{% url 'platform_dashboard' organization.slug %}">Admin panel</a>
-{% for package in packages %}<section><h2>{{ package.name }}</h2><p>{{ package.description }}</p>
-<p>{{ package.get_kind_display }} · {{ package.version }}</p>
-{% if package.slug in installed_slugs %}<p>Installed</p>{% else %}<a href="{% url 'package_install' organization.slug package.slug %}">Install and set access</a>{% endif %}
-</section>{% endfor %}
-<h2>Agents</h2><p>Installing an agent creates its own account. Choose approved applications, environments, and service roles separately.</p>
-{% for listing in agent_listings %}<section><h3>{{ listing.name }}</h3><p>{{ listing.description }} · {{ listing.version }}</p><a href="{% url 'agent_listing_install' organization.slug listing.slug %}">Install agent and review access</a></section>{% endfor %}
+<div class="page-heading"><div><h1>Platform marketplace</h1><p>{{ organization.name }}</p></div><a class="button secondary" href="{% url 'platform_dashboard' organization.slug %}">Admin panel</a></div>
+<section class="catalog"><h2>Services and applications</h2>
+{% for package in packages %}<article class="catalog-row">
+<span class="application-glyph" aria-hidden="true">{{ package.name|first|upper }}</span>
+<div><h3>{{ package.name }}</h3><p>{{ package.description }}</p><div class="catalog-meta"><span>{{ package.get_kind_display }}</span><span>{{ package.version }}</span></div></div>
+<div class="catalog-action">{% if package.slug in installed_slugs %}<span class="status-label active">Installed</span>{% else %}<a class="button secondary" href="{% url 'package_install' organization.slug package.slug %}">Install and set access</a>{% endif %}</div>
+</article>{% empty %}<p class="catalog-empty">No packages are available.</p>{% endfor %}
+</section>
+<section class="catalog"><h2>Agents</h2>
+{% for listing in agent_listings %}<article class="catalog-row"><span class="application-glyph" aria-hidden="true">{{ listing.name|first|upper }}</span>
+<div><h3>{{ listing.name }}</h3><p>{{ listing.description }}</p><div class="catalog-meta"><span>Agent account</span><span>{{ listing.version }}</span></div></div>
+<div class="catalog-action"><a class="button secondary" href="{% url 'agent_listing_install' organization.slug listing.slug %}">Install agent and review access</a></div></article>{% empty %}<p class="catalog-empty">No agents are available.</p>{% endfor %}
+</section>
+<p class="muted">Installation does not grant user access. Review application roles, environments, and agent permissions during setup.</p>
 {% endblock %}
