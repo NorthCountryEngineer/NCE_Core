@@ -52,7 +52,7 @@ def execution_resources(organization, snapshot):
 
 
 def enqueue(organization, request_id, name, source, snapshot, data, credential=None, actor=None, principal=None, resource=None,
-            environment='development', task=None):
+            environment='development', task=None, training_run=None):
     if not isinstance(request_id, str) or not 1 <= len(request_id) <= 160 or not isinstance(data, dict):
         raise ValidationError("A request ID and JSON object input are required.")
     capabilities = required_capabilities(source, snapshot)
@@ -87,6 +87,7 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
                           "credential": credential, "actor": actor, "required_capabilities": capabilities,
                           'consumer': consumer, 'environment': environment, 'task': task,
                           'trigger_binding': principal.agent_binding, 'trigger_credential': principal.agent_credential,
+                          'training_run': training_run,
                           "source_workflow": resource if source == "workflow" else None})
             if created:
                 run.permission_tags.set(tags)
@@ -99,6 +100,7 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
             or run.actor_id != (actor.pk if actor else None) or run.source != source or run.purpose_code != principal.purpose
             or run.environment != environment or run.task_id != (task.pk if task else None)
             or run.trigger_binding_id != (principal.agent_binding.pk if principal.agent_binding else None)
+            or run.training_run_id != (training_run.pk if training_run else None)
             or run.trigger_credential_id != (principal.agent_credential.pk if principal.agent_credential else None)):
         from .data import IdempotencyConflict
         raise IdempotencyConflict("The request ID has already been used for another run.")
@@ -107,6 +109,12 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
 
 def run_allowed(run):
     organization = run.organization
+    if run.training_run_id:
+        from .training import run_authorized
+        try:
+            run_authorized(run.training_run)
+        except (PermissionDenied, ValidationError):
+            return False
     if not feature_enabled(organization, "core-agents"):
         return False
     if run.source == "workflow" and not feature_enabled(organization, "core-workflows"):
@@ -145,7 +153,7 @@ def run_allowed(run):
     return True
 
 
-def execute_tool(organization, step, data, event_id, principal=None, agent_name=''):
+def execute_tool(organization, step, data, event_id, principal=None, agent_name='', training_run_id=None):
     if not isinstance(data, dict):
         raise ValidationError("Agents require a JSON object.")
     kind, configuration = step["kind"], step["configuration"]
@@ -157,7 +165,7 @@ def execute_tool(organization, step, data, event_id, principal=None, agent_name=
         if not feature_enabled(organization, "core-data"):
             raise PermissionDenied("Core Data is unavailable.")
         dataset = Dataset.objects.get(organization=organization, slug=configuration["dataset"], active=True)
-        publish(dataset, event_id, data)
+        publish(dataset, event_id, data, training_run_id=training_run_id)
         return data
     if kind == 'chat_send':
         from core_chat.models import Conversation
@@ -198,7 +206,8 @@ def process_one():
                     chosen = choose_tool(step, output)
                     from .agent_identity import step_principal
                     principal = step_principal(run, step)
-                    output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal, agent_name=step['slug'])
+                    output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal, agent_name=step['slug'],
+                        training_run_id=run.training_run_id)
                     RunStep.objects.create(run=run, index=index, agent_slug=step["slug"], tool=chosen["kind"], output=output,
                         agent_account_id=principal.agent_binding.account_id)
                     from identity.access import record_decision

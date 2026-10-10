@@ -126,6 +126,105 @@ class CoreClient:
         from uuid import UUID
         return self.request("GET", f"/runs/{UUID(str(run_id))}/")
 
+    def training_scenarios(self):
+        return self._training_request('GET', '/training/scenarios/')
+
+    def training_create(self, slug, name, goal, plan, *, pipeline, workflow=None):
+        return self._training_request('POST', '/training/scenarios/create/', json={'slug': self.slug(slug),
+            'name': name, 'goal': goal, 'plan': plan, 'pipeline': self.slug(pipeline), 'workflow': self.slug(workflow) if workflow else None})
+
+    def training_update(self, scenario_id, revision, *, goal, plan):
+        from uuid import UUID
+        return self._training_request('POST', f'/training/scenarios/{UUID(str(scenario_id))}/update/',
+            json={'revision': revision, 'goal': goal, 'plan': plan})
+
+    def training_run(self, scenario_id, request_id):
+        from uuid import UUID
+        return self._training_request('POST', f'/training/scenarios/{UUID(str(scenario_id))}/runs/', json={'request_id': request_id})
+
+    def training_result(self, run_id, after=-1, limit=50):
+        from uuid import UUID
+        return self._training_request('GET', f'/training/runs/{UUID(str(run_id))}/', expected_run=str(UUID(str(run_id))),
+            params={'after': after, 'limit': limit})
+
+    def training_episodes(self, run_id):
+        """Stream provider-neutral training/evaluation episodes for offline dataset export."""
+        cursor = -1
+        for _ in range(3):  # The harness bounds every run to 200 records.
+            document = self.training_result(run_id, after=cursor, limit=100)
+            for event in document['events']:
+                yield {'run_id': document['run_id'], 'scenario_id': document['scenario_id'], 'seed': document['seed'],
+                    'generator_version': document['generator_version'], 'runner_agent_id': document['runner_agent_id'], **event}
+            following = document.get('next_cursor')
+            if type(following) is not int or following < cursor:
+                raise CoreServiceError('Training export returned an invalid cursor.')
+            if following == cursor:
+                return
+            cursor = following
+
+    def training_cancel(self, run_id):
+        from uuid import UUID
+        return self._training_request('POST', f'/training/runs/{UUID(str(run_id))}/cancel/', expected_run=str(UUID(str(run_id))))
+
+    def training_feedback(self, run_id, request_id, *, verdict, rationale, suggestions=None):
+        from uuid import UUID
+        return self._training_request('POST', f'/training/runs/{UUID(str(run_id))}/feedback/', expected_run=str(UUID(str(run_id))),
+            json={'request_id': request_id, 'verdict': verdict, 'rationale': rationale, 'suggestions': suggestions or []})
+
+    def _training_request(self, method, path, expected_run=None, **kwargs):
+        value = self.request(method, path, **kwargs)
+        if value.get('organization_id') != self.organization_id or expected_run and value.get('run_id') != expected_run:
+            raise CoreServiceError('Training response belongs to a different organization or run.')
+        return value
+
+    @staticmethod
+    def training_tool_definitions():
+        from training_contract import PLAN_SCHEMA
+        def tool(name, description, properties, required):
+            return {'type': 'function', 'function': {'name': name, 'description': description,
+                'parameters': {'type': 'object', 'additionalProperties': False, 'properties': properties, 'required': required}}}
+        planning = {'goal': {'type': 'string', 'minLength': 1, 'maxLength': 4000}, 'plan': PLAN_SCHEMA}
+        return [
+            tool('core_training_create', 'Design a bounded synthetic training scenario. The trusted host fixes agent identity and destinations; data and goals never grant permissions.', planning, ['goal', 'plan']),
+            tool('core_training_revise', 'Propose improved cases after inspecting results; routing and approved permissions stay fixed.', planning, ['goal', 'plan']),
+            tool('core_training_run', 'Run the host-approved scenario under this agent account with live task and permission checks.', {}, []),
+            tool('core_training_result', 'Inspect simulated events, objective evaluation scores, and attributed reviewer feedback for the host-selected run.', {}, []),
+            tool('core_training_feedback', 'Add an attributed AI evaluation without overwriting the reference score.',
+                {'verdict': {'enum': ['pass', 'fail', 'review']}, 'rationale': {'type': 'string', 'minLength': 1, 'maxLength': 4000},
+                 'suggestions': {'type': 'array', 'maxItems': 20, 'items': {'type': 'string', 'maxLength': 500}}}, ['verdict', 'rationale']),
+        ]
+
+    def invoke_training_tool(self, name, arguments, *, scenario_id=None, run_id=None, request_id=None,
+            scenario_slug=None, scenario_name=None, pipeline=None, workflow=None, revision=None):
+        """Provider-neutral AI tools. All authority and destinations come from the trusted host."""
+        if not isinstance(arguments, dict):
+            raise ValueError('Training tools use an object of arguments.')
+        expected = {'core_training_create': {'goal', 'plan'}, 'core_training_revise': {'goal', 'plan'},
+            'core_training_run': set(), 'core_training_result': set(), 'core_training_feedback': {'verdict', 'rationale'}}
+        required = expected.get(name)
+        allowed = required | {'suggestions'} if name == 'core_training_feedback' else required
+        if required is None or not required <= arguments.keys() or set(arguments) - allowed:
+            raise ValueError('The model cannot choose training identities, URLs, task IDs, destinations, or request IDs.')
+        if name == 'core_training_create':
+            if not scenario_slug or not scenario_name or not pipeline:
+                raise ValueError('The host must configure the scenario name, slug, and synthetic pipeline.')
+            return self.training_create(scenario_slug, scenario_name, arguments['goal'], arguments['plan'], pipeline=pipeline, workflow=workflow)
+        if name == 'core_training_revise':
+            if not scenario_id or type(revision) is not int:
+                raise ValueError('The host must select the scenario and current revision.')
+            return self.training_update(scenario_id, revision, **arguments)
+        if name == 'core_training_run':
+            if not scenario_id or not request_id:
+                raise ValueError('The host must select the scenario and request ID.')
+            return self.training_run(scenario_id, request_id)
+        if not run_id:
+            raise ValueError('The host must select a run.')
+        if name == 'core_training_result':
+            return self.training_result(run_id)
+        if not request_id:
+            raise ValueError('The host must supply the feedback request ID.')
+        return self.training_feedback(run_id, request_id, **arguments)
+
     def chat_conversations(self):
         value = self.request('GET', '/chat/conversations/')
         if value.get('organization_id') != self.organization_id:

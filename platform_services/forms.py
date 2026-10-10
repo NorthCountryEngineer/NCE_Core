@@ -99,7 +99,12 @@ class AdoptControllerForm(forms.Form):
 class DatasetForm(forms.ModelForm):
     class Meta:
         model = Dataset
-        fields = ["slug", "name", "schema", "active"]
+        fields = ["slug", "name", "schema", "data_class", "active"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.instance._state.adding:
+            self.fields['data_class'].disabled = True
 
 
 class PipelineForm(forms.ModelForm):

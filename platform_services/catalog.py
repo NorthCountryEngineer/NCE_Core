@@ -5,6 +5,8 @@ CORE_CATALOG = [
     ("core-workflows", "Core Workflows", "Durable agent workflows with resumable steps and centralized policy checks.", ["core-agents", "core-data"], ["workflows.run", "workflows.read", "data.read", "data.write"]),
     ("core-chat", "Core Chat", "Shared conversations, application messaging, and permission-checked AI tools across trusted Core instances.", [],
      ["chat.read", "chat.send", "chat.manage", "chat.ai", "chat.federate"]),
+    ('core-training', 'Core Training', 'AI-led simulation scenarios, synthetic pipeline data, agent workflows, and reproducible evaluations.',
+     ['core-data', 'core-agents', 'core-workflows'], ['training.run', 'training.read', 'training.manage', 'training.evaluate']),
 ]
 
 

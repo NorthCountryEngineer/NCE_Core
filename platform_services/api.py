@@ -118,7 +118,8 @@ def records(request, slug):
     except ValueError:
         raise ValidationError("Use a nonnegative cursor and a limit from 1 to 200.")
     rows = list(dataset.records.filter(pk__gt=after)[:limit])
-    return response({"records": [{"id": r.pk, "event_id": r.event_id, "data": r.data, "created": r.created.isoformat()} for r in rows],
+    return response({"records": [{"id": r.pk, "event_id": r.event_id, "data": r.data, "created": r.created.isoformat(),
+        'synthetic': r.synthetic, 'training_run_id': str(r.training_run_id) if r.training_run_id else None} for r in rows],
                      "next_cursor": rows[-1].pk if rows else after})
 
 

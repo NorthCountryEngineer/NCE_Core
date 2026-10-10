@@ -45,7 +45,8 @@ def resource_types():
     result = {name.lower(): getattr(identity, name) for name in names}
     result.update({name.lower(): getattr(core, name) for name in ["OrganizationProfile", "BillingProfile", "DeploymentConfiguration",
         "Installation", "RuntimeNode", "Deployment", "WorkloadCredential", "Dataset", "Pipeline", "AgentDefinition", "Workflow", "WorkflowRun",
-        'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask']})
+        'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask',
+        'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     return result
@@ -66,6 +67,8 @@ def tenant_filter(model, organization):
         return {"conversation__organization": organization}
     if 'binding' in fields:
         return {'binding__account__organization': organization}
+    if 'run' in fields:
+        return {'run__organization': organization}
     raise ValueError("Unsupported resource boundary.")
 
 

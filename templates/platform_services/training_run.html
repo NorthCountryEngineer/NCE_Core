@@ -1,0 +1,14 @@
+{% extends 'identity/base.html' %}{% block content %}
+<h1>{{ run.scenario.name }} · Training run</h1><p>{{ run.status }} · Scenario revision {{ document.revision }} · Seed {{ document.seed }}</p>
+<p>Agent {{ document.runner_agent_id }} · {{ document.environment }}{% if document.task_id %} · Task {{ document.task_id }}{% endif %} · <a href="{% url 'resource_tags' organization.slug 'trainingrun' run.pk %}">Permission tags</a></p>
+{% if run.error %}<p>{{ run.error }}</p>{% endif %}
+<h2>Reference evaluation</h2><pre>{{ document.result }}</pre>
+<p><a href="">Refresh results</a> · <a href="{% url 'training' organization.slug %}">Training harness</a></p>
+{% if run.status == 'queued' or run.status == 'running' or run.status == 'waiting' %}<form method="post" action="{% url 'training_cancel' organization.slug run.pk %}">{% csrf_token %}<button>Cancel simulation and pending workflow steps</button></form>{% endif %}
+<h2>Simulated events</h2><p>Showing the first 100 events. Applications and AI tools can page through all results using the training API.</p>
+{% for event in document.events %}<section><h3>{{ event.index }} · {{ event.case }} · {{ event.status }}</h3><p>Synthetic record {{ event.record_id|default:'none (rejected)' }}{% if event.workflow_run_id %} · Workflow {{ event.workflow_run_id }}{% endif %}</p><pre>Input: {{ event.input }}
+Output: {{ event.output }}
+Evaluation: {{ event.evaluation }}</pre></section>{% endfor %}
+<h2>AI and reviewer feedback</h2><p>Feedback is attributed and kept separately from reference results.</p>{% for item in document.feedback %}<section><p>{{ item.principal_kind }} {{ item.principal_id }} · {{ item.verdict }}</p><p>{{ item.rationale }}</p><pre>{{ item.suggestions }}</pre></section>{% empty %}<p>No feedback yet.</p>{% endfor %}
+<form method="post">{% csrf_token %}{{ review_form.as_p }}<button>Add reviewer feedback</button></form>
+{% endblock %}

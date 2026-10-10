@@ -163,6 +163,13 @@ class Dataset(TaggedResource):
     name = models.CharField(max_length=160)
     schema = models.JSONField(default=dict, blank=True, validators=[validate_schema])
     active = models.BooleanField(default=True)
+    data_class = models.CharField(max_length=20, choices=[('operational', 'Operational'), ('synthetic', 'Synthetic / training')], default='operational')
+
+    def clean(self):
+        if self.pk:
+            original = type(self).objects.filter(pk=self.pk).first()
+            if original and original.data_class != self.data_class:
+                raise ValidationError('Dataset classification is immutable. Create a separate synthetic dataset for training.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["organization", "slug"], name="unique_dataset")]
@@ -192,6 +199,8 @@ class DataRecord(models.Model):
     event_id = models.CharField(max_length=160)
     data = models.JSONField()
     created = models.DateTimeField(auto_now_add=True)
+    synthetic = models.BooleanField(default=False, editable=False)
+    training_run_id = models.UUIDField(null=True, blank=True, editable=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["dataset", "event_id"], name="unique_data_event")]
@@ -271,6 +280,7 @@ class WorkflowRun(TaggedResource):
     error = models.CharField(max_length=300, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     completed = models.DateTimeField(null=True, blank=True)
+    training_run = models.ForeignKey('TrainingRun', on_delete=models.PROTECT, null=True, blank=True, related_name='workflow_runs')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["organization", "request_id"], name="unique_run_request")]
@@ -417,3 +427,101 @@ class AgentCredential(TaggedResource):
     @property
     def organization_id(self):
         return self.binding.organization_id
+
+
+class TrainingScenario(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='training_scenarios')
+    slug = models.SlugField()
+    name = models.CharField(max_length=160)
+    goal = models.TextField(max_length=4000, help_text='Learning objective or acceptance criteria for the AI scenario designer.')
+    plan = models.JSONField(help_text='Seeded cases, field generators, and expected outcomes.')
+    pipeline = models.ForeignKey(Pipeline, on_delete=models.PROTECT)
+    workflow = models.ForeignKey(Workflow, on_delete=models.PROTECT, null=True, blank=True)
+    runner_binding = models.ForeignKey(AgentBinding, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField(default=1, editable=False)
+    active = models.BooleanField(default=True)
+
+    def clean(self):
+        from .training_plan import validate_plan
+        validate_plan(self.plan)
+        if self.pipeline_id and (self.pipeline.organization_id != self.organization_id or self.pipeline.dataset.data_class != 'synthetic'):
+            raise ValidationError('Training requires a pipeline into a synthetic dataset in this organization.')
+        if self.workflow_id and self.workflow.organization_id != self.organization_id:
+            raise ValidationError('Choose a workflow from this organization.')
+        if self.runner_binding_id and (self.runner_binding.organization_id != self.organization_id or self.runner_binding.environment == 'production'):
+            raise ValidationError('Choose a non-production agent approval from this organization.')
+        old = type(self).objects.filter(pk=self.pk).first() if self.pk else None
+        if old and any(getattr(old, field) != getattr(self, field) for field in ('organization_id', 'pipeline_id', 'workflow_id', 'runner_binding_id')):
+            raise ValidationError('Scenario routing is immutable; create a new scenario to change its destinations or agent.')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['organization', 'slug'], name='unique_training_scenario')]
+
+    def __str__(self):
+        return self.name
+
+
+class TrainingRun(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='training_runs')
+    scenario = models.ForeignKey(TrainingScenario, on_delete=models.PROTECT, related_name='runs')
+    runner_binding = models.ForeignKey(AgentBinding, on_delete=models.PROTECT)
+    actor = models.ForeignKey(User, on_delete=models.PROTECT, null=True, blank=True)
+    credential = models.ForeignKey(WorkloadCredential, on_delete=models.PROTECT, null=True, blank=True)
+    trigger_binding = models.ForeignKey(AgentBinding, on_delete=models.PROTECT, related_name='+', null=True, blank=True)
+    trigger_credential = models.ForeignKey(AgentCredential, on_delete=models.PROTECT, null=True, blank=True)
+    authentication_evidence = models.ForeignKey('identity.AuthenticationEvidence', on_delete=models.PROTECT, null=True, blank=True)
+    purpose_code = models.SlugField(max_length=80, blank=True)
+    request_id = models.CharField(max_length=160)
+    snapshot = models.JSONField()
+    status = models.CharField(max_length=20, default='queued')
+    lease_owner = models.UUIDField(null=True, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+    next_index = models.PositiveSmallIntegerField(default=0)
+    result = models.JSONField(default=dict, blank=True)
+    error = models.CharField(max_length=300, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+    completed = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def pipeline(self):
+        return self.scenario.pipeline
+
+    @property
+    def workflow(self):
+        return self.scenario.workflow
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['organization', 'request_id'], name='unique_training_request')]
+
+
+class TrainingEvent(TaggedResource):
+    run = models.ForeignKey(TrainingRun, on_delete=models.PROTECT, related_name='events')
+    index = models.PositiveSmallIntegerField()
+    case_name = models.CharField(max_length=80)
+    input = models.JSONField()
+    record = models.ForeignKey(DataRecord, on_delete=models.PROTECT, null=True, blank=True)
+    workflow_run = models.OneToOneField(WorkflowRun, on_delete=models.PROTECT, null=True, blank=True)
+    status = models.CharField(max_length=20, default='pending')
+    evaluation = models.JSONField(default=dict, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'index'], name='unique_training_event')]
+        ordering = ['index']
+
+
+class TrainingFeedback(TaggedResource):
+    run = models.ForeignKey(TrainingRun, on_delete=models.PROTECT, related_name='feedback')
+    request_id = models.CharField(max_length=160)
+    verdict = models.CharField(max_length=10, choices=[('pass', 'Pass'), ('fail', 'Fail'), ('review', 'Review')])
+    rationale = models.TextField(max_length=4000)
+    suggestions = models.JSONField(default=list, blank=True)
+    principal_kind = models.CharField(max_length=20)
+    principal_id = models.UUIDField()
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['run', 'principal_kind', 'principal_id', 'request_id'], name='unique_training_feedback')]

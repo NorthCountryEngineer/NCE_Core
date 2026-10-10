@@ -8,6 +8,8 @@ central authorization contract. [Core APIs and automatic configuration](platform
 also supply data, agents, workflows, and [Core Chat](chat.md) to application backends.
 Agents use [their own accounts and live service authorization](agent-accounts.md),
 with separate application/environment approvals and UAT task scopes.
+[Core Training](training.md) adds provider-neutral AI simulation tools, synthetic
+data consumed through the normal pipeline API, and exportable evaluation episodes.
 
 ## Register the tenant and service
 

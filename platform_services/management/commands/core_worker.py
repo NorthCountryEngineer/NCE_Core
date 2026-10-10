@@ -4,6 +4,7 @@ from django.db import close_old_connections
 from django.utils import timezone
 from platform_services.models import Deployment
 from platform_services.workflows import process_one
+from platform_services.training import process_one as process_training
 
 
 def heartbeat_embedded():
@@ -15,7 +16,7 @@ def heartbeat_embedded():
 
 
 class Command(BaseCommand):
-    help = "Run the core workflow worker and heartbeat embedded core services."
+    help = "Run core workflow and training workers and heartbeat embedded core services."
 
     def add_arguments(self, parser):
         parser.add_argument("--once", action="store_true")
@@ -27,7 +28,9 @@ class Command(BaseCommand):
                 close_old_connections()
                 heartbeat_embedded()
                 for _ in range(20):
-                    if not process_one():
+                    workflow_work = process_one()
+                    training_work = process_training()
+                    if not workflow_work and not training_work:
                         break
                 if options["once"]:
                     return

@@ -93,15 +93,17 @@ def resource_chain(resource):
             return
         seen.add(key)
         result.append(item)
-        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task"]:
+        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run']:
             parent = getattr(item, field, None)
             if parent is not None:
                 visit(parent)
-        if item._meta.label_lower == "platform_services.workflowrun":
+        if item._meta.label_lower in {'platform_services.workflowrun', 'platform_services.trainingrun'}:
             from platform_services.models import AgentBinding, AgentDefinition, Dataset
-            if item.source_workflow_id:
+            if getattr(item, 'source_workflow_id', None):
                 visit(item.source_workflow)
-            for step in item.snapshot:
+            steps = item.snapshot if item._meta.label_lower == 'platform_services.workflowrun' else item.snapshot.get('workflow_snapshot', [])
+            for step in steps:
                 for binding in AgentBinding.objects.filter(pk=step.get('binding_id')):
                     visit(binding)
                 for agent in AgentDefinition.objects.filter(organization=item.organization, slug=step["slug"]):

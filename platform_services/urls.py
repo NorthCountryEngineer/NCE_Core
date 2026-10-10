@@ -1,7 +1,20 @@
 from django.urls import path
-from . import agent_api, agent_portal, api, onboarding, portal
+from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/training/', training_portal.index, name='training'),
+    path('organizations/<slug:slug>/platform/training/scenarios/new/', training_portal.scenario, name='training_scenario_add'),
+    path('organizations/<slug:slug>/platform/training/scenarios/<uuid:pk>/', training_portal.scenario, name='training_scenario_edit'),
+    path('organizations/<slug:slug>/platform/training/scenarios/<uuid:pk>/run/', training_portal.start, name='training_start'),
+    path('organizations/<slug:slug>/platform/training/runs/<uuid:pk>/', training_portal.detail, name='training_run'),
+    path('organizations/<slug:slug>/platform/training/runs/<uuid:pk>/cancel/', training_portal.stop, name='training_cancel'),
+    path('api/platform/v1/training/scenarios/', training_api.scenarios),
+    path('api/platform/v1/training/scenarios/create/', training_api.create_scenario),
+    path('api/platform/v1/training/scenarios/<uuid:pk>/update/', training_api.update_scenario),
+    path('api/platform/v1/training/scenarios/<uuid:pk>/runs/', training_api.run_scenario),
+    path('api/platform/v1/training/runs/<uuid:pk>/', training_api.run_status),
+    path('api/platform/v1/training/runs/<uuid:pk>/cancel/', training_api.cancel_run),
+    path('api/platform/v1/training/runs/<uuid:pk>/feedback/', training_api.feedback),
     path('organizations/<slug:slug>/platform/agent-accounts/', agent_portal.accounts, name='agent_accounts'),
     path('organizations/<slug:slug>/platform/agent-accounts/<uuid:pk>/', agent_portal.account, name='agent_account'),
     path('organizations/<slug:slug>/marketplace/agents/<slug:listing_slug>/install/', agent_portal.install, name='agent_listing_install'),

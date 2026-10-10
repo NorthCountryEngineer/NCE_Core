@@ -25,11 +25,13 @@ def transform(data, transforms):
     return value
 
 
-def publish(dataset, event_id, data):
+def publish(dataset, event_id, data, *, training_run_id=None):
     if not isinstance(event_id, str) or not 1 <= len(event_id) <= 160 or not isinstance(data, dict):
         raise ValidationError("An event ID of at most 160 characters and JSON object data are required.")
     if not dataset.active or not dataset.organization.active:
         raise ValidationError("Dataset is not active.")
+    if training_run_id and dataset.data_class != 'synthetic':
+        raise ValidationError('Training records can only be published into synthetic datasets.')
     validate_schema(dataset.schema)
     try:
         Draft202012Validator(dataset.schema).validate(data)
@@ -37,9 +39,10 @@ def publish(dataset, event_id, data):
         raise ValidationError("Record does not match the dataset schema.") from error
     try:
         with transaction.atomic():
-            record, created = DataRecord.objects.get_or_create(dataset=dataset, event_id=event_id, defaults={"data": data})
+            record, created = DataRecord.objects.get_or_create(dataset=dataset, event_id=event_id, defaults={"data": data,
+                'synthetic': dataset.data_class == 'synthetic', 'training_run_id': training_run_id})
     except IntegrityError:
         record, created = DataRecord.objects.get(dataset=dataset, event_id=event_id), False
-    if record.data != data:
+    if record.data != data or record.training_run_id != training_run_id:
         raise IdempotencyConflict("This event ID has already been used for different data.")
     return record, created

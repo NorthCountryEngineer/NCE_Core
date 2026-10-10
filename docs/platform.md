@@ -35,7 +35,7 @@ model calls are created by this application.
 ## Marketplace and permissions
 
 Database migrations seed five built-in packages: `core-platform`, `core-data`,
-`core-agents`, `core-workflows`, and `core-chat`. They use the same installation and service
+`core-agents`, `core-workflows`, `core-chat`, and `core-training`. They use the same installation and service
 registry as applications. Core runtime code executes inside this deployment;
 installing a core package activates its organization workspace and creates its
 monitored instance. Installing it does not start a separate remote container.
@@ -194,6 +194,10 @@ credentials return 401, missing capabilities 403, invalid requests 400, and
 cross-organization resources 404. Network errors and redirects grant no authority.
 
 ## Data, agents, and workflows
+
+[Core Training](training.md) sends seeded synthetic events through these pipelines
+and approved agent workflows, with AI planning tools, reference evaluations, and
+attributed reviewer feedback.
 
 Agents have distinct [accounts, marketplace consumption approvals, and service
 roles](agent-accounts.md). Installation grants no agent permissions. Approve the

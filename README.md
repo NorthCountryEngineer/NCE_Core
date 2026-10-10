@@ -19,11 +19,14 @@ OIDC registration, and workload credentials automatically.
 ## Core services and central administration
 
 The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**,
-**Core Workflows**, and **Core Chat** alongside application packages. Core packages currently execute
-inside the core runtime; each organization receives its own installation, service
+**Core Workflows**, **Core Chat**, and **Core Training** alongside application packages.
+Core packages currently execute inside the core runtime; each organization receives its own installation, service
 identity, permission settings, and monitored instance. The central panel manages
 members and roles, application grants, runtimes, deployment state and health,
 datasets, pipelines, agent definitions, and workflow runs.
+
+Core Training supplies an [AI-first simulation and evaluation harness](docs/training.md),
+with synthetic pipeline data, agent workflows, seeded scenarios, and attributed reviews.
 
 Core Data validates JSON records, applies select/rename transformations, accepts
 idempotent events, and exposes cursor-based consumption. Core Agents includes
