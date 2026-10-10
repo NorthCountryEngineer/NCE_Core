@@ -62,7 +62,7 @@ def install(request, organization, package_slug):
 def installation_settings(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk)
     form = InstallationSettingsForm(request.POST or None, package=installation.package, manifest=installation.manifest,
-        initial={"grants": installation.granted_capabilities, "enabled": installation.enabled})
+        initial={"grants": installation.granted_capabilities, "enabled": installation.enabled, 'header_mode': installation.header_mode})
     if request.method == "POST" and form.is_valid():
         if installation.package.slug == "core-platform" and not form.cleaned_data["enabled"]:
             form.add_error(None, "The current control plane must remain enabled.")
@@ -70,7 +70,8 @@ def installation_settings(request, organization, pk):
             with transaction.atomic():
                 installation.granted_capabilities = form.cleaned_data["grants"]
                 installation.enabled = form.cleaned_data["enabled"]
-                installation.save(update_fields=["granted_capabilities", "enabled"])
+                installation.header_mode = form.cleaned_data['header_mode'] or 'inherit'
+                installation.save(update_fields=["granted_capabilities", "enabled", 'header_mode'])
                 installation.service.active = installation.enabled
                 installation.service.save(update_fields=["active"])
                 if not installation.enabled:

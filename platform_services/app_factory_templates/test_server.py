@@ -33,7 +33,7 @@ class SecurityTests(unittest.TestCase):
         self.data = {key: {'string': 'Example', 'integer': 7, 'boolean': True}[kind]
             for key, kind in server.COLLECTIONS[self.collection]['fields'].items()}
 
-    def request(self, method='GET', data=None, token=True, cookie=None, csrf=None, path=None, query=''):
+    def request(self, method='GET', data=None, token=True, cookie=None, csrf=None, path=None, query='', header_csrf=None, origin=None):
         raw = json.dumps(data).encode() if data is not None else b''
         environ = {'REQUEST_METHOD': method, 'PATH_INFO': path or '/api/records/' + self.collection, 'QUERY_STRING': query,
             'wsgi.input': io.BytesIO(raw), 'CONTENT_LENGTH': str(len(raw)), 'CONTENT_TYPE': 'application/json'}
@@ -43,6 +43,10 @@ class SecurityTests(unittest.TestCase):
             environ['HTTP_COOKIE'] = 'core_app_session=' + cookie
         if csrf:
             environ['HTTP_X_CSRF_TOKEN'] = csrf
+        if header_csrf:
+            environ['HTTP_X_CSRFTOKEN'] = header_csrf
+        if origin:
+            environ['HTTP_ORIGIN'] = origin
         response = {}
         def start(status, headers):
             response.update(status=int(status.split()[0]), headers=dict(headers))
@@ -52,6 +56,29 @@ class SecurityTests(unittest.TestCase):
     def test_no_credentials_denies_data(self):
         self.assertEqual(self.request(token=False)['status'], 401)
         self.client.require.assert_not_called()
+
+    def test_header_uses_server_session_and_never_accepts_browser_bearer(self):
+        sid, csrf, token = [secrets.token_urlsafe(32) for _ in range(3)]
+        server.SESSIONS[sid] = {'token': token, 'csrf': csrf, 'expires': server.time.time() + 60}
+        with patch.object(server.CoreClient, 'from_environment') as factory:
+            factory.return_value.header_state.return_value = {'organization_id': server.SPEC['organization_id'], 'enabled': True}
+            self.assertEqual(self.request(path='/core-header/', token=False, cookie=sid)['status'], 200)
+            factory.return_value.header_state.assert_called_once_with(user_access_token=token)
+            self.assertEqual(self.client.require.call_args.args[1], 'app-read')
+            self.assertEqual(self.request(path='/core-header/')['status'], 401)
+            self.assertEqual(self.request(path='/core-header/', cookie=sid)['status'], 401)
+            self.assertEqual(self.request(path='/core-header/', token=False)['status'], 401)
+
+    def test_header_posts_require_csrf_origin_and_allowlisted_fields(self):
+        sid, csrf = [secrets.token_urlsafe(32) for _ in range(2)]
+        server.SESSIONS[sid] = {'token': secrets.token_urlsafe(32), 'csrf': csrf, 'expires': server.time.time() + 60}
+        data = {'deployment_id': str(server.uuid.uuid4()), 'pinned': True}
+        with patch.object(server, 'origin', return_value='https://app.example.test'), patch.object(server.CoreClient, 'from_environment') as factory:
+            factory.return_value.header_pin.return_value = {'enabled': True}
+            self.assertEqual(self.request('POST', data, path='/core-header/pins/', token=False, cookie=sid, origin='https://app.example.test')['status'], 403)
+            self.assertEqual(self.request('POST', data, path='/core-header/pins/', token=False, cookie=sid, header_csrf=csrf, origin='null')['status'], 403)
+            self.assertEqual(self.request('POST', {**data, 'url': 'https://attacker.example.test'}, path='/core-header/pins/', token=False, cookie=sid, header_csrf=csrf, origin='https://app.example.test')['status'], 400)
+            self.assertEqual(self.request('POST', data, path='/core-header/pins/', token=False, cookie=sid, header_csrf=csrf, origin='https://app.example.test')['status'], 200)
 
     def test_documentation_requires_live_role_and_bound_delegation(self):
         with patch.object(server.CoreClient, 'from_environment') as factory, patch.object(server, 'OrganizationDocumentation') as adapter:

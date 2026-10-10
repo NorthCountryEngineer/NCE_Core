@@ -127,10 +127,27 @@ class Installation(TaggedResource):
     access_tags = models.ManyToManyField("identity.PermissionTag", blank=True, related_name="workload_grants")
     granted_capabilities = models.JSONField(default=list)
     enabled = models.BooleanField(default=True)
+    header_mode = models.CharField(max_length=12, default='inherit', choices=[
+        ('inherit', 'Organization default'), ('enabled', 'Show shared header'), ('disabled', 'Use application header')])
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["organization", "package"], name="unique_package_installation")]
+
+
+class ApplicationPin(models.Model):
+    """A user bookmark references an authorized deployment, never a submitted URL."""
+    membership = models.ForeignKey('identity.Membership', on_delete=models.CASCADE, related_name='application_pins')
+    deployment = models.ForeignKey('Deployment', on_delete=models.CASCADE, related_name='user_pins')
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['membership', 'deployment'], name='unique_user_application_pin')]
+        ordering = ['created', 'pk']
+
+    def clean(self):
+        if self.membership.organization_id != self.deployment.installation.organization_id:
+            raise ValidationError('Pins must belong to the same organization.')
 
 
 class RuntimeNode(TaggedResource):

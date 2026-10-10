@@ -60,6 +60,12 @@ browser-session impersonation.
 
 `integration_client.py` supplies the existing standalone/platform/hybrid integration adapter;
 integrations require explicit platform/app bindings and RBAC. No remote integration is enabled
-automatically. No model provider, container build, registry publication, or Kubernetes deployment
+automatically.
+`header.js` and `header_client.py` provide the optional shared organization header,
+personal app pins, and Chat drawer through the authenticated `/core-header/`
+backend adapter. The organization default and per-app override are managed in
+Core's central admin. App and user Chat grants and participants remain required;
+see the platform's shared header guide for the permission contract.
+No model provider, container build, registry publication, or Kubernetes deployment
 is initiated by source generation. Custom logic, update/delete operations, fine-grained field/record
 policies, distributed sessions, or production promotion require a reviewed extension.

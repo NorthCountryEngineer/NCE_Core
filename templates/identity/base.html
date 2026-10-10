@@ -20,6 +20,13 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body>
+{% if header_organization %}
+<core-header endpoint="{% url 'header_state' header_organization.slug %}" organization-id="{{ header_organization.pk }}" brand="{{ header_organization.brand }}" csrf-token="{{ csrf_token }}">
+  <form slot="account" method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button type="submit" style="background:transparent;color:white;padding:8px;font-size:12px">Sign out</button></form>
+</core-header>
+<script src="{% url 'header_component' %}" defer></script>
+<noscript><p><a href="{% url 'home' %}">Organizations</a> · <a href="{% url 'password_change' %}">Password</a> · <a href="{% url 'chat' header_organization.slug %}">Chat</a></p></noscript>
+{% else %}
 <header>
   <strong>{{ product_name }}{% if brand_organization %} · {{ brand_organization.name }}{% endif %}</strong>
   {% if user.is_authenticated %}
@@ -29,6 +36,7 @@
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Sign out</button></form>
   {% endif %}
 </header>
+{% endif %}
 <main>
   {% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}
   {% block access_controls %}{% if user.is_authenticated and brand_organization %}

@@ -54,7 +54,8 @@ def integration_api(methods=('GET',), *, namespace='integration'):
             except OperationalError:
                 return response({'error': 'service_temporarily_unavailable'}, 503)
             except ValidationError:
-                detail = ('Review the documentation query, format, and approved scope.' if namespace == 'documentation'
+                detail = ('Review the application pin or user Chat preference.' if namespace == 'header'
+                    else 'Review the documentation query, format, and approved scope.' if namespace == 'documentation'
                     else 'Review the AI rule schema, query plan, reservation state, and integer usage bounds.' if namespace == 'ai_rules'
                     else 'Review the typed recipe, pinned revisions, resource bindings, and execution bounds.' if namespace == 'development'
                     else 'Review the integration schema, revision, and credential replacement controls.')

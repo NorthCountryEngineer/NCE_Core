@@ -166,6 +166,10 @@ def integration_document(installation):
         "core_services_url": origin + "/api/platform/v1",
         'integrations_url': origin + '/api/platform/v1/integrations/',
         "chat_url": origin + "/api/platform/v1/chat",
+        'header_url': origin + '/api/platform/v1/header/',
+        'header': {'enabled': installation.header_mode == 'enabled' or (
+            installation.header_mode == 'inherit' and installation.organization.unified_header_enabled),
+            'mode': installation.header_mode, 'component_url': origin + '/user-tools/header.js'},
         'training_url': origin + '/api/platform/v1/training',
         'app_factory_url': origin + '/api/platform/v1/app-factory',
         'documentation_url': origin + '/api/platform/v1/documentation',

@@ -15,6 +15,12 @@ async function call(url, options = {}) {
 async function refresh() {
   try {
     const spec = await call('/api/spec'); csrf = spec.csrf;
+    if (csrf && !document.querySelector('core-header')) {
+      const header = document.createElement('core-header');
+      header.setAttribute('endpoint', '/core-header/'); header.setAttribute('organization-id', spec.organization_id);
+      header.setAttribute('csrf-token', csrf); document.body.prepend(header);
+    }
+    document.querySelector('core-header')?.setAttribute('purpose-code', document.getElementById('purpose').value);
     document.getElementById('title').textContent = spec.name;
     const root = document.getElementById('collections'); root.replaceChildren();
     for (const resource of spec.resources) {

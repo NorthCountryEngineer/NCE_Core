@@ -15,6 +15,7 @@ import uuid
 import requests
 from identity_client import ResourceClient, Unauthenticated, Forbidden, IdentityUnavailable
 from core_client import CoreClient, CoreServiceError
+from header_client import HeaderAdapter
 from documentation_client import OrganizationDocumentation
 from ai_rules_client import AIRules
 
@@ -120,8 +121,8 @@ def application(environ, start_response):
     try:
         if method == 'GET' and path == '/health':
             return reply('200 OK', {'status': 'ok'})
-        if method == 'GET' and path in {'/', '/ui.js'}:
-            name = 'index.html' if path == '/' else 'ui.js'
+        if method == 'GET' and path in {'/', '/ui.js', '/header.js'}:
+            name = 'index.html' if path == '/' else path.removeprefix('/')
             return reply('200 OK', (ROOT / name).read_bytes(), mime='text/html' if path == '/' else 'application/javascript')
         cookies = SimpleCookie()
         cookies.load(environ.get('HTTP_COOKIE', ''))
@@ -164,9 +165,36 @@ def application(environ, start_response):
             return reply('401 Unauthorized', {'error': 'authentication_required'})
         client = identity()
         purpose = environ.get('HTTP_X_CORE_PURPOSE', '')
+        if path.startswith('/core-header/'):
+            if not session or auth:
+                return reply('401 Unauthorized', {'error': 'session_required'})
+            authorize_token(client, session['token'], 'app-read', purpose, environ)
+            payload = None
+            if method == 'POST':
+                if (environ.get('HTTP_ORIGIN') != origin() or
+                        not secrets.compare_digest(environ.get('HTTP_X_CSRFTOKEN', ''), session['csrf'])):
+                    return reply('403 Forbidden', {'error': 'csrf_required'})
+                length = int(environ.get('CONTENT_LENGTH') or 0)
+                if not 0 < length <= 32768 or environ.get('CONTENT_TYPE') != 'application/json':
+                    raise ValueError('Use bounded JSON.')
+                payload = json.loads(environ['wsgi.input'].read(length))
+            parameters = parse_qs(environ.get('QUERY_STRING', ''), max_num_fields=1)
+            if any(len(values) != 1 for values in parameters.values()):
+                raise ValueError('Use one read cursor.')
+            core = CoreClient.from_environment()
+            core.purpose_code = purpose
+            try:
+                value = HeaderAdapter(core).handle(method, path.removeprefix('/core-header/'), user_access_token=session['token'],
+                    payload=payload, query={key: values[0] for key, values in parameters.items()})
+            except CoreServiceError as error:
+                code = getattr(error, 'status', 503)
+                statuses = {400: '400 Bad Request', 401: '401 Unauthorized', 403: '403 Forbidden', 404: '404 Not Found', 409: '409 Conflict', 503: '503 Service Unavailable'}
+                return reply(statuses.get(code, '503 Service Unavailable'), {'error': 'user_tools_unavailable'})
+            return reply('200 OK', value)
         if method == 'GET' and path == '/api/spec':
             authorize_token(client, token, 'app-read', purpose, environ)
-            return reply('200 OK', {'name': SPEC['name'], 'resources': SPEC['resources'], 'csrf': session['csrf'] if session else None})
+            return reply('200 OK', {'name': SPEC['name'], 'resources': SPEC['resources'], 'organization_id': SPEC['organization_id'],
+                'csrf': session['csrf'] if session else None})
         if method == 'GET' and path == '/api/documentation':
             authorize_token(client, token, 'docs-read', purpose, environ)
             parameters = parse_qs(environ.get('QUERY_STRING', ''), max_num_fields=4)

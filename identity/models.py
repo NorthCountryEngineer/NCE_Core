@@ -58,6 +58,7 @@ class Organization(TaggedResource):
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=160)
     identity_name = models.CharField(max_length=160, blank=True, help_text="Custom name for Core Identity")
+    unified_header_enabled = models.BooleanField(default=True, help_text="Default shared header for this organization's applications")
     active = models.BooleanField(default=True)
 
     @property

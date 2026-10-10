@@ -19,7 +19,7 @@ RUN --mount=type=secret,id=build_ca,required=false \
     fi; \
     uv sync --frozen --no-dev --system-certs; \
     rm -f /tmp/build-ca.pem
-COPY server.py identity_client.py integration_client.py core_client.py documentation_client.py ai_rules_client.py app-spec.json index.html ui.js test_server.py security-contract.json APPLICATION.md README.md ./
+COPY server.py identity_client.py integration_client.py core_client.py header_client.py documentation_client.py ai_rules_client.py app-spec.json index.html ui.js header.js test_server.py security-contract.json APPLICATION.md README.md ./
 RUN chmod -R a+rX /app && groupadd --gid 10001 app && useradd --uid 10001 --gid app --no-create-home app && mkdir /data && chown app:app /data
 USER app
 EXPOSE 8080

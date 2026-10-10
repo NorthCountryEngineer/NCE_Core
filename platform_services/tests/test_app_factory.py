@@ -74,7 +74,7 @@ class AppFactoryTests(TestCase):
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), '-m', 'unittest', 'test_server', '-v'],
                 cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('Ran 15 tests', result.stderr)
+            self.assertIn('Ran 17 tests', result.stderr)
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), 'ci/source_digest.py'], cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), source_hash)
@@ -152,7 +152,7 @@ class AppFactoryTests(TestCase):
         package = release(self.project, self.principal, image, source_hash, 'Reviewed local test run and matching image provenance')
         self.assertEqual(package.organization_id, self.org.pk)
         installation = Installation.objects.get(package=package)
-        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write', 'docs-read', 'rules-read', 'usage-reserve', 'usage-report'})
+        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write', 'docs-read', 'rules-read', 'usage-reserve', 'usage-report', 'chat-read', 'chat-send'})
         guide = installation.documentation_pages.get(slug='application-guide')
         self.assertEqual(guide.source.package_id, package.pk)
         self.assertEqual(guide.source.version, installation.version)

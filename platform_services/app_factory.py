@@ -155,11 +155,13 @@ def execute_step(organization, step, data, principal, event_id):
         files['identity_client.py'] = (ROOT / 'identity_client.py').read_text()
         files['integration_client.py'] = (ROOT / 'integration_client.py').read_text()
         files['core_client.py'] = (ROOT / 'core_client.py').read_text()
+        files['header_client.py'] = (ROOT / 'header_client.py').read_text()
         files['documentation_client.py'] = (ROOT / 'documentation_client.py').read_text()
         files['ai_rules_client.py'] = (ROOT / 'ai_rules_client.py').read_text()
     elif role == 'frontend':
         files['index.html'] = (TEMPLATES / 'index.html').read_text()
         files['ui.js'] = (TEMPLATES / 'ui.js').read_text()
+        files['header.js'] = (ROOT / 'platform_services/assets/header.js').read_text()
     elif role == 'security':
         files['security-contract.json'] = json.dumps({'version': 1, 'identity': 'Core OIDC/OAuth2 with live introspection',
             'permissions': ['app-read', 'app-write'], 'resource_type': 'app_collection',
@@ -246,7 +248,7 @@ def release(project, principal, image, source_hash, verification_reference):
         return project.package
     package = MarketplacePackage(organization=project.organization, slug=f'app-{project.pk.hex}', name=project.name,
         version='0.1.0', description=project.description,
-        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': ['docs.read', 'rules.read', 'usage.reserve', 'usage.report'], 'dependencies': ['core-platform'],
+        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': ['docs.read', 'rules.read', 'usage.reserve', 'usage.report', 'chat.read', 'chat.send'], 'dependencies': ['core-platform'],
                                     'callback_path': '/oauth/callback', 'health_path': '/health'})
     package.full_clean()
     package.save()

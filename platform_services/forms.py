@@ -69,6 +69,8 @@ class InstallationForm(forms.Form):
 
 class InstallationSettingsForm(InstallationForm):
     enabled = forms.BooleanField(required=False)
+    header_mode = forms.ChoiceField(required=False, choices=Installation._meta.get_field('header_mode').choices,
+        label='Shared organization header', help_text='Applications include the reusable header component and backend adapter to use this setting.')
 
 
 class NodeForm(forms.Form):

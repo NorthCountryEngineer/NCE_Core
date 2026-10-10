@@ -95,6 +95,42 @@ class CoreClient:
             raise CoreServiceError('Integration catalog belongs to a different organization.')
         return rows
 
+    def header_state(self, *, user_access_token):
+        return self._header_request('GET', '/', user_access_token)
+
+    def header_pin(self, deployment_id, pinned, *, user_access_token):
+        from uuid import UUID
+        if type(pinned) is not bool:
+            raise ValueError('Use a boolean pin preference.')
+        return self._header_request('POST', '/pins/', user_access_token,
+            json={'deployment_id': str(UUID(str(deployment_id))), 'pinned': pinned})
+
+    def header_messages(self, conversation_id, *, user_access_token, after=None):
+        from uuid import UUID
+        return self._header_request('GET', f'/chat/{UUID(str(conversation_id))}/messages/', user_access_token,
+            expected_room=str(UUID(str(conversation_id))), params={} if after is None else {'after': after})
+
+    def header_send(self, conversation_id, request_id, text, *, user_access_token, reply_to=None):
+        from uuid import UUID
+        values = {'request_id': request_id, 'text': text}
+        if reply_to is not None:
+            values['reply_to'] = str(UUID(str(reply_to)))
+        return self._header_request('POST', f'/chat/{UUID(str(conversation_id))}/send/', user_access_token,
+            expected_room=str(UUID(str(conversation_id))), json=values)
+
+    def header_preferences(self, conversation_id, values, *, user_access_token):
+        from uuid import UUID
+        return self._header_request('POST', f'/chat/{UUID(str(conversation_id))}/preferences/', user_access_token,
+            expected_room=str(UUID(str(conversation_id))), json=values)
+
+    def _header_request(self, method, path, user_token, expected_room=None, **kwargs):
+        if not user_token:
+            raise ValueError('User tools require the signed-in user access token.')
+        value = self.request(method, '/header' + path, user_access_token=user_token, **kwargs)
+        if value.get('organization_id') != self.organization_id or expected_room and value.get('conversation_id') != expected_room:
+            raise CoreServiceError('User tools response belongs to a different organization or conversation.')
+        return value
+
     def resolve_integration(self, slug, *, user_access_token=None):
         value = self.request('GET', f'/integrations/{self.slug(slug)}/', user_access_token=user_access_token)
         if (value.get('organization_id') != self.organization_id or value.get('slug') != slug or

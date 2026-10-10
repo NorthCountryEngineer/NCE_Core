@@ -5,8 +5,21 @@ from . import app_factory_api, app_factory_portal
 from . import documentation_api, documentation_portal
 from . import rules_api, rules_portal
 from . import development_api, development_portal
+from . import header_views
 
 urlpatterns = [
+    path('user-tools/header.js', header_views.component, name='header_component'),
+    path('organizations/<slug:slug>/platform/header/', header_views.settings, name='header_settings'),
+    path('organizations/<slug:slug>/tools/', header_views.state, name='header_state'),
+    path('organizations/<slug:slug>/tools/pins/', header_views.pins, name='header_pins'),
+    path('organizations/<slug:slug>/tools/chat/<uuid:pk>/messages/', header_views.messages, name='header_messages'),
+    path('organizations/<slug:slug>/tools/chat/<uuid:pk>/send/', header_views.send, name='header_send'),
+    path('organizations/<slug:slug>/tools/chat/<uuid:pk>/preferences/', header_views.preferences, name='header_preferences'),
+    path('api/platform/v1/header/', header_views.api_state),
+    path('api/platform/v1/header/pins/', header_views.api_pins),
+    path('api/platform/v1/header/chat/<uuid:pk>/messages/', header_views.api_messages),
+    path('api/platform/v1/header/chat/<uuid:pk>/send/', header_views.api_send),
+    path('api/platform/v1/header/chat/<uuid:pk>/preferences/', header_views.api_preferences),
     path('organizations/<slug:slug>/platform/development/', development_portal.index, name='development_workspace'),
     path('organizations/<slug:slug>/platform/development/new/', development_portal.create, name='development_create'),
     path('organizations/<slug:slug>/platform/development/objects/<uuid:pk>/', development_portal.detail, name='development_object'),

@@ -1,5 +1,6 @@
 """Real administrator/member UI checks against a disposable Chat deployment."""
 import secrets
+import json
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 import uuid
@@ -252,6 +253,7 @@ class ChatBrowserChecks:
         self.check('conversation manager cannot administer platform, marketplace, roles, invitations or federation')
 
         self.modern_workspace()
+        self.unified_header()
 
         self.open(self.member, self.shared_path)
         self.participant(active=False)
@@ -278,6 +280,87 @@ class ChatBrowserChecks:
         expect(self.member.get_by_text('Message from test user', exact=True)).to_be_visible()
         self.check('native logout/login preserves account permissions and durable history')
         return self.checks
+
+    def unified_header(self):
+        from header_browser import header_application
+        with header_application(self.instance, self.slug, self.email) as (app_origin, fixture):
+            self.open(self.member, '/')
+            header = self.member.locator('core-header')
+            expect(header.get_by_role('button', name='Applications and pins', exact=True)).to_be_visible()
+            header.get_by_role('button', name='Applications and pins', exact=True).click()
+            header.get_by_role('button', name='Pin Review workspace', exact=True).click()
+            expect(header.get_by_role('button', name='Unpin Review workspace', exact=True)).to_be_visible()
+            header.get_by_role('button', name='Close organization tools', exact=True).click()
+            expect(header.locator('.pinned').get_by_role('link', name='Review workspace', exact=True)).to_be_visible()
+            self.member.reload()
+            expect(header.locator('.pinned').get_by_role('link', name='Review workspace', exact=True)).to_be_visible()
+            self.check('organization header saves personal app pins across page reloads')
+
+            app = self.member_context.new_page()
+            app.on('pageerror', lambda error: self.errors.append(type(error).__name__))
+            try:
+                app.goto(app_origin)
+                external = app.locator('core-header')
+                expect(external.locator('.pinned').get_by_role('link', name='Review workspace', exact=True)).to_be_visible()
+                app.get_by_role('textbox', name='Application draft', exact=True).fill('Preserve application work')
+                external.get_by_role('button', name='Open header chat', exact=True).click()
+                external.get_by_role('button', name='Open header conversation Laptop Test', exact=True).click()
+                expect(external.locator('.message').filter(has_text='Message from test user')).to_be_visible()
+                external.get_by_role('textbox', name='Header chat message', exact=True).fill('Sent while using another application')
+                external.get_by_role('button', name='Send header chat message', exact=True).click()
+                expect(external.locator('.message').filter(has_text='Sent while using another application')).to_be_visible()
+                expect(app.get_by_role('textbox', name='Application draft', exact=True)).to_have_value('Preserve application work')
+                expect(app).to_have_url(app_origin + '/')
+                self.check('separate-origin app consumes Core pins and sends attributed Chat without leaving its page')
+
+                external.get_by_role('button', name='Close organization tools', exact=True).click()
+                self.open(self.admin, self.shared_path)
+                self.send(self.admin, 'Notification follows the user into an application')
+                expect(external.locator('.badge')).to_be_visible(timeout=15000)
+                external.get_by_role('button', name='Open header chat', exact=True).click()
+                external.get_by_role('button', name='Open header conversation Laptop Test', exact=True).click()
+                expect(external.locator('.message').filter(has_text='Notification follows the user into an application')).to_be_visible(timeout=15000)
+                with app.expect_response(lambda r: r.request.method == 'POST' and '/core-header/' in r.url and r.url.endswith('/preferences/') and 'notifications' in (r.request.post_data or '')) as saved:
+                    external.get_by_role('combobox', name='Header conversation notifications', exact=True).select_option('mentions')
+                if saved.value.status != 200:
+                    raise AssertionError('Header notification preference was not saved.')
+                native = self.member.request.get(self.origin + self.organization + 'chat/activity/').json()
+                if next(room['notification_mode'] for room in native['rooms'] if room['id'] == fixture['room_id']) != 'mentions':
+                    raise AssertionError('Application notification preference did not reach Core.')
+                self.check('header Chat notifications and personal notification settings follow the user across apps')
+
+                app.set_viewport_size({'width': 390, 'height': 844})
+                expect(external.get_by_role('textbox', name='Header chat message', exact=True)).to_be_visible()
+                if not app.evaluate('document.documentElement.scrollWidth <= window.innerWidth'):
+                    raise AssertionError('Shared header overflowed the phone viewport.')
+                if self.engine == 'chromium':
+                    target = Path('artifacts'); target.mkdir(exist_ok=True)
+                    app.screenshot(path=str(target / 'unified-header-mobile.png'), full_page=True)
+                    app.set_viewport_size({'width': 1440, 'height': 900})
+                    app.screenshot(path=str(target / 'unified-header-desktop.png'), full_page=True)
+                app.set_viewport_size({'width': 390, 'height': 844})
+                app.keyboard.press('Escape')
+                external.get_by_role('button', name='Core account tools', exact=True).click()
+                expect(external.get_by_role('link', name='Password', exact=True)).to_be_visible()
+                app.keyboard.press('Escape')
+                self.check('shared header and Chat drawer fit desktop and phone viewports')
+
+                external.get_by_role('button', name='Open header chat', exact=True).click()
+                external.get_by_role('button', name='Open header conversation Laptop Test', exact=True).click()
+                self.participant(active=False)
+                expect(external.locator('.message')).to_have_count(0, timeout=15000)
+                expect(external.get_by_role('textbox', name='Header chat message', exact=True)).not_to_be_visible()
+                self.check('revoked conversation membership clears the header drawer in a consuming app')
+                self.participant(active=True)
+                self.open(self.member, '/')
+                header.get_by_role('button', name='Applications and pins', exact=True).click()
+                header.get_by_role('button', name='Unpin Review workspace', exact=True).click()
+                expect(header.get_by_role('button', name='Pin Review workspace', exact=True)).to_be_visible()
+                header.get_by_role('button', name='Close organization tools', exact=True).click()
+                expect(header.locator('.pinned a')).to_have_count(0)
+                self.check('users can remove a personal app pin without affecting application access')
+            finally:
+                app.close()
 
     def modern_workspace(self):
         self.open(self.member, self.organization + 'chat/new/')
@@ -348,7 +431,9 @@ class ChatBrowserChecks:
         self.check('replies, safe link sharing, message permalinks and message search work in the browser')
 
         self.open(self.member, self.shared_path)
-        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/')) as saved:
+        self.member.bring_to_front()
+        expect(self.member.locator('.chat-room-link').filter(has_text='Laptop Test').locator('.chat-badge')).to_have_count(0, timeout=15000)
+        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/') and 'notifications=' in (r.request.post_data or '')) as saved:
             self.member.locator('#chat-notification-mode').select_option('mentions')
         if saved.value.status != 200:
             raise AssertionError('Notification preferences were not saved.')
@@ -363,8 +448,10 @@ class ChatBrowserChecks:
         expect(notice).to_contain_text('1 new notification')
         self.member.locator('#chat-inbox-close').click()
         self.member.get_by_role('link', name='Laptop Test', exact=True).click()
+        self.member.bring_to_front()
+        expect(self.member.locator('.chat-room-link').filter(has_text='Laptop Test').locator('.chat-badge')).to_have_count(0, timeout=15000)
         expect(self.member.locator('#chat-notification-mode')).to_have_value('mentions')
-        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/')):
+        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/') and 'notifications=' in (r.request.post_data or '')):
             self.member.locator('#chat-notification-mode').select_option('muted')
         self.open(self.member, self.organization + 'chat/')
         self.send(self.admin, 'Muted probe @' + self.email)

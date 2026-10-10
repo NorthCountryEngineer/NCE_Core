@@ -14,6 +14,7 @@ GUIDES = [
     ('core-platform', 'cicd', 'CI/CD configuration and release controls', 'operations', 'administrators', 'docs/cicd.md'),
     ('core-platform', 'integration', 'OIDC and application security integration', 'api', 'administrators', 'docs/integration.md'),
     ('core-platform', 'application-integrations', 'Shared and application-owned integrations', 'api', 'administrators', 'docs/application-integrations.md'),
+    ('core-platform', 'unified-header', 'Shared application header, pins, and Chat', 'user-guide', 'users', 'docs/unified-header.md'),
     ('core-platform', 'local-testing', 'Local development and troubleshooting', 'troubleshooting', 'administrators', 'docs/local-testing.md'),
     ('core-platform', 'documentation', 'Documentation inheritance and AI consumption', 'administration', 'administrators', 'docs/organization-documentation.md'),
     ('core-platform', 'ai-rules', 'Inherited AI rules, query budgets, and shared usage', 'administration', 'administrators', 'docs/ai-rules.md'),
