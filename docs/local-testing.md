@@ -79,6 +79,15 @@ for accounts and marketplace publication. Use the organization panel for roles,
 agent accounts, data, chat, training, and federation. These steps create no
 cluster, charge, or paid model call.
 
+## If login reports a CSRF origin error
+
+If a form reports `Origin checking failed - null`, update to the latest `main`,
+restart the web server, and open `/accounts/login/` again in a fresh tab. Avoid
+resubmitting the old form from the browser's Back button. Core uses the
+`same-origin` referrer policy so browser forms retain their origin while external
+links receive no referrer. CSRF tokens and origin validation remain required;
+do not trust the `null` origin or disable CSRF protection.
+
 ## Environment and modernization exercise
 
 For an existing organization, keep its current environment and add any missing

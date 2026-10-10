@@ -94,7 +94,9 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
-SECURE_REFERRER_POLICY = "no-referrer"
+# Keep same-origin form POSTs identifiable to CSRF checks. `no-referrer`
+# makes browsers send Origin: null; same-origin still hides external referrers.
+SECURE_REFERRER_POLICY = "same-origin"
 # Enable only behind a proxy that strips and sets this header itself.
 if os.environ.get("CORE_TRUST_PROXY") == "1":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

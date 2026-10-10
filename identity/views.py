@@ -126,7 +126,7 @@ def invite(request, organization):
             "title": "Invitation created", "invitation_link": link,
             "description": "Share this single-use link securely with the invited person. It expires in 48 hours.",
         })
-        response["Referrer-Policy"] = "no-referrer"
+        response["Referrer-Policy"] = "same-origin"
         return response
     return render(request, "identity/form.html", {"form": form, "title": "Invite a user"})
 
@@ -189,7 +189,7 @@ def accept_invitation(request, token):
                     login(request, user)
                 return redirect("home")
     response = render(request, "identity/accept_invitation.html", {"form": form, "invitation": invitation})
-    response["Referrer-Policy"] = "no-referrer"
+    response["Referrer-Policy"] = "same-origin"
     return response
 
 
