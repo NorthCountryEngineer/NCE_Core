@@ -4,7 +4,7 @@
   "required": ["schema_version", "environment", "image_repository", "release_branch", "kubernetes"],
   "properties": {
     "schema_version": {"const": 1},
-    "environment": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,30}$"},
+    "environment": {"type": "string", "enum": ["sandbox", "development", "staging", "uat", "production"]},
     "image_repository": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]+(?::[0-9]+)?/[a-z0-9][a-z0-9_./-]+$"},
     "release_branch": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,120}$"},
     "kubernetes": {

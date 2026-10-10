@@ -19,6 +19,7 @@ class Principal:
     runtime: object = None
     agent_binding: object = None
     agent_credential: object = None
+    application: object = None
     purpose: str = ""
     request_id: object = None
 
@@ -94,9 +95,12 @@ def resource_chain(resource):
         seen.add(key)
         result.append(item)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
-                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract']:
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment']:
             parent = getattr(item, field, None)
-            if parent is not None:
+            if field == 'environment' and isinstance(parent, str):
+                from platform_services.models import DeploymentEnvironment
+                parent = DeploymentEnvironment.objects.filter(organization=resource_organization(item), name=parent).first()
+            if parent is not None and hasattr(parent, '_meta'):
                 visit(parent)
         if item._meta.label_lower in {'platform_services.workflowrun', 'platform_services.trainingrun'}:
             from platform_services.models import AgentBinding, AgentDefinition, Dataset
@@ -128,19 +132,40 @@ def effective_tags(resource):
     if isinstance(resource, PermissionTag):
         tags[resource.pk] = resource
     for item in resource_chain(resource):
+        if item._meta.label_lower == 'platform_services.deploymentenvironment':
+            tags[item.boundary_tag_id] = item.boundary_tag
         if hasattr(item, "permission_tags"):
             tags.update({tag.pk: tag for tag in item.permission_tags.all()})
+    # A boundary tag carries its environment's additional policy controls even
+    # when assigned to a dataset or conversation without an environment FK.
+    from platform_services.models import DeploymentEnvironment
+    visited = set()
+    while True:
+        environments = list(DeploymentEnvironment.objects.filter(boundary_tag_id__in=tags).exclude(pk__in=visited))
+        if not environments:
+            break
+        for environment in environments:
+            visited.add(environment.pk)
+            tags.update({tag.pk: tag for tag in environment.permission_tags.all()})
     return list(tags.values())
 
 
 def decision(principal, resource):
     organization = resource_organization(resource)
     tags = effective_tags(resource)
+    from platform_services.environments import principal_environment
+    environment = principal_environment(principal)
+    if environment:
+        tags = list({tag.pk: tag for tag in [*tags, *effective_tags(environment)]}.values())
     control_tag = isinstance(resource, PermissionTag)
     if not organization.active:
         return False, "organization_disabled", tags
     if any(tag.organization_id != organization.pk or (not tag.active and not (control_tag and tag.pk == resource.pk)) for tag in tags):
         return False, "invalid_resource_tag", tags
+    from platform_services.environments import boundary_decision
+    boundary_reason, environment_grants = boundary_decision(principal, organization, resource_chain(resource), tags)
+    if boundary_reason:
+        return False, boundary_reason, tags
     if principal.agent_binding:
         from platform_services.agent_identity import binding_valid, credential_valid
         binding = principal.agent_binding
@@ -192,6 +217,7 @@ def decision(principal, resource):
         if any(tag.max_auth_age and (not principal.evidence or not principal.evidence.authenticated_at or
                 not 0 <= (timezone.now() - principal.evidence.authenticated_at).total_seconds() <= tag.max_auth_age) for tag in tags):
             return False, "fresh_authentication_required", tags
+    grants.update(environment_grants)
     if any(tag.pk not in grants for tag in tags):
         return False, "tag_grant_required", tags
     if principal.purpose and not re.fullmatch(r"[-a-zA-Z0-9_]{1,80}", principal.purpose):

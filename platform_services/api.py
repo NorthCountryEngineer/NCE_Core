@@ -82,13 +82,19 @@ def workload_api(capabilities=(), methods=("GET",)):
 
 @workload_api()
 def integration(request):
-    return response(integration_document(request.access_principal.agent_binding.installation if request.access_principal.agent_binding else request.credential.installation))
+    value = integration_document(request.access_principal.agent_binding.installation if request.access_principal.agent_binding else request.credential.installation)
+    value['environment'] = request.access_principal.agent_binding.environment if request.access_principal.agent_binding else request.credential.environment.name if request.credential.environment_id else None
+    value['deployment_id'] = str(request.credential.deployment_id) if request.credential and request.credential.deployment_id else None
+    return response(value)
 
 
 def task_context(request, values):
     from .models import AgentTask
     binding = request.access_principal.agent_binding
-    environment = values.get('environment', binding.environment if binding else 'development')
+    expected = binding.environment if binding else request.credential.environment.name if request.credential.environment_id else None
+    environment = values.get('environment', expected or 'development')
+    if expected and environment != expected:
+        raise PermissionDenied('Workload environment cannot be changed by a caller.')
     task_id = values.get('task_id', binding.task_id if binding else None)
     try:
         task = get_object_or_404(AgentTask, pk=task_id, organization=request.organization) if task_id else None
@@ -178,6 +184,12 @@ def runtime_sync(request):
         principal = Principal(runtime=node, request_id=getattr(request, "security_request_id", None))
         require_access(principal, node, "runtime.sync")
         values = body(request)
+        if node.environment_id:
+            if node.namespace != node.environment.namespace or values.get('isolation') != {
+                    'organization_id': str(node.organization_id), 'environment': node.environment.name, 'default_deny': True}:
+                raise PermissionDenied('Apply the environment namespace isolation bundle before connecting.')
+            from .inventory import update_inventory
+            update_inventory(node, values.get('inventory', []))
         reports = values.get("reports", [])
         if not isinstance(reports, list) or len(reports) > 100:
             raise ValidationError("Use at most 100 runtime reports.")
@@ -212,7 +224,8 @@ def runtime_sync(request):
             except PermissionDenied:
                 continue
             visible.append(deployment_spec(deployment))
-        return response({"version": 1, "node_id": str(node.pk), "namespace": node.namespace, "deployments": visible})
+        return response({"version": 1, "node_id": str(node.pk), "namespace": node.namespace,
+            'environment': node.environment.name if node.environment_id else None, "deployments": visible})
     except PermissionDenied:
         return response({"error": "insufficient_permission"}, 403)
     except (ValidationError, ValueError, TypeError):

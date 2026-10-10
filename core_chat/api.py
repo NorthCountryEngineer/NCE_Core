@@ -46,7 +46,10 @@ def chat_api(operation, methods=('GET',)):
                     if (not token or not token.application or token.application.service_id != credential.installation.service_id or
                             'authorization' not in token.scopes or not (token_claims(delegated, token.application, purpose) or {}).get('active')):
                         return response({'error': 'invalid_user_token'}, 401)
-                    principal = Principal(user=token.user, evidence=evidence_for(delegated), purpose=purpose)
+                    deployment = getattr(token.application, 'deployment', None)
+                    if credential.environment_id and (not deployment or deployment.environment_id != credential.environment_id):
+                        return response({'error': 'invalid_user_token'}, 401)
+                    principal = Principal(user=token.user, evidence=evidence_for(delegated), purpose=purpose, application=token.application)
             else:
                 token = get_access_token_model().objects.select_related('application__service__organization', 'user').filter(token_checksum=hashlib.sha256(raw.encode()).hexdigest()).first() if raw else None
                 if (not token or not token.application or not Installation.objects.filter(
@@ -55,7 +58,7 @@ def chat_api(operation, methods=('GET',)):
                         'authorization' not in token.scopes or not (token_claims(raw, token.application, purpose) or {}).get('active')):
                     return response({'error': 'invalid_credential'}, 401)
                 organization = token.application.service.organization
-                principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose)
+                principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose, application=token.application)
             request.organization = organization
             request.access_principal = principal
             principal.request_id = getattr(request, 'security_request_id', None)
@@ -113,6 +116,8 @@ def create(request):
     if set(values) - {'title', 'ai_enabled'}:
         raise ValidationError('Unsupported conversation fields.')
     conversation = create_conversation(request.access_principal, request.organization, values.get('title'), values.get('ai_enabled', False))
+    if request.chat_credential and request.access_principal.user and request.chat_credential.environment_id:
+        conversation.permission_tags.add(request.chat_credential.environment.boundary_tag)
     if request.chat_credential and request.access_principal.user:
         Participant.objects.create(conversation=conversation, installation=request.chat_credential.installation)
     return response({'organization_id': str(request.organization.pk), 'conversation_id': str(conversation.pk)}, 201)

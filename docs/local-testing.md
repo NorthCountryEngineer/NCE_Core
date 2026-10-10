@@ -62,7 +62,7 @@ Use this server locally; development settings are not an Internet deployment.
    administration and run `CORE_DEBUG=1 uv run python manage.py grant_developer YOUR_EMAIL`.
 3. Create **Sandbox**, slug `sandbox`, and choose its product display name.
 4. Supply organization metadata; choose **Configure later** for billing.
-5. Choose **Development**, namespace `sandbox`, application origin
+5. Choose **Sandbox**, namespace `sandbox-sandbox`, application origin
    `http://localhost:8000`, and leave automatic deployment unchecked. Ingress/TLS
    can be blank for this exercise.
 6. Leave runtime name blank to defer Kubernetes, then review and activate.
@@ -73,6 +73,38 @@ Operator administration is at `http://localhost:8000/platform-admin/`; use it
 for accounts and marketplace publication. Use the organization panel for roles,
 agent accounts, data, chat, training, and federation. These steps create no
 cluster, charge, or paid model call.
+
+## Environment and modernization exercise
+
+For an existing organization, keep its current environment and add any missing
+ones through **Sandbox, development, and production**. New organizations above
+start in Sandbox. Create **Development** with namespace `sandbox-dev` and
+**Production** with namespace `sandbox-prod`; use an HTTPS origin for Production.
+These are configuration records and do not deploy anything.
+
+1. Create separate sandbox and production datasets and assign their matching
+   environment boundary tags through **Tags**. Create an application integration
+   key for Sandbox, grant `data.read` on its installation, and verify it can read
+   sandbox records while production and unassigned datasets return HTTP 403.
+2. Disable Sandbox in environment configuration and repeat discovery/data access:
+   the key should be denied immediately. Re-enable it to continue.
+3. Run the automated checks locally:
+
+   ```bash
+   CORE_DEBUG=1 uv run python manage.py test platform_services.tests.test_modernization
+   ```
+
+For a Kubernetes application, follow [modernization.md](modernization.md): review
+and apply the namespace isolation/RBAC bundles on your existing cluster, connect
+an environment runtime, then choose **Modernize a Kubernetes application** in
+Central admin. Confirm that its image, replicas, sidecars and storage survive the
+integration rollout. Kubernetes network isolation needs a CNI that enforces
+NetworkPolicy; verify cross-namespace traffic is denied on your cluster.
+
+Existing manual keys must be replaced with environment-scoped keys after
+migration. Tag existing datasets, conversations and other business resources
+before using those new keys. Your existing configuration becomes its initial
+environment; it is not silently renamed to Sandbox.
 
 ## First training exercise
 
@@ -85,8 +117,9 @@ cluster, charge, or paid model call.
 2. Create pipeline `sim-input` into it, transformations `[]`.
 3. In **Marketplace → Agents**, install **Training Coordinator**. Create role
    **Training runner** with `training-run` on Core Training and `data-write` on Core Data.
-4. Open the agent account and approve consumption through **Core Training** in
-   **Development**, assigning that role. Leave task blank for this exercise.
+4. Assign the **environment-sandbox** boundary tag to the dataset and agent
+   definition using their **Tags** links in Central admin. Open the agent account
+   and approve consumption through **Core Training** in **Sandbox**, assigning that role. Leave task blank for this exercise.
 5. Open **AI training harness**, create a scenario, select the pipeline and agent
    approval, leave workflow blank, and set goal **Check integer ingestion**. Plan:
 

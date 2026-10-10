@@ -9,6 +9,42 @@ from django.utils import timezone
 from identity.models import Organization, Service, User, TaggedResource
 from .validation import CORE_PACKAGES, validate_endpoint, validate_manifest, validate_schema, validate_transforms
 
+ENVIRONMENTS = [('sandbox', 'Sandbox'), ('development', 'Development'), ('staging', 'Staging'), ('uat', 'UAT'), ('production', 'Production')]
+
+
+class DeploymentEnvironment(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='environments')
+    name = models.CharField(max_length=20, choices=ENVIRONMENTS)
+    namespace = models.CharField(max_length=63)
+    application_origin = models.URLField(validators=[validate_endpoint])
+    ingress_class = models.CharField(max_length=80, blank=True)
+    tls_secret_name = models.CharField(max_length=63, blank=True)
+    auto_deploy = models.BooleanField(default=False, help_text='Start newly registered marketplace deployments in this environment.')
+    boundary_tag = models.OneToOneField('identity.PermissionTag', on_delete=models.PROTECT, related_name='deployment_environment')
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['organization', 'name'], name='unique_org_environment'),
+                       models.UniqueConstraint(fields=['organization', 'namespace'], name='unique_environment_namespace')]
+
+    def clean(self):
+        import re
+        for field in ['namespace', 'tls_secret_name']:
+            value = getattr(self, field)
+            if value and not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]*[a-z0-9])?', value):
+                raise ValidationError({field: 'Use a Kubernetes DNS label.'})
+        if self.name == 'production' and not self.application_origin.startswith('https://'):
+            raise ValidationError({'application_origin': 'Production requires HTTPS.'})
+        if self.boundary_tag_id and self.boundary_tag.organization_id != self.organization_id:
+            raise ValidationError('The environment tag must belong to this organization.')
+        old = type(self).objects.filter(pk=self.pk).first()
+        if old and any(getattr(old, field) != getattr(self, field) for field in ['organization_id', 'name', 'namespace', 'boundary_tag_id']):
+            raise ValidationError('Environment identity and namespace are immutable. Create a new environment.')
+
+    def __str__(self):
+        return f'{self.get_name_display()} · {self.namespace}'
+
 
 class OrganizationProfile(TaggedResource):
     organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="profile")
@@ -40,7 +76,7 @@ class Onboarding(models.Model):
 
 class DeploymentConfiguration(TaggedResource):
     organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="deployment_configuration")
-    environment = models.CharField(max_length=20, choices=[("development", "Development"), ("staging", "Staging"), ("production", "Production")])
+    environment = models.CharField(max_length=20, choices=ENVIRONMENTS)
     namespace = models.CharField(max_length=63)
     application_origin = models.URLField(validators=[validate_endpoint])
     ingress_class = models.CharField(max_length=80, blank=True)
@@ -58,6 +94,7 @@ class DeploymentConfiguration(TaggedResource):
 
 
 class MarketplacePackage(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT, null=True, blank=True, related_name='private_packages')
     slug = models.SlugField(unique=True)
     name = models.CharField(max_length=160)
     version = models.CharField(max_length=40, default="0.1.0")
@@ -71,7 +108,9 @@ class MarketplacePackage(models.Model):
             raise ValidationError("A marketplace manifest must be an object.")
         if self.kind == "core" and self.slug not in CORE_PACKAGES:
             raise ValidationError("Unknown built-in core package.")
-        if self.kind == "application" and (self.slug in CORE_PACKAGES or not self.manifest.get("image")):
+        if self.kind == 'core' and self.organization_id:
+            raise ValidationError('Built-in core packages use the shared marketplace catalog.')
+        if self.kind == "application" and (self.slug in CORE_PACKAGES or not (self.manifest.get("image") or self.manifest.get('existing_workload'))):
             raise ValidationError("Applications require a digest-pinned image and a nonreserved slug.")
 
     def __str__(self):
@@ -99,11 +138,19 @@ class RuntimeNode(TaggedResource):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="runtime_nodes")
     name = models.CharField(max_length=100)
     namespace = models.CharField(max_length=63)
+    environment = models.ForeignKey(DeploymentEnvironment, on_delete=models.PROTECT, null=True, blank=True, related_name='runtimes')
     credential_hash = models.CharField(max_length=64, unique=True)
     access_tags = models.ManyToManyField("identity.PermissionTag", blank=True, related_name="runtime_grants")
     active = models.BooleanField(default=True)
     last_seen = models.DateTimeField(null=True, blank=True)
     cluster_version = models.CharField(max_length=100, blank=True)
+
+    def clean(self):
+        if self.environment_id and (self.environment.organization_id != self.organization_id or self.environment.namespace != self.namespace):
+            raise ValidationError('Runtime organization and namespace must match its environment.')
+        old = type(self).objects.filter(pk=self.pk).first()
+        if old and any(getattr(old, field) != getattr(self, field) for field in ['organization_id', 'namespace', 'environment_id']):
+            raise ValidationError('Runtime placement is immutable. Register a separate runtime.')
 
     @property
     def online(self):
@@ -116,7 +163,10 @@ class Deployment(TaggedResource):
     parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="children")
     node = models.ForeignKey(RuntimeNode, on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
     name = models.CharField(max_length=100)
-    target = models.CharField(max_length=30, choices=[("embedded", "In core runtime"), ("kubernetes", "Kubernetes"), ("kubernetes-controller", "Existing Kubernetes controller")])
+    target = models.CharField(max_length=30, choices=[("embedded", "In core runtime"), ("kubernetes", "Kubernetes"), ("kubernetes-controller", "Existing Kubernetes controller"), ('kubernetes-adopted', 'Modernized Kubernetes application')])
+    environment = models.ForeignKey(DeploymentEnvironment, on_delete=models.PROTECT, null=True, blank=True, related_name='deployments')
+    resource_uid = models.CharField(max_length=80, blank=True)
+    container_name = models.CharField(max_length=63, blank=True)
     resource_name = models.CharField(max_length=63, blank=True)
     action = models.CharField(max_length=20, default="reconcile")
     namespace = models.CharField(max_length=63, blank=True)
@@ -146,6 +196,8 @@ class Deployment(TaggedResource):
 class WorkloadCredential(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     installation = models.ForeignKey(Installation, on_delete=models.CASCADE, related_name="credentials")
+    environment = models.ForeignKey(DeploymentEnvironment, on_delete=models.PROTECT, null=True, blank=True, related_name='credentials')
+    deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, null=True, blank=True, related_name='credentials')
     name = models.CharField(max_length=100)
     token_hash = models.CharField(max_length=64, unique=True)
     active = models.BooleanField(default=True)
@@ -154,6 +206,21 @@ class WorkloadCredential(TaggedResource):
     @staticmethod
     def digest(token):
         return hashlib.sha256(token.encode()).hexdigest()
+
+
+class RuntimeApplication(models.Model):
+    """Bounded inventory; contains no pod environment variables or Secret contents."""
+    node = models.ForeignKey(RuntimeNode, on_delete=models.CASCADE, related_name='applications')
+    name = models.CharField(max_length=63)
+    resource_uid = models.CharField(max_length=80)
+    containers = models.JSONField(default=list)
+    observed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['node', 'name'], name='unique_runtime_application')]
+
+    def __str__(self):
+        return f'{self.node.environment} · {self.name}'
 
 
 class Dataset(TaggedResource):
@@ -301,7 +368,7 @@ class RunStep(models.Model):
         ordering = ["index"]
 
 
-AGENT_ENVIRONMENTS = [(value, value.title()) for value in ('development', 'staging', 'uat', 'production')]
+AGENT_ENVIRONMENTS = ENVIRONMENTS
 
 
 class AgentListing(models.Model):
@@ -393,6 +460,8 @@ class AgentBinding(TaggedResource):
     def clean(self):
         if self.account_id and self.installation_id and self.account.organization_id != self.installation.organization_id:
             raise ValidationError('The account and consuming application must belong to one organization.')
+        if self.account_id and self.active and self.organization.environments.exists() and not self.organization.environments.filter(name=self.environment, active=True).exists():
+            raise ValidationError({'environment': 'Register an active deployment environment before approving agents there.'})
         if self.environment == 'uat' and not self.task_id:
             raise ValidationError('UAT access requires an approved, expiring task.')
         if self.task_id and (self.task.organization_id != self.organization_id or

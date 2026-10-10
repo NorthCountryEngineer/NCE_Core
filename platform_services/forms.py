@@ -6,7 +6,7 @@ from django.core.exceptions import ValidationError
 from identity.models import Organization
 from .models import (
     AgentDefinition, AgentTask, BillingProfile, Dataset, DeploymentConfiguration, Installation,
-    OrganizationProfile, Pipeline, RuntimeNode, Workflow,
+    OrganizationProfile, Pipeline, RuntimeNode, Workflow, DeploymentEnvironment,
 )
 
 
@@ -73,6 +73,15 @@ class InstallationSettingsForm(InstallationForm):
 
 class NodeForm(forms.Form):
     name = forms.CharField(max_length=100)
+    environment = forms.ModelChoiceField(queryset=DeploymentEnvironment.objects.none(), required=False)
+
+    def __init__(self, *args, organization=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if organization:
+            self.fields['environment'].queryset = organization.environments.filter(active=True)
+            self.fields['environment'].required = True
+        else:
+            del self.fields['environment']
 
 
 class DeploymentForm(forms.Form):
@@ -131,7 +140,7 @@ class WorkflowForm(forms.ModelForm):
 
 class RunForm(forms.Form):
     input = forms.JSONField(initial={})
-    environment = forms.ChoiceField(choices=[(v, v.title()) for v in ('development', 'staging', 'uat', 'production')], required=False, initial='development')
+    environment = forms.ChoiceField(choices=[(v, v.title()) for v in ('sandbox', 'development', 'staging', 'uat', 'production')], required=False, initial='development')
     task = forms.ModelChoiceField(queryset=AgentTask.objects.none(), required=False)
 
     def __init__(self, *args, organization, principal=None, **kwargs):

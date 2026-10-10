@@ -11,7 +11,7 @@ class CoreServiceError(Exception):
 
 
 class CoreClient:
-    def __init__(self, base_url, token, organization_id, allow_local_http=False, purpose_code=""):
+    def __init__(self, base_url, token, organization_id, allow_local_http=False, purpose_code="", environment=None):
         self.base_url = base_url.rstrip("/")
         parsed = urlparse(self.base_url)
         if (not parsed.netloc or parsed.username is not None or parsed.query or parsed.fragment or
@@ -20,6 +20,7 @@ class CoreClient:
             raise ValueError("Use the trusted HTTPS core API URL.")
         self.token = token
         self.organization_id = organization_id
+        self.environment = environment
         if purpose_code:
             self.slug(purpose_code)
             if len(purpose_code) > 80:
@@ -30,7 +31,7 @@ class CoreClient:
     def from_environment(cls):
         return cls(os.environ["CORE_SERVICES_URL"], Path(os.environ["CORE_WORKLOAD_TOKEN_FILE"]).read_text().strip(),
                    os.environ["CORE_ORGANIZATION_ID"], allow_local_http=os.environ.get("CORE_ALLOW_LOCAL_HTTP") == "1",
-                   purpose_code=os.environ.get("CORE_PURPOSE_CODE", ""))
+                   purpose_code=os.environ.get("CORE_PURPOSE_CODE", ""), environment=os.environ.get('CORE_ENVIRONMENT'))
 
     def request(self, method, path, user_access_token=None, **kwargs):
         # Path components are supplied by these typed methods, never arbitrary remote URLs.
@@ -62,6 +63,8 @@ class CoreClient:
         value = self.request("GET", "/integration/")
         if value.get("organization_id") != self.organization_id or value.get("core_services_url") != self.base_url:
             raise CoreServiceError("The integration document does not match this application's organization and core URL.")
+        if self.environment and value.get('environment') != self.environment:
+            raise CoreServiceError('The integration document does not match this deployment environment.')
         return value
 
     def ingest(self, pipeline, event_id, data):
@@ -108,13 +111,13 @@ class CoreClient:
             return self.fabric_publish(contract_id, event_id, arguments['data'])
         raise ValueError('The model cannot choose peers, agreements, credentials, purposes, identities, or event IDs.')
 
-    def run_workflow(self, workflow, request_id, data, *, environment='development', task_id=None):
+    def run_workflow(self, workflow, request_id, data, *, environment=None, task_id=None):
         return self.request("POST", f"/workflows/{self.slug(workflow)}/runs/", json={"request_id": request_id, "input": data,
-            'environment': environment, 'task_id': str(task_id) if task_id else None})
+            'environment': environment or self.environment or 'development', 'task_id': str(task_id) if task_id else None})
 
-    def run_agent(self, agent, request_id, data, *, environment='development', task_id=None):
+    def run_agent(self, agent, request_id, data, *, environment=None, task_id=None):
         return self.request("POST", f"/agents/{self.slug(agent)}/runs/", json={"request_id": request_id, "input": data,
-            'environment': environment, 'task_id': str(task_id) if task_id else None})
+            'environment': environment or self.environment or 'development', 'task_id': str(task_id) if task_id else None})
 
     def agent_client(self, binding_id, *, environment, task_id=None):
         from uuid import UUID
@@ -313,7 +316,7 @@ class AgentClient(CoreClient):
     def __init__(self, *args, environment, task_id=None, **kwargs):
         from uuid import UUID
         super().__init__(*args, **kwargs)
-        if environment not in {'development', 'staging', 'uat', 'production'} or environment == 'uat' and not task_id:
+        if environment not in {'sandbox', 'development', 'staging', 'uat', 'production'} or environment == 'uat' and not task_id:
             raise ValueError('Use an approved environment and a task ID for UAT.')
         self.environment = environment
         self.task_id = str(UUID(str(task_id))) if task_id else None

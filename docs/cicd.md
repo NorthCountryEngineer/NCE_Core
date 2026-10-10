@@ -245,3 +245,9 @@ check disabled mutations, credential handling, tenant secret mounts, stale
 artifacts, lease contention, and migration-before-rollout ordering. Provider
 templates require their platform's own configured runner for a live provider run;
 local verification does not establish that seven remote CI accounts are active.
+
+Create independent configurations, namespace-scoped runner credentials, runtime
+and database secrets, and approvals for sandbox, development, and production.
+Generated manifests include `core.platform/environment` and `CORE_ENVIRONMENT`.
+The deployment pipeline does not create namespaces or isolate their networks;
+review/apply the [environment isolation bundle](modernization.md) separately.

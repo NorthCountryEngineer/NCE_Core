@@ -78,6 +78,10 @@ def create_conversation(principal, organization, title, ai_enabled=False, connec
                                 connection=connection, remote_conversation_id=remote_id)
     conversation.full_clean()
     conversation.save()
+    from platform_services.environments import principal_environment
+    environment = principal_environment(principal)
+    if environment:
+        conversation.permission_tags.add(environment.boundary_tag)
     identity = participant_identity(principal)
     participant = Participant(conversation=conversation, role='owner', **identity)
     participant.full_clean()

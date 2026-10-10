@@ -15,7 +15,7 @@ submitter's authority. Both identities must remain authorized for a queued job.
    Data. Chat agents need `chat-send` and `chat-ai` on Core Chat. The reserved
    organization `admin` capability is human-only.
 3. Open the account and **Approve application and service roles**. Choose the
-   consuming installation, environment, roles, and access-tag grants. Development,
+   consuming installation, environment, roles, and access-tag grants. Sandbox, development,
    staging, UAT, and production require separate approvals. Approval boundaries
    are immutable; revoke an approval and create another to change its scope.
 4. For UAT, approve a task with its application, environment, acceptance criteria,
@@ -128,3 +128,12 @@ tools. Disabling a listing revokes its installed agents. Built-in tools remain
 deterministic; model-backed runners can consume approved services with AgentClient.
 These controls prepare for further compliance work and do not certify HIPAA
 compliance or implement application-specific UAT acceptance logic.
+
+Environment-bound hosts can exchange credentials only for matching agent
+approvals. Add the matching environment boundary tag to the agent's resources;
+access-tag grants cannot override deployment environment isolation. See
+[modernization.md](modernization.md).
+
+In an organization with registered deployment environments, register an active
+environment before approving agents there, including UAT when it needs its own
+namespace. Missing or disabled environments deny credential use.

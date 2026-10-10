@@ -38,7 +38,7 @@ def credential_allows(credential, capabilities):
 def install_package(organization, package, grants=(), actor=None, _path=()):
     Organization.objects.select_for_update().get(pk=organization.pk)
     package.full_clean()
-    if not package.active or not organization.active:
+    if not package.active or not organization.active or package.organization_id and package.organization_id != organization.pk:
         raise ValidationError("The organization and package must be active.")
     if set(grants) - set(package.manifest.get("capabilities", [])):
         raise ValidationError("A grant must be declared in the marketplace manifest.")
@@ -71,9 +71,14 @@ def install_core(organization, actor=None):
         install_package(organization, MarketplacePackage.objects.get(slug=slug), actor=actor)
 
 
-def issue_workload_credential(installation, name):
+def issue_workload_credential(installation, name, environment=None, deployment=None):
+    if environment and (environment.organization_id != installation.organization_id or not environment.active):
+        raise ValidationError('Choose an active environment from this organization.')
+    if deployment and (deployment.installation_id != installation.pk or deployment.environment_id != (environment.pk if environment else None)):
+        raise ValidationError('Credential placement must match its deployment.')
     raw = "cw_" + secrets.token_urlsafe(48)
-    credential = WorkloadCredential.objects.create(installation=installation, name=name, token_hash=WorkloadCredential.digest(raw))
+    credential = WorkloadCredential.objects.create(installation=installation, name=name, token_hash=WorkloadCredential.digest(raw),
+        environment=environment, deployment=deployment)
     return credential, raw
 
 
@@ -105,21 +110,30 @@ def upgrade_installation(installation, grants, actor):
 
 
 @transaction.atomic
-def create_deployment(installation, node, endpoint, actor=None, desired_state="running"):
+def create_deployment(installation, node, endpoint, actor=None, desired_state="running", adopted=None):
     from .validation import validate_endpoint
     validate_endpoint(endpoint)
+    if not adopted and not installation.manifest.get('image'):
+        raise ValidationError('This package integrates existing workloads. Choose Modernize a Kubernetes application.')
+    if adopted and (adopted.node_id != node.pk or not node.environment_id):
+        raise ValidationError('Adoption requires a workload in this environment runtime.')
     if installation.package.kind != "application" or node.organization_id != installation.organization_id or not node.active:
         raise ValidationError("Choose an active runtime from this organization for an application package.")
-    if node.namespace != installation.organization.deployment_configuration.namespace:
+    if node.environment_id and (not node.environment.active or node.environment.organization_id != installation.organization_id or node.namespace != node.environment.namespace):
+        raise ValidationError('Runtime placement does not match an active environment.')
+    if not node.environment_id and node.namespace != installation.organization.deployment_configuration.namespace:
         raise ValidationError("Runtime namespace does not match the organization's deployment configuration.")
     if node.deployments.count() >= 100:
         raise ValidationError("Connect another runtime; each runtime supports up to 100 instances.")
     parent = Deployment.objects.filter(installation__organization=installation.organization, installation__package__slug="core-platform",
                                       target__in=["embedded", "kubernetes-controller"]).first()
-    config = installation.organization.deployment_configuration
+    config = node.environment or installation.organization.deployment_configuration
+    if node.environment_id and node.environment.name == 'production' and not endpoint.startswith('https://'):
+        raise ValidationError('Production requires HTTPS.')
     deployment = Deployment.objects.create(installation=installation, node=node, parent=parent, target="kubernetes",
-        name=installation.package.slug, namespace=node.namespace, endpoint=endpoint.rstrip("/"),
-        ingress_class=config.ingress_class, tls_secret_name=config.tls_secret_name, desired_state=desired_state)
+        name=installation.package.slug, namespace=node.namespace, environment=node.environment, endpoint=endpoint.rstrip("/"),
+        ingress_class=config.ingress_class, tls_secret_name=config.tls_secret_name, desired_state=desired_state,
+        resource_name=adopted.name if adopted else '', resource_uid=adopted.resource_uid if adopted else '')
     callback = installation.manifest.get("callback_path", "/oauth/callback")
     application = Application(service=installation.service, name=f"{installation.package.name} {deployment.pk}",
         client_type="confidential", authorization_grant_type="authorization-code", algorithm="RS256",
@@ -127,7 +141,7 @@ def create_deployment(installation, node, endpoint, actor=None, desired_state="r
     raw_client_secret = application.client_secret
     application.full_clean()
     application.save()
-    credential, raw = issue_workload_credential(installation, f"deployment:{deployment.pk}")
+    credential, raw = issue_workload_credential(installation, f"deployment:{deployment.pk}", node.environment, deployment)
     deployment.application = application
     deployment.encrypted_bundle = encrypt_bundle({"workload_token": raw, "oidc_client_secret": raw_client_secret})
     deployment.save(update_fields=["application", "encrypted_bundle"])

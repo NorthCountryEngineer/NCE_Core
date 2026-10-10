@@ -1,5 +1,8 @@
 import secrets
 import time
+import os
+import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
@@ -35,6 +38,7 @@ class ResourceClientTests(SimpleTestCase):
         with patch("identity_client.requests.post", side_effect=requests.Timeout):
             with self.assertRaises(IdentityUnavailable):
                 self.client.require("access-token", "read")
+
         for status in [301, 401, 500]:
             with patch("identity_client.requests.post", return_value=self.response(status=status)):
                 with self.assertRaises(IdentityUnavailable):
@@ -46,6 +50,21 @@ class ResourceClientTests(SimpleTestCase):
             with self.assertRaises(Unauthenticated):
                 self.client.require("access-token", "read")
 
+    def test_generated_configuration_binds_environment_and_deployment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'client-secret'
+            path.write_text(secrets.token_urlsafe(48))
+            with patch.dict(os.environ, {'CORE_ISSUER': self.client.issuer, 'CORE_OIDC_CLIENT_ID': 'backend-client',
+                'CORE_OIDC_CLIENT_SECRET_FILE': str(path), 'CORE_ORGANIZATION_ID': 'org', 'CORE_SERVICE_ID': 'svc',
+                'CORE_ENVIRONMENT': 'sandbox', 'CORE_DEPLOYMENT_ID': 'deployment'}):
+                client = ResourceClient.from_environment()
+            claims = {**self.claims, 'environment': 'sandbox', 'deployment_id': 'deployment'}
+            with patch('identity_client.requests.post', return_value=self.response(claims)) as post:
+                self.assertEqual(client.require('access-token', 'read')['environment'], 'sandbox')
+                for field in ['environment', 'deployment_id']:
+                    post.return_value = self.response({**claims, field: 'other'})
+                    with self.assertRaises(Unauthenticated):
+                        client.require('access-token', 'read')
     def test_requires_tls_except_explicit_loopback_development(self):
         invalid_credentials = secrets.token_urlsafe(32)
         for issuer in ["http://identity.example.test", "https://example.test/path", f"https://user:{invalid_credentials}@example.test"]:

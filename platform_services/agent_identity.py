@@ -26,7 +26,9 @@ def binding_valid(binding):
         return False
     if not AgentDefinition.objects.filter(account_id=binding.account_id, organization_id=binding.organization_id, active=True).exists():
         return False
-    if binding.environment not in {'development', 'staging', 'uat', 'production'}:
+    if binding.environment not in {'sandbox', 'development', 'staging', 'uat', 'production'}:
+        return False
+    if binding.organization.environments.exists() and not binding.organization.environments.filter(name=binding.environment, active=True).exists():
         return False
     if binding.environment == 'uat' and not binding.task_id:
         return False
@@ -123,7 +125,7 @@ def bind_snapshot(organization, snapshot, consumer, environment, task, purpose):
     """Pin each account and approval in the durable snapshot before accepting a run."""
     from copy import deepcopy
     result = deepcopy(snapshot)
-    if consumer.organization_id != organization.pk or environment not in {'development', 'staging', 'uat', 'production'}:
+    if consumer.organization_id != organization.pk or environment not in {'sandbox', 'development', 'staging', 'uat', 'production'}:
         raise ValidationError('Use a consuming application and environment from this organization.')
     for step in result:
         agent = AgentDefinition.objects.get(organization=organization, slug=step['slug'], active=True)

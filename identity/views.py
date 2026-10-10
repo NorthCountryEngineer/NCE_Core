@@ -355,8 +355,13 @@ def token_claims(raw, resource_client, purpose="", request_id=None):
     membership = membership_for(token.user, token.application.service)
     if membership is None:
         return None
+    from platform_services.models import Deployment
+    token_deployment = Deployment.objects.filter(application=token.application).first()
+    client_deployment = Deployment.objects.filter(application=resource_client).first()
+    if (token_deployment.environment_id if token_deployment else None) != (client_deployment.environment_id if client_deployment else None):
+        return None
     from .access import Principal, require_access, evidence_for
-    principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose, request_id=request_id)
+    principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose, request_id=request_id, application=token.application)
     try:
         require_access(principal, token.application, "oauth.introspection")
     except PermissionDenied:
@@ -369,6 +374,8 @@ def token_claims(raw, resource_client, purpose="", request_id=None):
         "client_id": token.application.client_id, "aud": token.application.service.audience,
         "organization_id": str(token.application.service.organization_id),
         "service_id": str(token.application.service_id),
+        'environment': token_deployment.environment.name if token_deployment and token_deployment.environment_id else None,
+        'deployment_id': str(token_deployment.pk) if token_deployment else None,
         "scope": token.scope, "token_type": "Bearer", "exp": int(token.expires.timestamp()),
         "authentication": {"mfa": bool(principal.evidence and principal.evidence.mfa),
             "method": "oidc" if principal.evidence and principal.evidence.identity_id else "local",
@@ -407,7 +414,7 @@ def authorize_permission(request):
     evidence = evidence_for(request.POST["token"])
     principal = Principal(user=User.objects.filter(pk=claims["sub"]).first() if claims else evidence.user if evidence else None,
                           evidence=evidence, purpose=request.POST.get("purpose_code", ""),
-                          request_id=getattr(request, "security_request_id", None))
+                          request_id=getattr(request, "security_request_id", None), application=application)
     if request.POST.get("resource_type") or request.POST.get("resource_id"):
         from .models import ProtectedResource
         from .access import decision

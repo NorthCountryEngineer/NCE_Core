@@ -10,6 +10,7 @@ from runtime_connector import KubernetesAdapter, ReconciliationError, RuntimeCon
 class ConnectorTests(SimpleTestCase):
     def setUp(self):
         self.adapter = KubernetesAdapter("tenant", context="test-context")
+        self.adapter.snapshot = Mock(return_value=(None, []))
         self.spec = {"deployment_id": "instance", "organization_id": "org", "namespace": "tenant", "resource_name": "core-instance",
                      "revision": 1, "desired_state": "running", "mode": "application", "manifests": [{"kind": "Deployment",
                      "metadata": {"name": "core-instance", "namespace": "tenant", "labels": {"core.platform/organization": "org"}}}]}

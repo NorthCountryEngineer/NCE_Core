@@ -57,6 +57,7 @@ class LivePlatformTests(LiveServerTestCase):
                     with self.assertRaises(CoreServiceError):
                         client.records("records")
             adapter = Mock(namespace="live-core")
+            adapter.snapshot.return_value = (None, [])
             adapter.reconcile.side_effect = lambda spec: {"deployment_id": spec["deployment_id"], "revision": spec["revision"], "state": "running", "healthy": True}
             connector = RuntimeConnector(self.live_server_url, node_token, adapter, allow_local_http=True)
             connector.run(once=True)

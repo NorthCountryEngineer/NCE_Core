@@ -1,3 +1,7 @@
+Applications adopted from Kubernetes receive environment-bound service and
+identity configuration automatically. See [modernization.md](modernization.md)
+for `CoreClient.from_environment()` and `ResourceClient.from_environment()`.
+
 # Integrating a service
 
 [Core Data Fabric](data-fabric.md) lets applications and approved agents consume

@@ -12,6 +12,7 @@ class OrganizationValidator(OAuth2Validator):
         "organization_id": "openid", "service_id": "openid", "identity_name": "openid",
         "roles": "authorization", "permissions": "authorization",
         "amr": "openid", "acr": "openid", "auth_time": "openid",
+        'environment': 'openid', 'deployment_id': 'openid',
     }
 
     def validate_scopes(self, client_id, scopes, client, request, *args, **kwargs):
@@ -30,7 +31,7 @@ class OrganizationValidator(OAuth2Validator):
 
     def client_access(self, request, client):
         principal = Principal(user=request.user, evidence=request.authentication_evidence, purpose=request.authentication_purpose,
-                              request_id=request.headers.get("core_request_id") or None)
+                              request_id=request.headers.get("core_request_id") or None, application=client)
         allowed, reason, tags = decision(principal, client)
         if tags or not allowed:
             record_decision(principal, client, "oauth.client_access", allowed, reason, tags)
@@ -84,9 +85,12 @@ class OrganizationValidator(OAuth2Validator):
             "service_id": str(service.pk),
             "identity_name": service.organization.brand,
         }
+        deployment = getattr(request.client, 'deployment', None)
+        if deployment and deployment.environment_id:
+            claims.update({'environment': deployment.environment.name, 'deployment_id': str(deployment.pk)})
         if membership:
             claims.update(authorization_for(membership, service, Principal(user=request.user,
-                evidence=getattr(request, "authentication_evidence", None), purpose=getattr(request, "authentication_purpose", ""))))
+                evidence=getattr(request, "authentication_evidence", None), purpose=getattr(request, "authentication_purpose", ""), application=request.client)))
         evidence = getattr(request, "authentication_evidence", None)
         claims["amr"] = ["mfa"] if evidence and evidence.mfa else ["pwd"] if evidence and not evidence.identity_id else []
         claims["acr"] = "urn:core:assurance:mfa" if evidence and evidence.mfa else "urn:core:assurance:single-factor"
@@ -95,4 +99,4 @@ class OrganizationValidator(OAuth2Validator):
         return claims
 
     def get_discovery_claims(self, request):
-        return ["sub", "name", "email", "organization_id", "service_id", "identity_name", "roles", "permissions", "amr", "acr", "auth_time"]
+        return ["sub", "name", "email", "organization_id", "service_id", "identity_name", "roles", "permissions", "amr", "acr", "auth_time", 'environment', 'deployment_id']

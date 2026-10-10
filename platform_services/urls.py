@@ -1,7 +1,11 @@
 from django.urls import path
-from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal
+from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal, environment_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/environments/', environment_portal.environments, name='platform_environments'),
+    path('organizations/<slug:slug>/platform/environments/new/', environment_portal.environment_edit, name='environment_add'),
+    path('organizations/<slug:slug>/platform/environments/<uuid:pk>/', environment_portal.environment_edit, name='environment_edit'),
+    path('organizations/<slug:slug>/platform/modernize/', environment_portal.modernize, name='modernize_application'),
     path('organizations/<slug:slug>/platform/training/', training_portal.index, name='training'),
     path('organizations/<slug:slug>/platform/training/scenarios/new/', training_portal.scenario, name='training_scenario_add'),
     path('organizations/<slug:slug>/platform/training/scenarios/<uuid:pk>/', training_portal.scenario, name='training_scenario_edit'),

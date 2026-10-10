@@ -71,7 +71,13 @@ class PlatformTests(TestCase):
         return WorkflowRun.objects.get(pk=response.json()["run_id"])
 
     def runtime_sync(self, reports=None, token=None):
-        return self.api("/runtime/sync/", "POST", {"reports": reports or []}, token or self.runtime_token)
+        raw = token or self.runtime_token
+        node = RuntimeNode.objects.filter(credential_hash=WorkloadCredential.digest(raw)).first()
+        values = {"reports": reports or []}
+        if node and node.environment_id:
+            values['isolation'] = {'organization_id': str(node.organization_id), 'environment': node.environment.name, 'default_deny': True}
+            values['inventory'] = []
+        return self.api("/runtime/sync/", "POST", values, raw)
 
     def test_core_services_are_real_marketplace_installations_and_idempotent(self):
         self.assertEqual(self.organization.installations.filter(package__kind="core").count(), 7)

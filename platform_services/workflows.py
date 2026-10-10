@@ -59,6 +59,8 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
     if credential and not credential_allows(credential, capabilities):
         raise PermissionDenied("A required tool capability has not been granted.")
     principal = principal or Principal(user=actor, credential=credential)
+    if credential and credential.environment_id and environment != credential.environment.name:
+        raise PermissionDenied('A workload cannot change its deployment environment.')
     if principal.agent_binding:
         from .agent_identity import require_capabilities
         require_capabilities(principal, capabilities)

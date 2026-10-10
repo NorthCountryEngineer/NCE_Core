@@ -4,6 +4,8 @@ Copy this module into a resource service that has requests installed, or import 
 from this checkout. Client credentials must stay on the service's backend.
 """
 import time
+import os
+from pathlib import Path
 from dataclasses import dataclass
 from urllib.parse import quote, urlparse
 
@@ -31,6 +33,16 @@ class ResourceClient:
     service_id: str
     timeout: float = 5.0
     allow_local_http: bool = False
+    environment: str | None = None
+    deployment_id: str | None = None
+
+    @classmethod
+    def from_environment(cls):
+        return cls(issuer=os.environ['CORE_ISSUER'], client_id=os.environ['CORE_OIDC_CLIENT_ID'],
+            client_secret=Path(os.environ['CORE_OIDC_CLIENT_SECRET_FILE']).read_text().strip(),
+            organization_id=os.environ['CORE_ORGANIZATION_ID'], service_id=os.environ['CORE_SERVICE_ID'],
+            environment=os.environ.get('CORE_ENVIRONMENT'), deployment_id=os.environ.get('CORE_DEPLOYMENT_ID'),
+            allow_local_http=os.environ.get('CORE_ALLOW_LOCAL_HTTP') == '1')
 
     def __post_init__(self):
         parsed = urlparse(self.issuer)
@@ -40,6 +52,8 @@ class ResourceClient:
             raise ValueError("Use an HTTPS issuer origin (HTTP loopback requires explicit development opt-in).")
         if not all([self.client_id, self.client_secret, self.organization_id, self.service_id]):
             raise ValueError("Client credentials and expected organization/service IDs are required.")
+        if self.environment and self.environment not in {'sandbox', 'development', 'staging', 'uat', 'production'}:
+            raise ValueError('Use a registered deployment environment.')
 
     def require(self, access_token: str, permission: str, purpose_code: str = "", resource_type: str = "", resource_id: str = "") -> dict:
         if not access_token or not permission:
@@ -64,6 +78,8 @@ class ResourceClient:
                 not isinstance(claims.get("sub"), str) or not claims["sub"] or
                 type(claims.get("exp")) is not int or claims["exp"] <= time.time()):
             raise Unauthenticated("The token does not match this service and organization.")
+        if (self.environment and claims.get('environment') != self.environment) or (self.deployment_id and claims.get('deployment_id') != self.deployment_id):
+            raise Unauthenticated('The token does not match this deployment environment.')
         permissions = claims.get("permissions")
         if not isinstance(permissions, list) or any(not isinstance(p, str) for p in permissions):
             raise IdentityUnavailable("Malformed authorization response.")

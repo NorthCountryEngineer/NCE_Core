@@ -47,6 +47,10 @@ monitoring and rolling restart. Automatic application deployment is an onboardin
 setting, disabled by default. Creating clusters, purchasing infrastructure, and
 charging payments are outside this implementation.
 
+See [Kubernetes modernization and environment isolation](docs/modernization.md)
+for adopting existing applications into segregated sandbox, development and
+production environments.
+
 See [the platform guide](docs/platform.md) for onboarding, marketplace publication,
 Kubernetes connection, and the core API contract.
 

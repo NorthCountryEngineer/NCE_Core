@@ -9,6 +9,8 @@
 <a href="{% url 'training' organization.slug %}">AI training harness</a>
 <a href="{% url 'fabric' organization.slug %}">Data fabric and federation</a>
 <a href="{% url 'deployment_configuration' organization.slug %}">Deployment configuration</a>
+<a href="{% url 'platform_environments' organization.slug %}">Sandbox, development, and production</a>
+<a href="{% url 'modernize_application' organization.slug %}">Modernize a Kubernetes application</a>
 <a href="{% url 'runtime_add' organization.slug %}">Connect Kubernetes</a>
 </div>
 {% if billing %}<p>Billing provider: {{ billing.get_provider_display }} · {{ billing.status }}. Payments are not enabled.</p>{% endif %}
@@ -16,17 +18,17 @@
 {% for installation in installations %}<p><strong>{{ installation.package.name }}</strong> · {{ installation.version }} · {{ installation.enabled|yesno:"enabled,disabled" }}<br>
 <a href="{% url 'installation_settings' organization.slug installation.pk %}">Set service access</a> · <a href="{% url 'resource_tags' organization.slug 'installation' installation.pk %}">Tags and workload grants</a>
 {% if installation.package.kind == 'application' %} · <a href="{% url 'deploy_installation' organization.slug installation.pk %}">Deploy an instance</a> · <a href="{% url 'installation_upgrade' organization.slug installation.pk %}">Review latest release</a>{% endif %}
-<form class="inline" method="post" action="{% url 'issue_workload_key' organization.slug installation.pk %}">{% csrf_token %}<button type="submit">Create integration key</button></form>
+<a href="{% url 'issue_workload_key' organization.slug installation.pk %}">Create environment integration key</a>
 {% for credential in installation.visible_credentials %}{% if credential.active %}<form method="post" action="{% url 'revoke_workload_key' organization.slug credential.pk %}">{% csrf_token %}{{ credential.name }} · <button type="submit">Revoke key</button></form>{% endif %}{% endfor %}
 </p>{% empty %}<p>Install Core Platform from the marketplace to activate this workspace.</p>{% endfor %}</section>
 <section><h2>Deployed instances</h2>
 <p>The controller and core services are included in this inventory. A missing or stale report means current health is unknown.</p>
 <a href="{% url 'adopt_controller' organization.slug %}">Connect this controller's Kubernetes deployment</a>
 <table><tr><th>Instance</th><th>Status</th><th>Management</th></tr>
-{% for deployment in deployments %}<tr><td>{{ deployment.installation.package.name }} · <a href="{% url 'resource_tags' organization.slug 'deployment' deployment.pk %}">Tags</a><br>{{ deployment.get_target_display }}{% if deployment.parent %} · managed by {{ deployment.parent.name }}{% endif %}</td>
+{% for deployment in deployments %}<tr><td>{{ deployment.installation.package.name }} · <a href="{% url 'resource_tags' organization.slug 'deployment' deployment.pk %}">Tags</a><br>{{ deployment.get_target_display }} · {{ deployment.environment.get_name_display|default:"legacy / unassigned" }} · {{ deployment.namespace }}{% if deployment.parent %} · managed by {{ deployment.parent.name }}{% endif %}</td>
 <td>{{ deployment.status }} · desired {{ deployment.desired_state }}<br>Last report: {{ deployment.last_seen|default:"not received" }}{% if deployment.message %}<br>{{ deployment.message }}{% endif %}</td>
 <td>{% if deployment.target != 'embedded' %}<form method="post" action="{% url 'deployment_action' organization.slug deployment.pk %}">{% csrf_token %}
-{% if deployment.target != 'kubernetes-controller' %}<button name="action" value="start">Start</button> <button name="action" value="stop">Stop</button>{% endif %} <button name="action" value="restart">Restart</button>
+{% if deployment.target != 'kubernetes-controller' %}<button name="action" value="start">{% if deployment.target == 'kubernetes-adopted' %}Enable integration{% else %}Start{% endif %}</button> <button name="action" value="stop">{% if deployment.target == 'kubernetes-adopted' %}Disable integration{% else %}Stop{% endif %}</button>{% endif %} {% if deployment.target != 'kubernetes-adopted' %}<button name="action" value="restart">Restart</button>{% endif %}
 </form>{% else %}Managed through installation settings{% endif %}</td></tr>{% empty %}<tr><td colspan="3">No instances registered.</td></tr>{% endfor %}
 </table></section>
 <section><h2>Kubernetes runtimes</h2>

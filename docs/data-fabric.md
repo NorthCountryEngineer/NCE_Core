@@ -142,3 +142,8 @@ Run `CORE_DEBUG=1 uv run python manage.py test core_fabric.tests` for configurat
 permission, permit, scope, provenance, and real two-deployment HTTP tests with
 administrator approval/revocation on both portals. [local-testing.md](local-testing.md)
 walks through running and testing the platform yourself.
+
+Environment-bound consumers and bridge keys need matching local environment
+boundary tags on fabric agreements and their datasets. Export agreements inherit
+the dataset environment; assign an import agreement its recipient environment
+tag explicitly. Existing bilateral approval and purpose checks remain required.

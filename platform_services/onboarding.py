@@ -1,5 +1,5 @@
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -78,21 +78,30 @@ def onboarding(request):
                         defaults={k: values[k] for k in ["provider", "billing_email", "currency"]})
                 elif state.step == 3:
                     form.save()
+                    from .environments import default_environment
+                    default_environment(state.organization)
                 elif state.step == 4 and form.cleaned_data["name"]:
                     import secrets
                     raw = "cr_" + secrets.token_urlsafe(48)
+                    from .environments import default_environment
+                    environment = default_environment(state.organization)
                     locked.runtime = RuntimeNode.objects.create(organization=state.organization, name=form.cleaned_data["name"],
-                        namespace=state.organization.deployment_configuration.namespace, credential_hash=WorkloadCredential.digest(raw))
+                        namespace=environment.namespace, environment=environment, credential_hash=WorkloadCredential.digest(raw))
                     AuditEvent.objects.create(organization=state.organization, actor=request.user, action="runtime.created", target=str(locked.runtime.pk))
                 elif state.step == 4:
                     pass
                 else:
                     install_core(state.organization, actor=request.user)
+                    from .environments import default_environment
+                    from .models import Deployment
+                    Deployment.objects.filter(installation__organization=state.organization, target='embedded').update(environment=default_environment(state.organization))
                     locked.complete = True
                     locked.completed_at = timezone.now()
                     AuditEvent.objects.create(organization=state.organization, actor=request.user, action="onboarding.completed", target=state.organization.slug)
                 locked.step = min(state.step + 1, 5)
                 locked.save()
+        except ValidationError as error:
+            form.add_error(None, error)
         except IntegrityError:
             form.add_error(None, "The organization name is already in use. Choose another slug.")
         else:

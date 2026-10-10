@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import F
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.http import HttpResponseBadRequest
 from django.urls import reverse
@@ -16,7 +17,7 @@ from .forms import (
 from .models import AgentDefinition, AgentListing, Dataset, Deployment, DeploymentConfiguration, Installation, MarketplacePackage, Pipeline, RuntimeNode, Workflow
 from .services import create_deployment, install_package, issue_workload_credential, upgrade_installation
 from .workflows import enqueue, snapshot_agents
-from identity.access import request_principal, visible_resources
+from identity.access import request_principal, visible_resources, require_access
 
 
 @organization_admin
@@ -38,14 +39,14 @@ def dashboard(request, organization):
 
 @organization_admin
 def marketplace(request, organization):
-    return render(request, "platform_services/marketplace.html", {"packages": MarketplacePackage.objects.filter(active=True),
+    return render(request, "platform_services/marketplace.html", {"packages": MarketplacePackage.objects.filter(Q(organization__isnull=True) | Q(organization=organization), active=True),
         'agent_listings': AgentListing.objects.filter(active=True),
         "organization": organization, "installed_slugs": list(organization.installations.values_list("package__slug", flat=True))})
 
 
 @organization_admin
 def install(request, organization, package_slug):
-    package = get_object_or_404(MarketplacePackage, slug=package_slug, active=True)
+    package = get_object_or_404(MarketplacePackage.objects.filter(Q(organization__isnull=True) | Q(organization=organization)), slug=package_slug, active=True)
     form = InstallationForm(request.POST or None, package=package)
     if request.method == "POST" and form.is_valid():
         try:
@@ -98,9 +99,29 @@ def upgrade(request, organization, pk):
 def configuration(request, organization):
     config = getattr(organization, "deployment_configuration", None) or DeploymentConfiguration(organization=organization)
     form = DeploymentConfigurationForm(request.POST or None, instance=config)
-    if request.method == "POST" and form.is_valid() and organization.runtime_nodes.filter(active=True).exclude(namespace=form.cleaned_data["namespace"]).exists():
-        form.add_error("namespace", "Disable existing runtimes before changing the namespace.")
-    return edit_form(request, form, "Kubernetes deployment configuration", reverse("platform_dashboard", args=[organization.slug]), "deployment_configuration.updated")
+    if request.method == "POST" and form.is_valid():
+        registered = organization.environments.filter(name=form.cleaned_data['environment']).first()
+        if registered and registered.namespace != form.cleaned_data['namespace']:
+            form.add_error('namespace', 'An existing environment namespace is immutable. Configure additional environments separately.')
+        elif not registered and organization.runtime_nodes.filter(active=True, environment__isnull=True).exclude(namespace=form.cleaned_data['namespace']).exists():
+            form.add_error('namespace', 'Disable legacy runtimes before changing the namespace.')
+    if request.method == 'POST' and form.is_valid():
+        from .environments import default_environment
+        try:
+            with transaction.atomic():
+                form.save()
+                environment = default_environment(organization)
+                require_access(request_principal(request), environment, 'environment.default_configuration')
+                for field in ['application_origin', 'ingress_class', 'tls_secret_name', 'auto_deploy']:
+                    setattr(environment, field, form.cleaned_data[field])
+                environment.full_clean()
+                environment.save(update_fields=['application_origin', 'ingress_class', 'tls_secret_name', 'auto_deploy'])
+                audit(request, 'deployment_configuration.updated', config.pk)
+        except ValidationError as error:
+            form.add_error(None, error)
+        else:
+            return redirect('platform_dashboard', slug=organization.slug)
+    return render(request, 'identity/form.html', {'form': form, 'title': 'Default deployment configuration'})
 
 
 @organization_admin
@@ -108,12 +129,16 @@ def node_add(request, organization):
     config = getattr(organization, "deployment_configuration", None)
     if config is None:
         return redirect("deployment_configuration", slug=organization.slug)
-    form = NodeForm(request.POST or None)
+    form = NodeForm(request.POST or None, organization=organization)
+    form.fields['environment'].queryset = form.fields['environment'].queryset.filter(pk__in=[
+        environment.pk for environment in visible_resources(request_principal(request), form.fields['environment'].queryset)])
     if request.method == "POST" and form.is_valid():
         raw = "cr_" + secrets.token_urlsafe(48)
         from .models import WorkloadCredential
         with transaction.atomic():
-            node = RuntimeNode.objects.create(organization=organization, name=form.cleaned_data["name"], namespace=config.namespace,
+            environment = form.cleaned_data['environment']
+            require_access(request_principal(request), environment, 'runtime.environment')
+            node = RuntimeNode.objects.create(organization=organization, name=form.cleaned_data["name"], namespace=environment.namespace, environment=environment,
                 credential_hash=WorkloadCredential.digest(raw))
             audit(request, "runtime.created", node.pk)
         return render(request, "platform_services/runtime_credential.html", {"node": node, "runtime_token": raw})
@@ -133,14 +158,23 @@ def node_disable(request, organization, pk):
 
 
 @organization_admin
-@require_POST
 def issue_key(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk, enabled=True)
-    with transaction.atomic():
-        credential, raw = issue_workload_credential(installation, "Manual integration")
-        audit(request, "workload_credential.created", credential.pk)
-    return render(request, "platform_services/workload_credential.html", {"installation": installation,
-        "workload_token": raw, "credential": credential})
+    from django import forms
+    class KeyForm(forms.Form):
+        environment = forms.ModelChoiceField(queryset=organization.environments.filter(active=True))
+    form = KeyForm(request.POST or None)
+    form.fields['environment'].queryset = form.fields['environment'].queryset.filter(pk__in=[
+        environment.pk for environment in visible_resources(request_principal(request), form.fields['environment'].queryset)])
+    if request.method == 'POST' and form.is_valid():
+        environment = form.cleaned_data['environment']
+        require_access(request_principal(request), environment, 'workload.environment')
+        with transaction.atomic():
+            credential, raw = issue_workload_credential(installation, "Manual integration", environment=environment)
+            audit(request, "workload_credential.created", credential.pk)
+        return render(request, "platform_services/workload_credential.html", {"installation": installation,
+            "workload_token": raw, "credential": credential})
+    return render(request, 'identity/form.html', {'form': form, 'title': 'Create an environment-scoped integration key'})
 
 
 @organization_admin
@@ -162,10 +196,13 @@ def deploy(request, organization, pk):
     if config is None:
         return redirect("deployment_configuration", slug=organization.slug)
     form = DeploymentForm(request.POST or None, organization=organization, initial={"endpoint": config.application_origin})
+    form.fields['node'].queryset = form.fields['node'].queryset.filter(pk__in=[
+        node.pk for node in visible_resources(request_principal(request), form.fields['node'].queryset)])
     if request.method == "POST" and form.is_valid():
         try:
+            require_access(request_principal(request), form.cleaned_data['node'], 'deployment.runtime')
             create_deployment(installation, form.cleaned_data["node"], form.cleaned_data["endpoint"], actor=request.user,
-                              desired_state="running" if config.auto_deploy else "stopped")
+                              desired_state="running" if (form.cleaned_data['node'].environment or config).auto_deploy else "stopped")
         except ValidationError as error:
             form.add_error(None, error)
         else:
@@ -181,6 +218,7 @@ def adopt_controller(request, organization):
         with transaction.atomic():
             deployment.node = form.cleaned_data["node"]
             deployment.namespace = deployment.node.namespace
+            deployment.environment = deployment.node.environment
             deployment.resource_name = form.cleaned_data["resource_name"]
             deployment.target = "kubernetes-controller"
             deployment.action = "observe"
@@ -201,7 +239,9 @@ def deployment_action(request, organization, pk):
     with transaction.atomic():
         deployment = get_object_or_404(Deployment.objects.select_for_update().select_related("installation__package"), pk=pk,
             installation__organization=organization)
-        if deployment.target == "embedded" or (deployment.target == "kubernetes-controller" and action != "restart"):
+        if deployment.target == 'kubernetes-adopted' and action == 'restart':
+            messages.error(request, 'Application releases and restarts remain managed by its Kubernetes owner.')
+        elif deployment.target == "embedded" or (deployment.target == "kubernetes-controller" and action != "restart"):
             messages.error(request, "Embedded services follow their installation settings. A connected controller supports rolling restart only.")
         elif action != "stop" and not deployment.installation.enabled:
             messages.error(request, "Enable this installation before starting it.")
@@ -225,7 +265,7 @@ def deployment_action(request, organization, pk):
                     from .secrets import decrypt_bundle, encrypt_bundle
                     bundle = decrypt_bundle(deployment.encrypted_bundle)
                     deployment.installation.credentials.filter(name=f"deployment:{deployment.pk}").update(active=False)
-                    _, raw = issue_workload_credential(deployment.installation, f"deployment:{deployment.pk}")
+                    _, raw = issue_workload_credential(deployment.installation, f"deployment:{deployment.pk}", deployment.environment, deployment)
                     bundle["workload_token"] = raw
                     deployment.encrypted_bundle = encrypt_bundle(bundle)
                     deployment.save(update_fields=["encrypted_bundle"])

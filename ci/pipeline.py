@@ -183,13 +183,13 @@ def manifests(config, image, sha):
         raise PipelineError('A full commit SHA is required.')
     k = config['kubernetes']
     name, namespace = k['release_name'], k['namespace']
-    common = {'app.kubernetes.io/part-of': name, 'app.kubernetes.io/managed-by': 'core-ci'}
+    common = {'app.kubernetes.io/part-of': name, 'app.kubernetes.io/managed-by': 'core-ci', 'core.platform/environment': config['environment']}
     if k.get('organization_id'):
         common['core.platform/organization'] = k['organization_id']
     def metadata(resource_name):
         return {'name': resource_name, 'namespace': namespace, 'labels': common.copy(), 'annotations': {'core.platform/commit': sha}}
     configmap = {'apiVersion': 'v1', 'kind': 'ConfigMap', 'metadata': metadata(name + '-config'), 'data': {
-        'CORE_DEBUG': '0', 'CORE_ISSUER': k['issuer'], 'CORE_ALLOWED_HOSTS': k['issuer'].split('://')[1].split(':')[0],
+        'CORE_ENVIRONMENT': config['environment'], 'CORE_DEBUG': '0', 'CORE_ISSUER': k['issuer'], 'CORE_ALLOWED_HOSTS': k['issuer'].split('://')[1].split(':')[0],
         'CORE_TRUST_PROXY': '1', 'CORE_SECRET_KEY_FILE': '/run/secrets/core/django.key',
         'CORE_OIDC_KEY_FILE': '/run/secrets/core/oidc.key', 'CORE_IDP_SECRET_ROOT': '/run/secrets/identity-providers',
         'CORE_CHAT_SECRET_ROOT': '/run/secrets/chat-federation',

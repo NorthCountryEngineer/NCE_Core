@@ -37,6 +37,8 @@ def introspect(request):
     if not principal or principal.agent_binding.organization_id != request.organization.pk:
         return response({'active': False})
     binding = principal.agent_binding
+    if request.credential.environment_id and binding.environment != request.credential.environment.name:
+        return response({'active': False})
     task_id = str(binding.task_id) if binding.task_id else None
     service = request.credential.installation.service
     if values.get('environment') != binding.environment or values.get('task_id') != task_id:

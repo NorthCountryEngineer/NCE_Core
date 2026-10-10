@@ -4,6 +4,16 @@ Core Platform is the default name. `CORE_PRODUCT_NAME` changes it for a deployme
 and Organization settings allow each customer to choose its own display name.
 Immutable organization and service UUIDs and the trusted issuer establish authority.
 
+## Application modernization and environments
+
+[Modernization](modernization.md) registers existing Kubernetes applications in
+the organization's private marketplace, generates scoped Core/OIDC integration,
+and preserves the owner's Kubernetes configuration. Register distinct sandbox,
+development and production environments through Central admin. Their namespace,
+runtime accounts, application credentials, resource tags and live authorization
+form separate boundaries; configure and verify cluster networking through the
+provided isolation bundle.
+
 ## Developer onboarding
 
 An operator creates an account and grants its developer designation in platform
@@ -14,7 +24,7 @@ grants it. A new developer's browser sign-in leads into `/onboarding/`:
 1. Create an organization and choose its name, slug, and product display name.
 2. Supply legal name, country, support address, timezone, billing address, currency,
    and preferred future payment provider.
-3. Choose development/staging/production, an existing Kubernetes namespace,
+3. Choose sandbox/development/staging/UAT/production, a Kubernetes namespace,
    application origin, optional ingress class/TLS secret, and automatic deployment.
 4. Register a runtime connector and save its one-time key, or defer connection when
    automatic deployment is disabled.
@@ -37,8 +47,8 @@ model calls are created by this application.
 Core Data Fabric is a marketplace service for [administrator-approved federation](data-fabric.md)
 of selected data across independent deployments, with consumable application/agent APIs.
 
-Database migrations seed five built-in packages: `core-platform`, `core-data`,
-`core-agents`, `core-workflows`, `core-chat`, and `core-training`. They use the same installation and service
+Database migrations seed seven built-in packages: `core-platform`, `core-data`,
+`core-agents`, `core-workflows`, `core-chat`, `core-training`, and `core-fabric`. They use the same installation and service
 registry as applications. Core runtime code executes inside this deployment;
 installing a core package activates its organization workspace and creates its
 monitored instance. Installing it does not start a separate remote container.

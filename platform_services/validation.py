@@ -40,8 +40,10 @@ def validate_endpoint(url):
 
 
 def validate_manifest(manifest):
-    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path"}:
+    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload'}:
         raise ValidationError("Unsupported manifest fields.")
+    if 'existing_workload' in manifest and manifest['existing_workload'] is not True:
+        raise ValidationError('Existing workloads must explicitly use adoption mode.')
     capabilities = manifest.get("capabilities", [])
     if not isinstance(capabilities, list) or any(not isinstance(c, str) or c not in CAPABILITIES for c in capabilities):
         raise ValidationError("Unknown core capability.")
