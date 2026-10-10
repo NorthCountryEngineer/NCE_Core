@@ -15,6 +15,7 @@ import uuid
 import requests
 from identity_client import ResourceClient, Unauthenticated, Forbidden, IdentityUnavailable
 from core_client import CoreClient, CoreServiceError
+from documentation_client import OrganizationDocumentation
 
 ROOT = Path(__file__).resolve().parent
 SPEC = json.loads((ROOT / 'app-spec.json').read_text())
@@ -156,6 +157,23 @@ def application(environ, start_response):
         if method == 'GET' and path == '/api/spec':
             authorize_token(client, token, 'app-read', purpose, environ)
             return reply('200 OK', {'name': SPEC['name'], 'resources': SPEC['resources'], 'csrf': session['csrf'] if session else None})
+        if method == 'GET' and path == '/api/documentation':
+            authorize_token(client, token, 'docs-read', purpose, environ)
+            parameters = parse_qs(environ.get('QUERY_STRING', ''), max_num_fields=4)
+            if set(parameters) - {'q', 'limit', 'after', 'document_id'} or any(len(values) != 1 for values in parameters.values()):
+                raise ValueError('Use bounded documentation parameters.')
+            core = CoreClient.from_environment()
+            core.purpose_code = purpose
+            if token.startswith('ca_'):
+                # Agent identity was just checked against this application's live placement.
+                core.token = token
+            docs = OrganizationDocumentation(core, user_access_token=None if token.startswith('ca_') else token)
+            if 'document_id' in parameters:
+                value = docs.read(parameters['document_id'][0])
+            else:
+                value = docs.search(parameters.get('q', [''])[0], limit=int(parameters.get('limit', ['20'])[0]),
+                    after=parameters.get('after', [None])[0])
+            return reply('200 OK', value)
         if method == 'POST' and path == '/logout':
             if not session or not secrets.compare_digest(environ.get('HTTP_X_CSRF_TOKEN', ''), session['csrf']):
                 return reply('403 Forbidden', {'error': 'csrf_required'})

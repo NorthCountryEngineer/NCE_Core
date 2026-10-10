@@ -1,5 +1,12 @@
 # AI-led application creation
 
+Released applications include an `APPLICATION.md` manual for their reviewed collections,
+field types, APIs, security, deployment, and storage limits. Human marketplace release
+publishes a versioned documentation source; the organization's platform inherits it immediately.
+Use [Organization documentation](organization-documentation.md) to add local guidance and
+assign documentation roles. The archive includes the portable documentation adapter; reading
+Core documentation from the generated backend requires explicit `docs.read` approval.
+
 Core App Factory is a consumable marketplace service (`core-app-factory`). It takes an
 application description and a reviewed structured specification, then coordinates six
 separate development-agent accounts through the durable Core workflow engine. It produces

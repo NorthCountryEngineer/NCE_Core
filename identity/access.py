@@ -190,6 +190,7 @@ def decision(principal, resource):
                     'core_fabric.fabriccontract': 'fabric_contracts',
                     'platform_services.applicationintegration': 'integrations',
                     'platform_services.appproject': 'app_projects',
+                    'platform_services.documentationpage': 'documentation',
                     'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
                 if scope and str(item.pk) not in task.resources.get(scope, []):
                     return False, 'agent_task_resource_scope', tags

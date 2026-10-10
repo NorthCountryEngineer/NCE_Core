@@ -226,7 +226,7 @@ def manifests(config, image, sha):
     migration_pod = deepcopy(pod)
     migration_pod['restartPolicy'] = 'Never'
     migration_pod['containers'][0]['command'] = [
-        '.venv/bin/python', '-c', 'import subprocess; subprocess.run([".venv/bin/python", "manage.py", "check", "--deploy", "--fail-level", "WARNING"], check=True); subprocess.run([".venv/bin/python", "manage.py", "migrate", "--noinput"], check=True)']
+        '.venv/bin/python', '-c', 'import subprocess; subprocess.run([".venv/bin/python", "manage.py", "check", "--deploy", "--fail-level", "WARNING"], check=True); subprocess.run([".venv/bin/python", "manage.py", "migrate", "--noinput"], check=True); subprocess.run([".venv/bin/python", "manage.py", "sync_platform_docs"], check=True)']
     migration = {'apiVersion': 'batch/v1', 'kind': 'Job', 'metadata': metadata(name + '-migrate-' + sha[:12]),
         'spec': {'backoffLimit': 0, 'activeDeadlineSeconds': k.get('migration_timeout_seconds', 600), 'ttlSecondsAfterFinished': 86400,
                  'template': {'metadata': {'labels': common.copy()}, 'spec': migration_pod}}}

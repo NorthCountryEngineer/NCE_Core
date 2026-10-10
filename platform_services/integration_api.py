@@ -15,7 +15,7 @@ from .integrations import (IntegrationVersionConflict, authorize, backend_creden
                            descriptor, require_management, settings_document)
 
 
-def integration_api(methods=('GET',)):
+def integration_api(methods=('GET',), *, namespace='integration'):
     def decorate(view):
         @workload_api(methods=methods)
         @wraps(view)
@@ -44,7 +44,9 @@ def integration_api(methods=('GET',)):
             except IntegrationVersionConflict:
                 return response({'error': 'version_conflict'}, 409)
             except ValidationError:
-                return response({'error': 'invalid_request', 'detail': 'Review the integration schema, revision, and credential replacement controls.'}, 400)
+                detail = ('Review the documentation query, format, and approved scope.' if namespace == 'documentation'
+                    else 'Review the integration schema, revision, and credential replacement controls.')
+                return response({'error': 'invalid_request', 'detail': detail}, 400)
             except PermissionDenied as error:
                 # The transaction rolled back, including checks' audit writes.
                 # Preserve a final denial outside it, without request bodies or keys.
@@ -52,7 +54,7 @@ def integration_api(methods=('GET',)):
                 reason = getattr(error, 'integration_reason', 'consumer_permission_denied')
                 for principal in [request.integration_source, request.access_principal] if request.access_principal is not request.integration_source else [request.access_principal]:
                     allowed, policy_reason, tags = decision(principal, resource)
-                    record_decision(principal, resource, 'integration.' + view.__name__ + '_denied', False,
+                    record_decision(principal, resource, namespace + '.' + view.__name__ + '_denied', False,
                         reason if allowed else policy_reason, tags)
                 return response({'error': 'insufficient_permission'}, 403)
         return wrapped

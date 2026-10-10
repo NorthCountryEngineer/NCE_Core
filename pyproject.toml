@@ -12,6 +12,8 @@ dependencies = [
   "cryptography==50.0.2",
   "requests==2.34.2",
   "jsonschema>=4.23,<5",
+  "markdown==3.8.2",
+  "bleach==6.2.0",
 ]
 
 [tool.uv]

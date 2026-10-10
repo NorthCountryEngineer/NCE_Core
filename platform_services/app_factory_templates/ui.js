@@ -40,7 +40,28 @@ async function refresh() {
 }
 document.getElementById('refresh').onclick = refresh;
 document.getElementById('logout').onclick = async () => {
-  try { await call('/logout', { method: 'POST' }); document.getElementById('collections').replaceChildren(); status.textContent = 'Signed out'; }
+  try { await call('/logout', { method: 'POST' }); document.getElementById('collections').replaceChildren(); document.getElementById('docs-results').replaceChildren(); status.textContent = 'Signed out'; }
   catch (error) { status.textContent = error.message; }
+};
+document.getElementById('docs-search').onclick = async () => {
+  const root = document.getElementById('docs-results'), notice = document.getElementById('docs-status');
+  root.replaceChildren();
+  try {
+    const value = await call('/api/documentation?q=' + encodeURIComponent(document.getElementById('docs-query').value));
+    for (const guide of value.documents) {
+      const section = document.createElement('section'), button = document.createElement('button');
+      button.textContent = guide.title; section.append(button);
+      button.onclick = async () => {
+        try {
+          const page = await call('/api/documentation?document_id=' + encodeURIComponent(guide.id));
+          const pre = document.createElement('pre'), citation = document.createElement('p');
+          pre.textContent = page.markdown; citation.textContent = page.citation + ' · ' + page.digest;
+          section.replaceChildren(button, pre, citation);
+        } catch (error) { notice.textContent = error.message; }
+      };
+      root.append(section);
+    }
+    notice.textContent = value.next_cursor ? 'More guides are available; narrow your search.' : 'Authorized guides loaded';
+  } catch (error) { notice.textContent = error.message; }
 };
 refresh();

@@ -74,7 +74,7 @@ class AppFactoryTests(TestCase):
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), '-m', 'unittest', 'test_server', '-v'],
                 cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('Ran 11 tests', result.stderr)
+            self.assertIn('Ran 13 tests', result.stderr)
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), 'ci/source_digest.py'], cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), source_hash)
@@ -152,7 +152,12 @@ class AppFactoryTests(TestCase):
         package = release(self.project, self.principal, image, source_hash, 'Reviewed local test run and matching image provenance')
         self.assertEqual(package.organization_id, self.org.pk)
         installation = Installation.objects.get(package=package)
-        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write'})
+        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write', 'docs-read'})
+        guide = installation.documentation_pages.get(slug='application-guide')
+        self.assertEqual(guide.source.package_id, package.pk)
+        self.assertEqual(guide.source.version, installation.version)
+        self.assertIn('GET /api/records/items', guide.source.markdown)
+        self.assertEqual(guide.source.markdown, artifacts(self.project, self.principal)[0]['APPLICATION.md'])
         collection = ProtectedResource.objects.get(service=installation.service, resource_type='app_collection', external_id='items')
         self.assertIn(self.environment.boundary_tag, collection.permission_tags.all())
         self.assertFalse(installation.deployments.exists())
@@ -246,7 +251,7 @@ class GeneratedServiceLiveTests(LiveServerTestCase):
         from identity_client import ResourceClient
         from oauth2_provider.models import AccessToken, set_token_value
         from platform_services.models import RuntimeNode, WorkloadCredential
-        from platform_services.services import create_deployment
+        from platform_services.services import create_deployment, issue_workload_credential
         from platform_services.secrets import decrypt_bundle
         import importlib.util
         seed_catalog(apps, None)
@@ -287,9 +292,9 @@ class GeneratedServiceLiveTests(LiveServerTestCase):
             server.IDENTITY = ResourceClient(self.live_server_url, deployment.application.client_id,
                 decrypt_bundle(deployment.encrypted_bundle)['oidc_client_secret'], str(organization.pk), str(installation.service_id),
                 allow_local_http=True, environment='sandbox', deployment_id=str(deployment.pk))
-            def request(method='GET', record=None):
+            def request(method='GET', record=None, path='/api/records/items', query=''):
                 payload = json.dumps(record).encode() if record else b''
-                environ = {'REQUEST_METHOD': method, 'PATH_INFO': '/api/records/items', 'HTTP_AUTHORIZATION': 'Bearer ' + token,
+                environ = {'REQUEST_METHOD': method, 'PATH_INFO': path, 'QUERY_STRING': query, 'HTTP_AUTHORIZATION': 'Bearer ' + token,
                     'CONTENT_TYPE': 'application/json', 'CONTENT_LENGTH': str(len(payload)), 'wsgi.input': io.BytesIO(payload)}
                 result = {}
                 def start(status, headers):
@@ -298,6 +303,25 @@ class GeneratedServiceLiveTests(LiveServerTestCase):
                 return result
             self.assertEqual(request('POST', {'title': 'Live item', 'status': 'review'})['status'], 201)
             self.assertEqual(len(request()['body']['records']), 1)
+            self.assertEqual(request(path='/api/documentation')['status'], 403)
+            from core_client import CoreClient
+            from unittest.mock import patch
+            backend, backend_raw = issue_workload_credential(installation, 'Live documentation backend', environment, deployment)
+            installation.granted_capabilities = ['docs.read']
+            installation.save()
+            platform = Installation.objects.get(organization=organization, package__slug='core-platform')
+            role.permissions.add(platform.service.permissions.get(codename='docs-read'), installation.service.permissions.get(codename='docs-read'))
+            core_client = CoreClient(self.live_server_url + '/api/platform/v1', backend_raw, str(organization.pk), allow_local_http=True, environment='sandbox')
+            with patch.object(server.CoreClient, 'from_environment', return_value=core_client):
+                guide = installation.documentation_pages.get(slug='application-guide')
+                result = request(path='/api/documentation', query='document_id=' + str(guide.pk))
+                self.assertEqual(result['status'], 200, result)
+                self.assertIn('Live app test', result['body']['markdown'])
+                self.assertEqual(result['body']['environment'], 'sandbox')
+                role.permissions.remove(platform.service.permissions.get(codename='docs-read'))
+                denied = request(path='/api/documentation', query='document_id=' + str(guide.pk))
+                self.assertNotEqual(denied['status'], 200)
+                self.assertNotIn('markdown', denied['body'])
             role.permissions.clear()
             self.assertEqual(request()['status'], 403)
             role.permissions.add(installation.service.permissions.get(codename='app-read'))

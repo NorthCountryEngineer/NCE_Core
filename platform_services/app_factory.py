@@ -155,6 +155,7 @@ def execute_step(organization, step, data, principal, event_id):
         files['identity_client.py'] = (ROOT / 'identity_client.py').read_text()
         files['integration_client.py'] = (ROOT / 'integration_client.py').read_text()
         files['core_client.py'] = (ROOT / 'core_client.py').read_text()
+        files['documentation_client.py'] = (ROOT / 'documentation_client.py').read_text()
     elif role == 'frontend':
         files['index.html'] = (TEMPLATES / 'index.html').read_text()
         files['ui.js'] = (TEMPLATES / 'ui.js').read_text()
@@ -170,6 +171,25 @@ def execute_step(organization, step, data, principal, event_id):
     elif role == 'package':
         for name in ['Dockerfile', 'README.md']:
             files[name] = (TEMPLATES / name).read_text()
+        guide = ('# {{application_name}} for {{organization_name}}\n\n'
+            'Sign in through **{{platform_name}}** at your administrator-provided application endpoint. '
+            'Support: {{support_email}}. This guide describes the reviewed generated specification.\n\n'
+            '## Collections and APIs\n\n'
+            'Use the collection selector and typed create form in the application. Read operations require '
+            '`app-read`; create operations require `app-write`. Every collection is checked against its '
+            'live Core `app_collection` policy and agent task scope.\n\n')
+        for resource in project.specification['resources']:
+            guide += f"### Collection `{resource['slug']}`\n\n"
+            guide += f"`GET /api/records/{resource['slug']}` reads records; `POST /api/records/{resource['slug']}` creates a record.\n\n"
+            guide += '| Field | Type |\n| --- | --- |\n'
+            guide += ''.join(f'| `{field}` | {kind} |\n' for field, kind in sorted(resource['fields'].items())) + '\n'
+        guide += '## Deployment and operation\n\n' + files['README.md']
+        guide += ('\n## Organization context\n\nEnvironment: {{environment_name}}. Namespace: {{namespace}}. '
+            'Endpoint: {{application_origin}}. Installed version: {{application_version}}.\n\n'
+            'The platform hosts this versioned guide and organization extensions. Access requires '
+            'Core `docs-read` and application `docs-read`; business operations remain separately authorized. '
+            'Use the included `documentation_client.py` for approved platform retrieval.\n')
+        files['APPLICATION.md'] = guide
         for name in ['pyproject.toml', 'uv.lock']:
             files[name] = (ROOT / name).read_text()
         files['.dockerignore'] = '.git\n.venv\n__pycache__\n*.sqlite3\nsecrets\n.env\nartifacts\n'
@@ -214,7 +234,7 @@ def source_archive(project, principal):
 def release(project, principal, image, source_hash, verification_reference):
     project = AppProject.objects.select_for_update().get(pk=project.pk)
     authorize(project, principal, 'appfactory.release', human=True)
-    _, expected = artifacts(project, principal)
+    files, expected = artifacts(project, principal)
     if source_hash != expected or not isinstance(verification_reference, str) or not 1 <= len(verification_reference) <= 500:
         raise ValidationError('Supply the exact source digest and a reviewed successful CI/test evidence reference.')
     if project.package_id:
@@ -223,10 +243,17 @@ def release(project, principal, image, source_hash, verification_reference):
         return project.package
     package = MarketplacePackage(organization=project.organization, slug=f'app-{project.pk.hex}', name=project.name,
         version='0.1.0', description=project.description,
-        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': [], 'dependencies': ['core-platform'],
+        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': ['docs.read'], 'dependencies': ['core-platform'],
                                     'callback_path': '/oauth/callback', 'health_path': '/health'})
     package.full_clean()
     package.save()
+    from .documentation import publish_source
+    guide = files.get('APPLICATION.md') or files.get('README.md')
+    if not guide:
+        raise ValidationError('The reviewed source archive must include application documentation.')
+    publish_source(package, {'version': package.version, 'slug': 'application-guide', 'title': project.name[:154] + ' guide',
+        'summary': 'Reviewed generated collections, APIs, security, deployment, and organization support.',
+        'category': 'user-guide', 'audience': 'users', 'required_permissions': [], 'markdown': guide}, principal)
     from .services import install_package
     installation = install_package(project.organization, package, actor=principal.user)
     installation.permission_tags.set(effective_tags(project))

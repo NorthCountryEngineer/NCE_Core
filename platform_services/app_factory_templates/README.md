@@ -22,6 +22,15 @@ Sign in through the generated UI. Browser authentication uses OAuth authorizatio
 server-side short sessions, HTTP-only cookies, and CSRF protection. Backend clients can send
 service-bound bearer tokens to `/api/records/<collection>`.
 
+The application's guide search uses `/api/documentation` and the included portable documentation
+adapter. Approve the installed application's `docs.read` capability, assign Core Platform `docs-read`
+and this application's `docs-read` service permissions to intended readers, and grant required tags.
+Technical guides additionally require Core `docs-admin` and the application's `docs.admin` capability
+if you deliberately add and approve it. The backend forwards the authenticated user's service-bound
+token; agents read with their own live identity/task scope. Document pages are reauthorized when
+opened, and the UI displays reference Markdown as plain text with citations/digests. Core's own
+documentation reader provides formatted guides and downloads. No cached document permission is used.
+
 The service denies operations if Core is unavailable or permissions, placement, or tags are revoked.
 Sessions are process-local: this starter deliberately uses one worker; restarts require login.
 The starter uses `/tmp/app.sqlite3`. For durable storage, set `APP_DATABASE=/data/app.sqlite3`,

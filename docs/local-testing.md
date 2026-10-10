@@ -15,6 +15,7 @@ git pull origin main
 uv sync --frozen
 uv run python scripts/init_dev.py
 CORE_DEBUG=1 uv run python manage.py migrate --noinput
+CORE_DEBUG=1 uv run python manage.py sync_platform_docs
 CORE_DEBUG=1 uv run python manage.py check
 ```
 

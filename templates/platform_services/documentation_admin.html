@@ -1,0 +1,14 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.name }} · Documentation administration</h1>
+<p class="actions"><a href="{% url 'documentation' organization.slug %}">Read documentation</a><a href="{% url 'documentation_add' organization.slug %}">Add organization or scoped application guide</a><a href="{% url 'documentation_publish' organization.slug %}">Publish application source</a><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a></p>
+<p>New installations inherit published guides for their installed version. Review new source revisions before selecting them in an existing page. Organization extensions and replacements stay under your control.</p>
+<section><h2>Application documentation coverage</h2>
+{% for row in coverage %}<p>{{ row.installation.package.name }} {{ row.installation.version }} · {% if row.has_docs %}Guides registered{% else %}No guides registered: publish application documentation or add an organization guide.{% endif %}</p>{% endfor %}</section>
+{% for page in pages %}<section>
+<h2><a href="{% url 'documentation_edit' organization.slug page.pk %}">{{ page.title }}</a></h2>
+<p>{{ page.installation.package.name|default:"Organization" }} · {{ page.environment.get_name_display|default:"Shared guidance" }}{% if page.deployment %} · Deployment {{ page.deployment.pk }}{% endif %} · {{ page.get_mode_display }} · {% if page.active %}Enabled{% else %}Disabled{% endif %}</p>
+<p>Organization revision {{ page.revision }}{% if page.source %} · Source {{ page.source.version }} revision {{ page.source.revision }}{% endif %}{% if page.needs_review %} · <strong>Source update or installed-version change needs review</strong>{% endif %}</p>
+<a href="{% url 'resource_tags' organization.slug 'documentationpage' page.pk %}">Permissions and classification tags</a>
+</section>{% empty %}<p>No documentation pages registered.</p>{% endfor %}
+{% endblock %}

@@ -13,6 +13,7 @@ from .secrets import encrypt_bundle
 from .validation import CAPABILITIES, validate_manifest
 
 CAPABILITY_PACKAGE = {"data.read": "core-data", "data.write": "core-data", "agents.run": "core-agents",
+                      **{c: 'core-platform' for c in ['docs.read', 'docs.admin', 'docs.manage']},
                       **{c: 'core-app-factory' for c in ['appfactory.create', 'appfactory.read', 'appfactory.build', 'appfactory.release']},
                       **{c: 'core-fabric' for c in ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']},
                       **{c: 'core-training' for c in ['training.run', 'training.read', 'training.manage', 'training.evaluate']},
@@ -64,6 +65,8 @@ def install_package(organization, package, grants=(), actor=None, _path=()):
         Deployment.objects.create(installation=installation, name="control-plane" if package.slug == "core-platform" else package.slug,
             target="embedded", endpoint=settings.ISSUER, parent=parent)
     AuditEvent.objects.create(organization=organization, actor=actor, action="marketplace.installed", target=package.slug)
+    from .documentation import inherit_installation
+    inherit_installation(installation)
     return installation
 
 
@@ -108,6 +111,8 @@ def upgrade_installation(installation, grants, actor):
         deployment.healthy = False
         deployment.save(update_fields=["revision", "healthy"])
     AuditEvent.objects.create(organization=installation.organization, actor=actor, action="installation.upgraded", target=str(installation.pk))
+    from .documentation import inherit_installation
+    inherit_installation(installation)
 
 
 @transaction.atomic
@@ -161,6 +166,7 @@ def integration_document(installation):
         "chat_url": origin + "/api/platform/v1/chat",
         'training_url': origin + '/api/platform/v1/training',
         'app_factory_url': origin + '/api/platform/v1/app-factory',
+        'documentation_url': origin + '/api/platform/v1/documentation',
         'fabric_url': origin + '/api/platform/v1/fabric',
         'agent_credentials_url': origin + '/api/platform/v1/agent-credentials/exchange/',
         'agent_introspection_url': origin + '/api/platform/v1/agent-credentials/introspect/',

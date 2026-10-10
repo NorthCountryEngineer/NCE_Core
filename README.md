@@ -30,6 +30,11 @@ contracts and environment-scoped connections with explicit app inheritance and
 live RBAC. App admin panels can use delegated settings APIs; the portable adapter
 also supports independently configured standalone applications.
 
+[Organization documentation](docs/organization-documentation.md) inherits versioned
+application guides into each organization's platform, with local extensions/replacements,
+environment/deployment context, live permission checks, and Markdown/JSON/JSONL retrieval
+for humans and AI. App Factory releases include application-specific guides automatically.
+
 [AI application creation](docs/app-factory.md) turns reviewed descriptions/specifications
 into executable data applications through six scoped development-agent accounts. Generated
 services inherit Core login, live authorization, collection tags, and audit/accounting controls.

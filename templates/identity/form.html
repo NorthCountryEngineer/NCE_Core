@@ -3,4 +3,7 @@
 <section><h1>{{ title }}</h1>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save</button></form>
 </section>
+{% if documentation_history %}<section><h2>Revision history</h2>
+{% for revision in documentation_history %}<p>Revision {{ revision.revision }} · {{ revision.created }} · Digest <code>{{ revision.digest }}</code></p>{% endfor %}
+</section>{% endif %}
 {% endblock %}

@@ -47,6 +47,26 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.request(token=False)['status'], 401)
         self.client.require.assert_not_called()
 
+    def test_documentation_requires_live_role_and_bound_delegation(self):
+        with patch.object(server.CoreClient, 'from_environment') as factory, patch.object(server, 'OrganizationDocumentation') as adapter:
+            adapter.return_value.search.return_value = {'documents': []}
+            result = self.request(path='/api/documentation')
+            self.assertEqual(result['status'], 200)
+            self.assertEqual(self.client.require.call_args.args[1], 'docs-read')
+            self.assertTrue(adapter.call_args.kwargs['user_access_token'])
+            self.assertEqual(adapter.call_args.args[0], factory.return_value)
+            self.client.require.side_effect = Forbidden('Revoked role')
+            adapter.reset_mock()
+            self.assertEqual(self.request(path='/api/documentation')['status'], 403)
+            adapter.assert_not_called()
+
+    def test_documentation_requires_authentication_and_core_availability(self):
+        self.assertEqual(self.request(path='/api/documentation', token=False)['status'], 401)
+        with patch.object(server.CoreClient, 'from_environment', side_effect=server.CoreServiceError('Authority unavailable')):
+            result = self.request(path='/api/documentation')
+            self.assertEqual(result['status'], 503)
+            self.assertNotIn('documents', result['data'])
+
     def test_create_read_and_live_collection_authorization(self):
         self.assertEqual(self.request('POST', self.data)['status'], 201)
         result = self.request()

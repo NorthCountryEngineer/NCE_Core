@@ -2,8 +2,17 @@ from django.urls import path
 from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal, environment_portal
 from . import integration_api, integration_portal
 from . import app_factory_api, app_factory_portal
+from . import documentation_api, documentation_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/documentation/', documentation_portal.index, name='documentation'),
+    path('organizations/<slug:slug>/documentation/pages/<uuid:pk>/', documentation_portal.detail, name='documentation_page'),
+    path('organizations/<slug:slug>/platform/documentation/', documentation_portal.administration, name='documentation_admin'),
+    path('organizations/<slug:slug>/platform/documentation/new/', documentation_portal.edit, name='documentation_add'),
+    path('organizations/<slug:slug>/platform/documentation/pages/<uuid:pk>/', documentation_portal.edit, name='documentation_edit'),
+    path('organizations/<slug:slug>/platform/documentation/publish/', documentation_portal.publish, name='documentation_publish'),
+    path('api/platform/v1/documentation/', documentation_api.index),
+    path('api/platform/v1/documentation/<uuid:pk>/', documentation_api.detail),
     path('organizations/<slug:slug>/platform/app-factory/', app_factory_portal.index, name='app_factory'),
     path('organizations/<slug:slug>/platform/app-factory/new/', app_factory_portal.create, name='app_factory_create'),
     path('organizations/<slug:slug>/platform/app-factory/<uuid:pk>/', app_factory_portal.detail, name='app_factory_project'),
