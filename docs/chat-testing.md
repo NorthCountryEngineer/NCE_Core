@@ -70,7 +70,9 @@ customer production database.
 
 ## Cold deployment and real browser suite
 
-Requires a local Docker engine and Python 3.12 or 3.13. The pinned optional
+Requires a local Docker engine, Python 3.12 or 3.13, and at least 3 GiB of free
+Docker storage after building the image. The suite checks space before starting
+its database; Docker's VFS driver copies image files for each container. The pinned optional
 `browser` dependency group keeps browser tooling out of the production image.
 
 ```bash

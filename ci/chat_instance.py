@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import sys
 
 
@@ -19,6 +20,7 @@ def main():
             os.chown(path, 10001, 10001)
         root.chmod(0o700)
         os.chown(root, 10001, 10001)
+        print(json.dumps({'available_bytes': shutil.disk_usage('/app').free}))
         return
     environment = json.loads((root / 'runtime.json').read_text())
     if not environment['DATABASE_URL'].rsplit('/', 1)[-1].startswith('chat_test_'):

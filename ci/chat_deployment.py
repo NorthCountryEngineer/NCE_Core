@@ -111,10 +111,12 @@ def deployment(image):
         # internal networks suppress published ports on some engines.
         docker('network', 'create', network)
         docker('volume', 'create', volume)
-        docker('run', '--rm', '-i', '--name', jobs[0], '--network', 'none', '--user', '0', '--read-only',
+        storage = docker('run', '--rm', '-i', '--name', jobs[0], '--network', 'none', '--user', '0', '--read-only',
                '--mount', f'type=volume,src={volume},dst=/run/chat-test',
                '--mount', f'type=bind,src={tools_root},dst=/test-tools,readonly', *helper, 'secrets',
                data=json.dumps({'django.key': secrets.token_urlsafe(64), 'oidc.key': private_key, 'runtime.json': environment}))
+        if json.loads(storage)['available_bytes'] < 3 * 1024 ** 3:
+            raise DeploymentTestError('Docker needs at least 3 GiB of free space after the image build for the disposable deployment.')
         docker('run', '--detach', '--name', database, '--network', network, '--memory', '512m', '--cpus', '2',
                '--env-file', '/dev/stdin', 'postgres:17', data=f'POSTGRES_USER=chat_test\nPOSTGRES_DB={database_name}\nPOSTGRES_PASSWORD={password}\n')
         for _ in range(60):

@@ -14,7 +14,7 @@ class ChatDeploymentCleanupTests(unittest.TestCase):
             calls.append(args)
             if args[0] == 'run' and args[-1] == 'tests':
                 raise subprocess.TimeoutExpired('docker', 1)
-            return ''
+            return json.dumps({'available_bytes': 4 * 1024 ** 3}) if args[-1] == 'secrets' else ''
 
         with patch('ci.chat_deployment.docker', side_effect=fake_docker), \
              patch('ci.chat_deployment.wait_ready'), \
@@ -33,7 +33,7 @@ class ChatDeploymentCleanupTests(unittest.TestCase):
             calls.append((args, data))
             if args[0] == 'run' and args[-1] == 'tests':
                 raise DeploymentTestError('Injected backend failure.')
-            return ''
+            return json.dumps({'available_bytes': 4 * 1024 ** 3}) if args[-1] == 'secrets' else ''
 
         with patch('ci.chat_deployment.docker', side_effect=fake_docker), \
              patch('ci.chat_deployment.wait_ready'), \
@@ -60,6 +60,23 @@ class ChatDeploymentCleanupTests(unittest.TestCase):
         self.assertTrue(web[web.index('--publish') + 1].startswith('127.0.0.1:'))
         self.assertIn('--read-only', web)
         self.assertIn('ALL', web)
+
+    def test_low_disk_space_fails_before_database_start_and_still_cleans_up(self):
+        calls = []
+
+        def fake_docker(*args, data=None, timeout=120):
+            calls.append(args)
+            return json.dumps({'available_bytes': 1024}) if args[-1] == 'secrets' else ''
+
+        with patch('ci.chat_deployment.docker', side_effect=fake_docker), \
+             patch('ci.chat_deployment.subprocess.run', return_value=subprocess.CompletedProcess([], 0)):
+            with self.assertRaisesRegex(DeploymentTestError, '3 GiB'):
+                with deployment('local-chat:test'):
+                    self.fail('Low disk space should prevent a deployment.')
+        runs = [args for args in calls if args[0] == 'run']
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(runs[0][-1], 'secrets')
+        self.assertTrue(any(args[:2] == ('rm', '--force') for args in calls))
 
 
 if __name__ == '__main__':
