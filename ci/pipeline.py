@@ -439,7 +439,12 @@ def main():
                 require_switch('CORE_CI_ALLOW_DEPLOY')
             check(config)
             test(config)
-            build(config)
+            built = build(config)
+            if os.environ.get('CORE_CI_CHAT_DEPLOYMENT') == '1':
+                browser = os.environ.get('CORE_CI_CHAT_BROWSER', 'chromium')
+                if browser not in {'chromium', 'firefox', 'webkit'}:
+                    raise PipelineError('Unsupported Chat CI browser.')
+                command([PYTHON, 'ci/chat_deployment.py', '--image', built['image_tag'], '--browser', browser], timeout=900)
             if args.mode in {'publish', 'deploy'}:
                 publish(config)
             if args.mode == 'deploy':

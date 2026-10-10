@@ -79,6 +79,10 @@ for accounts and marketplace publication. Use the organization panel for roles,
 agent accounts, data, chat, training, and federation. These steps create no
 cluster, charge, or paid model call.
 
+For a member to create chat conversations, explicitly grant `core-chat: chat-manage`
+in addition to read/send permissions. Follow [Chat testing and deployment](chat-testing.md)
+for the complete role and deployment test walkthrough.
+
 ## If login reports a CSRF origin error
 
 If a form reports `Origin checking failed - null`, update to the latest `main`,

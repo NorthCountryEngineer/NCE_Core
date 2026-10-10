@@ -36,6 +36,7 @@ def member(view):
 def index(request, organization):
     principal = request_principal(request)
     capability(principal, organization, 'chat.read')
+    can_create = permits(lambda: capability(principal, organization, 'chat.manage'))
     conversations = []
     for room in organization.chat_conversations.filter(active=True):
         try:
@@ -43,7 +44,16 @@ def index(request, organization):
             conversations.append(room)
         except PermissionDenied:
             continue
-    return render(request, 'core_chat/index.html', {'organization': organization, 'conversations': conversations})
+    return render(request, 'core_chat/index.html', {'organization': organization, 'conversations': conversations,
+        'can_create': can_create})
+
+
+def permits(check):
+    try:
+        check()
+    except PermissionDenied:
+        return False
+    return True
 
 
 class ConversationForm(forms.ModelForm):
@@ -78,7 +88,7 @@ def create(request, organization):
 def detail(request, organization, pk):
     room = get_object_or_404(Conversation, organization=organization, pk=pk)
     principal = request_principal(request)
-    participant = authorize(principal, room)
+    authorize(principal, room)
     class SendForm(forms.Form):
         text = forms.CharField(widget=forms.Textarea, max_length=16384, label='Message')
         request_id = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid4)
@@ -103,7 +113,8 @@ def detail(request, organization, pk):
     except PermissionDenied:
         pass
     return render(request, 'core_chat/room.html', {'organization': organization, 'conversation': room,
-        'chat_messages': page['messages'], 'form': form, 'can_send': participant.role != 'reader', 'can_edit': can_edit,
+        'chat_messages': page['messages'], 'form': form,
+        'can_send': permits(lambda: authorize(principal, room, 'send')), 'can_edit': can_edit,
         'unavailable': unavailable, 'chat_state': {'cursor': page.get('next_cursor', 0)}})
 
 
@@ -113,7 +124,10 @@ def feed(request, organization, pk):
     from platform_services.api import response
     room = get_object_or_404(Conversation, organization=organization, pk=pk)
     try:
-        return response(message_page(request_principal(request), room, after=int(request.GET.get('after', 0))))
+        principal = request_principal(request)
+        page = message_page(principal, room, after=int(request.GET.get('after', 0)))
+        page['can_send'] = permits(lambda: authorize(principal, room, 'send'))
+        return response(page)
     except (ValueError, ValidationError):
         return response({'error': 'invalid_cursor'}, 400)
     except FederationUnavailable:

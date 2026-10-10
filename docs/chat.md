@@ -13,6 +13,9 @@ The browser polls every three seconds and preserves drafts. Every poll rechecks
 authorization. Cursor APIs support remote applications without requiring Redis,
 a message broker, or WebSocket ingress.
 
+See [Chat testing and deployment](chat-testing.md) for a member creation walkthrough,
+Mac update steps, and the disposable PostgreSQL/web/worker/browser test suite.
+
 ## Permissions and attribution
 
 Organization roles grant permissions on the `core-chat` service. Applications

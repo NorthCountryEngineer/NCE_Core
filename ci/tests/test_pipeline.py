@@ -17,6 +17,18 @@ DIGEST = 'sha256:' + 'a' * 64
 
 
 class PipelineTests(unittest.TestCase):
+    def test_failed_chat_deployment_gate_prevents_publication(self):
+        with patch('sys.argv', ['pipeline.py', 'run', '--mode', 'publish']), \
+             patch.dict(os.environ, {'CORE_CI_CHAT_DEPLOYMENT': '1', 'CORE_CI_CHAT_BROWSER': 'chromium',
+                                     'CORE_CI_ALLOW_PUBLISH': '1'}), \
+             patch.object(p, 'trusted_release'), patch.object(p, 'check'), patch.object(p, 'test'), \
+             patch.object(p, 'build', return_value={'image_tag': 'local-chat:test'}), \
+             patch.object(p, 'command', side_effect=p.PipelineError('Injected Chat deployment failure.')), \
+             patch.object(p, 'publish') as publish, patch.object(p, 'deploy') as deploy:
+            self.assertEqual(p.main(), 1)
+            publish.assert_not_called()
+            deploy.assert_not_called()
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

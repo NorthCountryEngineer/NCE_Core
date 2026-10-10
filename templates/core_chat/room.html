@@ -10,7 +10,8 @@
 <small>{{ message.created }} · {{ message.actor_id }}{% if conversation.connection_id %} · {{ message.origin_issuer }}{% endif %}</small>
 </section>{% empty %}<p id="chat-empty">No messages yet.</p>{% endfor %}
 </div>
-{% if can_send %}<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Send message</button></form>{% endif %}
+{% if can_send %}<form id="chat-composer" method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Send message</button></form>{% endif %}
+<p id="chat-read-only" {% if can_send %}hidden{% endif %}>You have read-only access to this conversation.</p>
 <button type="button" id="chat-refresh">Refresh conversation</button>
 {{ chat_state|json_script:'chat-state' }}
 <script>
@@ -19,6 +20,15 @@ let fetching = false;
 let revoked = false;
 const chatHistory = document.getElementById('chat-history');
 const chatStatus = document.getElementById('chat-status');
+const composer = document.getElementById('chat-composer');
+const readOnly = document.getElementById('chat-read-only');
+function setSending(allowed) {
+  if (composer) {
+    composer.hidden = !allowed;
+    for (const field of composer.elements) field.disabled = !allowed;
+  }
+  readOnly.hidden = allowed;
+}
 async function refreshChat() {
   if (fetching || revoked || document.hidden) return;
   fetching = true;
@@ -27,11 +37,14 @@ async function refreshChat() {
     if (response.status === 403 || response.status === 404) {
       revoked = true;
       chatHistory.replaceChildren();
+      setSending(false);
+      readOnly.hidden = true;
       chatStatus.textContent = 'Conversation access has been revoked.';
       return;
     }
     if (!response.ok) throw new Error('Chat unavailable');
     const page = await response.json();
+    setSending(page.can_send);
     if (page.messages.length) document.getElementById('chat-empty')?.remove();
     for (const message of page.messages) {
       const section = document.createElement('section');
