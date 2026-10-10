@@ -1,4 +1,5 @@
-{% extends 'identity/base.html' %}{% block content %}
+{% extends 'identity/base.html' %}
+{% block title %}{{ organization.name }} · Core Training · {{ product_name }}{% endblock %}{% block content %}
 <h1>{{ organization.name }} · Core Training</h1>
 <p>AI agents design seeded scenarios, simulate pipeline events, inspect reference evaluations, and propose improvements. Data flows through synthetic datasets and approved agent workflows.</p>
 <p><a href="{% url 'training_scenario_add' organization.slug %}">Create training scenario</a> · <a href="{% url 'dataset_add' organization.slug %}">Create synthetic dataset</a> · <a href="{% url 'pipeline_add' organization.slug %}">Create pipeline</a> · <a href="{% url 'agent_accounts' organization.slug %}">Agent and UAT approvals</a></p>

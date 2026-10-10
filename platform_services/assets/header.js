@@ -7,22 +7,23 @@
     button{cursor:pointer} a{color:inherit;text-decoration:none} a:hover{text-decoration:underline}
     button{background:transparent;border:1px solid transparent;border-radius:7px;padding:8px 10px;color:inherit}
     button:hover{background:#ffffff18} button:disabled{opacity:.55;cursor:default}
-    button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--core-accent,#9684e9);outline-offset:2px}
+    button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #155c99;outline-offset:3px}.bar :focus-visible{outline-color:var(--core-foreground,#fff)}
+    .shell-status{margin:0;padding:10px 20px;background:#fff;color:#7a3e50}.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
     .bar{min-height:60px;padding:8px 20px;display:flex;align-items:center;gap:12px;background:var(--core-background,#24263e);color:var(--core-foreground,#fff);flex-wrap:wrap}
     .bar.compact{min-height:48px;padding:5px 14px;gap:8px}.identity{display:flex;align-items:center;gap:9px;max-width:280px}.logo{width:36px;height:36px;object-fit:contain;flex-shrink:0}
     .brand{display:flex;flex-direction:column;min-width:0;max-width:240px}.brand strong,.brand small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .brand small{font-size:11px}.pinned{display:flex;gap:8px;min-width:0;overflow-x:auto;flex:1}
-    .pinned a,.shared-links a{flex-shrink:0;padding:7px 10px;background:#80808018;border-radius:7px}.tools,.account-widget{display:flex;gap:10px;align-items:center}
+    .pinned a,.shared-links a{flex-shrink:0;padding:7px 10px;border:1px solid currentColor;border-radius:7px}.bar button:hover{background:transparent;border-color:currentColor}.tools,.account-widget{display:flex;gap:10px;align-items:center}
     .shared-links{display:flex;gap:6px;overflow-x:auto;max-width:35%;font-size:12px}.environment{padding:5px 8px;border:1px solid currentColor;border-radius:6px;font-size:11px}
     .pinned:empty,.shared-links:empty{display:none}
     .tools a{font-size:12px}.account-toggle{display:none}.badge{background:var(--core-accent,#6250ac);color:var(--core-accent-foreground,#fff);border-radius:12px;padding:2px 6px;font-size:11px;margin-left:5px}
     .drawer{position:fixed;right:12px;top:70px;width:440px;max-width:calc(100vw - 24px);height:min(720px,calc(100dvh - 82px));background:#fff;border:1px solid #dfe0eb;border-radius:14px;box-shadow:0 12px 50px #16182c33;display:flex;flex-direction:column;overflow:hidden}
     .top{display:flex;align-items:center;gap:8px;padding:14px 16px;border-bottom:1px solid #e8e9ef;flex-shrink:0}.top h2{margin:0;font-size:16px;flex:1}
     .drawer button:hover{background:#f1effa}.body{padding:8px 12px;overflow:auto;flex:1;min-height:0}.row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f0f0f5}
-    .row a,.row .room{flex:1;min-width:0}.row small{display:block;color:#73768a;font-size:11px}.row .room{text-align:left;padding:6px 4px}.row .room:hover{background:#f3f1fa}
-    .search,select{border:1px solid #dddde8;border-radius:7px;padding:8px;width:100%;background:#fff}.search{margin:10px 0}.empty{color:#6e7384;padding:18px 4px;line-height:1.6}
-    .message{margin:12px 0;padding:10px;background:#f6f5fa;border-radius:10px;overflow-wrap:anywhere}.message small{color:#717587;margin-left:8px;font-size:10px}.message p{white-space:pre-wrap;margin:6px 0 0;line-height:1.5}.message strong{font-size:12px}
-    .compose{padding:12px;border-top:1px solid #e8e9ef}.compose textarea{display:block;width:100%;resize:vertical;min-height:72px;max-height:180px;padding:10px;border:1px solid #cecede;border-radius:8px}.compose button{background:var(--core-accent,#6250ac);color:var(--core-accent-foreground,#fff);float:right;margin-top:8px}.compose button:hover{filter:brightness(.9)}
+    .row a,.row .room{flex:1;min-width:0}.row small{display:block;color:#596177;font-size:11px}.row .room{text-align:left;padding:6px 4px}.row .room:hover{background:#f3f1fa}
+    .search,select{border:1px solid #72798a;border-radius:7px;padding:8px;width:100%;background:#fff}.search{margin:10px 0}.empty{color:#596177;padding:18px 4px;line-height:1.6}
+    .message{margin:12px 0;padding:10px;background:#f6f5fa;border-radius:10px;overflow-wrap:anywhere}.message small{color:#596177;margin-left:8px;font-size:10px}.message p{white-space:pre-wrap;margin:6px 0 0;line-height:1.5}.message strong{font-size:12px}
+    .compose{padding:12px;border-top:1px solid #e8e9ef}.compose textarea{display:block;width:100%;resize:vertical;min-height:72px;max-height:180px;padding:10px;border:1px solid #72798a;border-radius:8px}.compose button{background:var(--core-accent,#6250ac);color:var(--core-accent-foreground,#fff);float:right;margin-top:8px}.compose button:hover{filter:brightness(.9)}
     .status{font-size:12px;color:#7a3e50;min-height:18px;padding:5px 12px}.mode{display:flex;gap:8px;align-items:center;padding:8px 12px;font-size:12px;border-bottom:1px solid #eee}.mode select{width:auto;flex:1}
     @media(max-width:700px){.bar,.bar.compact{padding:8px 10px;gap:6px}.bar>button{padding:6px 8px;font-size:12px}.brand{max-width:100px}.tools a{display:none}.account-toggle{display:block}.pinned,.shared-links{order:10;flex-basis:100%;max-width:100%}.drawer{top:64px;right:8px;max-width:calc(100vw - 16px);height:calc(100dvh - 76px)}.tools{margin-left:auto;gap:5px}}
     /* Embedded apps may not consume their page's safe area. Core's base page
@@ -32,6 +33,7 @@
     .drawer{right:calc(12px + var(--core-safe-area-right,env(safe-area-inset-right,0px)));max-width:calc(100vw - 24px - var(--core-safe-area-left,env(safe-area-inset-left,0px)) - var(--core-safe-area-right,env(safe-area-inset-right,0px)))}
     @media(max-width:700px){.bar,.bar.compact{padding-top:calc(8px + var(--core-header-inset-top,env(safe-area-inset-top,0px)));padding-right:calc(10px + var(--core-header-inset-right,env(safe-area-inset-right,0px)));padding-left:calc(10px + var(--core-header-inset-left,env(safe-area-inset-left,0px)))}input,textarea,select{font-size:16px}.bar button,.pinned a,.shared-links a,.top button,.row button,.compose button{min-height:44px}}
     @media(prefers-reduced-motion:no-preference){.drawer{animation:enter .12s ease-out}@keyframes enter{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}}
+    @media(forced-colors:active){:focus-visible,.bar :focus-visible{outline-color:Highlight}}
   `;
   function el(tag, text, attrs = {}) {
     const node = document.createElement(tag);
@@ -78,18 +80,37 @@
       this.accountWidget = el('div', undefined, {class: 'account-widget'}); this.accountWidget.append(this.tools, this.accountButton);
       this.accountSlot = el('slot', undefined, {name: 'account'});
       this.bar.append(this.identity, this.appsButton, this.pinned, this.sharedLinks, this.accountWidget, this.chatButton, this.environment, this.accountSlot);
-      this.drawer = el('section', undefined, {class: 'drawer', role: 'dialog', 'aria-label': 'Organization tools panel', hidden: ''});
+      this.drawer = el('section', undefined, {id: 'tools-panel', class: 'drawer', role: 'dialog', 'aria-modal': 'false', 'aria-label': 'Organization tools panel', 'aria-describedby': 'panel-keyboard-help', hidden: ''});
+      [this.appsButton, this.chatButton, this.accountButton].forEach(button => { button.setAttribute('aria-controls', 'tools-panel'); button.setAttribute('aria-haspopup', 'dialog'); });
       this.panelTop = el('div', undefined, {class: 'top'}); this.back = el('button', '←', {'aria-label': 'Back to header conversations', hidden: ''});
-      this.back.onclick = () => { this.room = null; ++this.epoch; this.showChatList(); };
+      this.back.onclick = () => { this.room = null; ++this.epoch; this.showChatList(); this.close.focus(); };
       this.panelTitle = el('h2', ''); this.close = el('button', '×', {'aria-label': 'Close organization tools'});
       this.close.onclick = () => this.closePanel(); this.panelTop.append(this.back, this.panelTitle, this.close);
       this.panelBody = el('div', undefined, {class: 'body'});
       this.status = el('div', '', {class: 'status', role: 'status', 'aria-live': 'polite'});
-      this.drawer.append(this.panelTop, this.panelBody, this.status); this.root.append(this.bar, this.drawer);
+      this.panelHelp = el('p', 'Escape closes this panel. F6 moves between this panel and its header button. Tab can leave the panel.', {id: 'panel-keyboard-help', class: 'sr-only'});
+      this.notice = el('p', '', {class: 'shell-status', role: 'status', hidden: ''});
+      this.announcements = el('p', '', {class: 'sr-only', role: 'status'});
+      this.drawer.append(this.panelTop, this.panelHelp, this.panelBody, this.status); this.root.append(this.bar, this.notice, this.announcements, this.drawer);
       this.epoch = 0; this.messages = new Set(); this.blocked = false;
-      this.keyHandler = event => { if (event.key === 'Escape' && !this.drawer.hidden) this.closePanel(); };
+      this.keyHandler = event => {
+        if (this.drawer.hidden) return;
+        if (event.key === 'Escape' && event.composedPath().includes(this)) {
+          event.preventDefault(); event.stopImmediatePropagation(); this.closePanel();
+        } else if (event.key === 'F6') {
+          const otherDialog = event.composedPath().find(node => node instanceof Element && node.matches('[role="dialog"],dialog'));
+          if (otherDialog && otherDialog !== this.drawer) return;
+          event.preventDefault();
+          if (this.drawer.contains(this.root.activeElement)) this.focusOpener(); else this.close.focus();
+        }
+      };
       document.addEventListener('keydown', this.keyHandler);
       if (this.hasAttribute('preview')) return;
+      this.focusHandler = event => {
+        // A nonmodal panel must not cover keyboard focus in the application.
+        if (!this.drawer.hidden && !event.composedPath().includes(this)) this.closePanel(false);
+      };
+      document.addEventListener('focusin', this.focusHandler);
       this.resizeHandler = () => this.positionDrawer();
       this.resizeObserver = new ResizeObserver(this.resizeHandler); this.resizeObserver.observe(this.bar);
       window.addEventListener('resize', this.resizeHandler); document.addEventListener('scroll', this.resizeHandler, true);
@@ -98,6 +119,7 @@
     }
     disconnectedCallback() {
       clearInterval(this.timer); document.removeEventListener('keydown', this.keyHandler); this.resizeObserver?.disconnect();
+      document.removeEventListener('focusin', this.focusHandler);
       window.removeEventListener('resize', this.resizeHandler); document.removeEventListener('scroll', this.resizeHandler, true); ++this.epoch;
     }
     positionDrawer() {
@@ -118,8 +140,9 @@
         if ([403, 404].includes(result.status) && path.startsWith('chat/')) {
           // A room or widget can be disabled while a read is in flight. Clear
           // private Chat content immediately, then recheck the whole shell.
-          ++this.epoch; this.room = null; this.clearChat(); this.panelBody.replaceChildren(); this.drawer.hidden = true;
-          this.chatButton.hidden = true;
+          ++this.epoch; this.room = null; this.clearChat(); this.panelBody.replaceChildren();
+          this.chatButton.hidden = true; this.closePanel();
+          this.notice.hidden = false; this.notice.textContent = 'Conversation access changed. Refresh to continue.';
           if (this.state) this.state.chat = {enabled: false, rooms: [], unread: 0, notifications: 0};
           this.refresh();
         } else if ([401, 403, 404].includes(result.status)) this.revoke();
@@ -128,11 +151,16 @@
       return result.json();
     }
     revoke() {
+      const barFocused = this.bar.contains(this.root.activeElement);
+      if (this.panelBody.contains(this.root.activeElement)) this.close.focus();
       this.blocked = true; ++this.epoch; this.state = null; this.room = null;
       this.pinned.replaceChildren(); this.sharedLinks.replaceChildren(); this.tools.replaceChildren(); this.environment.hidden = true; this.chatButton.hidden = true;
       this.appsButton.disabled = true; this.accountButton.disabled = true;
       this.clearChat(); this.panelBody.replaceChildren(el('p', 'Access changed. Refresh the page to continue.', {class: 'empty'}));
+      this.panelTitle.textContent = 'User tools';
       this.status.textContent = 'Access changed. Refresh the page to continue.';
+      this.notice.hidden = false; this.notice.textContent = this.status.textContent;
+      if (barFocused) this.focusOpener();
     }
     async refresh() {
       if (this.blocked || !this.isConnected) return;
@@ -145,10 +173,14 @@
         this.renderState(state);
       } catch (error) {
         if (!this.blocked) {
+          const barFocused = this.bar.contains(this.root.activeElement);
+          if (this.panelBody.contains(this.root.activeElement)) this.close.focus();
           ++this.epoch; this.state = null; this.room = null; this.clearChat(); this.panelBody.replaceChildren();
           this.pinned.replaceChildren(); this.sharedLinks.replaceChildren(); this.tools.replaceChildren(); this.environment.hidden = true; this.chatButton.hidden = true;
           this.appsButton.disabled = true; this.accountButton.disabled = true;
           this.status.textContent = 'User tools are temporarily unavailable.';
+          this.panelTitle.textContent = 'User tools'; this.notice.hidden = false; this.notice.textContent = this.status.textContent;
+          if (barFocused) this.focusOpener();
         }
       } finally {
         this.refreshing = false;
@@ -197,9 +229,12 @@
     }
     renderState(state) {
         const previous = this.state;
+        const barFocus = this.bar.contains(this.root.activeElement) ? this.root.activeElement :
+          this.contains(document.activeElement) && document.activeElement !== this ? document.activeElement : null;
         this.state = state;
         this.hidden = !state.enabled;
-        if (!state.enabled) { ++this.epoch; this.room = null; this.clearChat(); this.panelBody.replaceChildren(); this.drawer.hidden = true; return; }
+        if (!state.enabled) { ++this.epoch; this.room = null; this.clearChat(); this.panelBody.replaceChildren(); this.closePanel(); if (barFocus) this.focusOpener(); return; }
+        this.notice.hidden = true; this.notice.textContent = '';
         this.brandName.textContent = state.brand; this.orgName.textContent = state.organization_name;
         this.appearance(state);
         this.appsButton.disabled = false; this.accountButton.disabled = false;
@@ -213,18 +248,24 @@
         if (JSON.stringify(previous?.links) !== JSON.stringify(state.links)) {
           this.sharedLinks.replaceChildren();
           (state.links || []).forEach(row => {
-            try { const anchor = link(row.label, row.url); if (row.new_tab) { anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; } this.sharedLinks.append(anchor); } catch { /* Incomplete preview URL. */ }
+            try { const anchor = link(row.label, row.url); if (row.new_tab) { anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.setAttribute('aria-description', 'Opens in a new tab'); } this.sharedLinks.append(anchor); } catch { /* Incomplete preview URL. */ }
           });
         }
         if (JSON.stringify(previous?.tools) !== JSON.stringify(state.tools)) this.tools.replaceChildren(...state.tools.map(row => link(row.name, row.url)));
         this.chatBadge.hidden = !state.chat.notifications; this.chatBadge.textContent = state.chat.notifications >= 200 ? '200+' : String(state.chat.notifications);
         this.chatButton.setAttribute('aria-description', `${state.chat.notifications} notifications, ${state.chat.unread} unread messages`);
+        if (previous && (previous.chat.notifications !== state.chat.notifications || previous.chat.unread !== state.chat.unread)) this.announcements.textContent = `${state.chat.notifications} chat notifications, ${state.chat.unread} unread messages.`;
         if (this.room && !state.chat.rooms.some(row => row.id === this.room.id)) {
           this.room = null; ++this.epoch; this.clearChat(); this.showChatList(); this.status.textContent = 'Conversation access changed.';
         }
         if (this.panel === 'apps' && !this.drawer.hidden && appsChanged) this.showApps();
         if (this.panel === 'account' && !this.drawer.hidden && JSON.stringify(previous?.tools) !== JSON.stringify(state.tools)) this.showAccount();
         if (this.panel === 'chat' && !this.drawer.hidden && !this.room && JSON.stringify(previous?.chat) !== JSON.stringify(state.chat)) this.showChatList();
+        if (barFocus) {
+          const replacement = barFocus.isConnected ? barFocus : Array.from(this.bar.querySelectorAll('a')).find(link => link.href === barFocus.href);
+          if (replacement && !replacement.disabled && replacement.getClientRects().length) replacement.focus({preventScroll: true});
+          else this.focusOpener();
+        }
     }
     toggle(panel) {
       if (this.hasAttribute('preview')) return;
@@ -236,51 +277,81 @@
       if (panel === 'apps') this.showApps(); else if (panel === 'account') this.showAccount(); else this.showChatList();
       this.close.focus();
     }
-    closePanel() {
+    focusOpener() {
+      const trigger = this.panel === 'apps' ? this.appsButton : this.panel === 'account' ? this.accountButton : this.chatButton;
+      const fallback = document.querySelector('main');
+      if (!trigger.disabled && trigger.getClientRects().length && !trigger.hidden && !this.hidden) trigger.focus();
+      else { if (fallback && !fallback.hasAttribute('tabindex')) fallback.tabIndex = -1; fallback?.focus(); }
+    }
+    closePanel(restoreFocus = true) {
+      const wasOpen = !this.drawer.hidden;
       this.drawer.hidden = true; this.room = null; ++this.epoch; this.clearChat();
       this.appsButton.setAttribute('aria-expanded', 'false'); this.chatButton.setAttribute('aria-expanded', 'false');
       this.accountButton.setAttribute('aria-expanded', 'false');
-      (this.panel === 'apps' ? this.appsButton : this.panel === 'account' ? this.accountButton : this.chatButton).focus();
+      if (wasOpen && restoreFocus) this.focusOpener();
     }
-    clearChat() { this.compose?.remove(); this.mode?.remove(); this.compose = null; this.mode = null; this.back.hidden = true; this.status.textContent = ''; }
+    clearChat() {
+      const active = this.root.activeElement;
+      if (!this.drawer.hidden && (this.compose?.contains(active) || this.mode?.contains(active) || active === this.back)) this.close.focus();
+      this.compose?.remove(); this.mode?.remove(); this.compose = null; this.mode = null; this.back.hidden = true; this.status.textContent = '';
+      ['role', 'aria-live', 'aria-relevant', 'aria-atomic', 'aria-label'].forEach(name => this.panelBody.removeAttribute(name));
+    }
+    capturePanelFocus() {
+      const active = this.root.activeElement;
+      return this.panelBody.contains(active) ? {key: active.dataset.focusKey, selection: active.tagName === 'INPUT' ? [active.selectionStart, active.selectionEnd] : null} : null;
+    }
+    restorePanelFocus(focus) {
+      if (!focus) return;
+      const target = Array.from(this.panelBody.querySelectorAll('[data-focus-key]')).find(node => node.dataset.focusKey === focus.key);
+      if (target) { target.focus({preventScroll: true}); if (focus.selection) target.setSelectionRange(...focus.selection); }
+      else { this.close.focus(); this.status.textContent = 'This list changed. Review the available items.'; }
+    }
     showAccount() {
+      const focus = this.capturePanelFocus();
       this.panelTitle.textContent = 'Your account'; this.panelBody.replaceChildren(el('p', this.state.user.name));
-      this.state.tools.forEach(tool => { const row = el('div', undefined, {class: 'row'}); row.append(link(tool.name, tool.url)); this.panelBody.append(row); });
+      this.state.tools.forEach(tool => { const row = el('div', undefined, {class: 'row'}); const anchor = link(tool.name, tool.url); anchor.dataset.focusKey = tool.url; row.append(anchor); this.panelBody.append(row); });
+      this.restorePanelFocus(focus);
     }
     showApps() {
+      const focus = this.capturePanelFocus();
       const search = this.root.querySelector('.search')?.value || '';
       this.panelTitle.textContent = 'Your applications'; this.panelBody.replaceChildren();
-      const input = el('input', undefined, {class: 'search', placeholder: 'Find an application', 'aria-label': 'Find an application'}); input.value = search;
+      const input = el('input', undefined, {class: 'search', placeholder: 'Find an application', 'aria-label': 'Find an application', 'data-focus-key': 'app-search'}); input.value = search;
       const list = el('div'); this.panelBody.append(input, list);
       const render = () => {
         list.replaceChildren();
         this.state.applications.filter(row => row.name.toLowerCase().includes(input.value.toLowerCase())).forEach(row => {
-          const item = el('div', undefined, {class: 'row'}); const app = link(row.name, row.url);
+          const item = el('div', undefined, {class: 'row'}); const app = link(row.name, row.url); app.dataset.focusKey = 'app-' + row.id;
           app.append(el('small', `${row.environment} · ${row.status}`));
-          const button = el('button', row.pinned ? '★' : '☆', {'aria-label': `${row.pinned ? 'Unpin' : 'Pin'} ${row.name}`, 'aria-pressed': String(row.pinned)});
+          const button = el('button', row.pinned ? '★' : '☆', {'aria-label': `${row.pinned ? 'Unpin' : 'Pin'} ${row.name}`, 'aria-pressed': String(row.pinned), 'data-focus-key': 'pin-' + row.id});
           button.onclick = async () => { button.disabled = true; try { await this.request('pins/', {deployment_id: row.id, pinned: !row.pinned}); await this.refresh(); } catch (error) { this.status.textContent = error.message; } finally { button.disabled = false; } };
           item.append(app, button); list.append(item);
         });
         if (!list.childElementCount) list.append(el('p', 'No accessible application instances. An administrator can deploy apps and assign access.', {class: 'empty'}));
       };
       input.oninput = render; render();
+      this.restorePanelFocus(focus);
     }
     showChatList() {
+      const focus = this.capturePanelFocus();
       this.clearChat(); this.panelTitle.textContent = 'Chat and notifications'; this.panelBody.replaceChildren();
       const chat = this.state?.chat;
-      if (!chat?.enabled) { this.panelBody.append(el('p', 'Chat is unavailable for this account or application.', {class: 'empty'})); return; }
-      this.panelBody.append(link('Open full Chat workspace', chat.url));
+      if (!chat?.enabled) { this.panelBody.append(el('p', 'Chat is unavailable for this account or application.', {class: 'empty'})); this.restorePanelFocus(focus); return; }
+      const workspace = link('Open full Chat workspace', chat.url); workspace.dataset.focusKey = 'chat-workspace'; this.panelBody.append(workspace);
       chat.rooms.forEach(room => {
         const row = el('div', undefined, {class: 'row'});
-        const button = el('button', room.title, {class: 'room', 'aria-label': `Open header conversation ${room.title}`});
+        const button = el('button', room.title, {class: 'room', 'aria-label': `Open header conversation ${room.title}`, 'data-focus-key': 'room-' + room.id});
         button.append(el('small', room.unavailable ? 'Authority unavailable' : `${room.kind} · ${room.unread} unread · ${room.notifications} notifications`));
         button.onclick = () => this.openRoom(room); row.append(button); this.panelBody.append(row);
       });
       if (!chat.rooms.length) this.panelBody.append(el('p', 'No joined conversations. Open the Chat workspace to start or join a conversation.', {class: 'empty'}));
+      this.restorePanelFocus(focus);
     }
     openRoom(room) {
       this.room = room; ++this.epoch; this.messages = new Set(); this.cursor = null; this.ackCursor = 0;
       this.clearChat(); this.panelTitle.textContent = room.title; this.back.hidden = false; this.panelBody.replaceChildren();
+      this.panelBody.setAttribute('role', 'log'); this.panelBody.setAttribute('aria-live', 'off'); this.panelBody.setAttribute('aria-relevant', 'additions'); this.panelBody.setAttribute('aria-atomic', 'false'); this.panelBody.setAttribute('aria-label', 'Conversation messages');
+      this.back.focus();
       this.mode = el('label', 'Notify ', {class: 'mode'}); const mode = el('select', undefined, {'aria-label': 'Header conversation notifications'});
       [['all', 'All messages'], ['mentions', 'Mentions only'], ['muted', 'Muted']].forEach(([value, name]) => mode.append(el('option', name, {value})));
       mode.value = room.notification_mode || 'all'; mode.onchange = async () => { try { await this.request(`chat/${room.id}/preferences/`, {notifications: mode.value}); await this.refresh(); } catch (error) { this.status.textContent = error.message; } };
@@ -323,11 +394,16 @@
         const result = await this.request(`chat/${room.id}/messages/${this.cursor === null ? '' : '?after=' + this.cursor}`);
         if (this.blocked || epoch !== this.epoch || !this.isConnected) return;
         if (result.organization_id !== this.getAttribute('organization-id') || result.conversation_id !== room.id) { this.revoke(); return; }
-        this.appendMessages(result.messages); this.cursor = result.next_cursor; this.compose.hidden = !result.can_send;
+        this.appendMessages(result.messages); this.cursor = result.next_cursor; this.panelBody.setAttribute('aria-live', 'polite');
+        if (!result.can_send && this.compose.contains(this.root.activeElement)) this.close.focus();
+        this.compose.hidden = !result.can_send;
         if (!result.can_send) this.status.textContent = 'Read-only conversation. Your message draft is preserved.';
         await this.acknowledge();
       } catch (error) {
-        if (!this.blocked && epoch === this.epoch) { this.panelBody.replaceChildren(); this.messages.clear(); this.cursor = null; this.compose.hidden = true; this.status.textContent = error.message; }
+        if (!this.blocked && epoch === this.epoch) {
+          if (this.compose.contains(this.root.activeElement) || this.panelBody.contains(this.root.activeElement)) this.close.focus();
+          this.panelBody.replaceChildren(); this.messages.clear(); this.cursor = null; this.compose.hidden = true; this.status.textContent = error.message;
+        }
       } finally { if (this.reading === epoch) this.reading = null; }
     }
     async acknowledge() {

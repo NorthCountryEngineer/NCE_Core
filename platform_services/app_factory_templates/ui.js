@@ -12,24 +12,29 @@ async function call(url, options = {}) {
   }
   return value;
 }
-async function refresh() {
+async function refresh(focusResource = null) {
+  const root = document.getElementById('collections');
+  root.setAttribute('aria-busy', 'true');
   try {
     const spec = await call('/api/spec'); csrf = spec.csrf;
     if (csrf && !document.querySelector('core-header')) {
       const header = document.createElement('core-header');
       header.setAttribute('endpoint', '/core-header/'); header.setAttribute('organization-id', spec.organization_id);
-      header.setAttribute('csrf-token', csrf); document.body.prepend(header);
+      header.setAttribute('csrf-token', csrf); document.getElementById('app-banner').prepend(header);
     }
     document.querySelector('core-header')?.setAttribute('purpose-code', document.getElementById('purpose').value);
     document.getElementById('title').textContent = spec.name;
-    const root = document.getElementById('collections'); root.replaceChildren();
+    document.title = spec.name + ' · Core application';
+    const content = document.createDocumentFragment();
     for (const resource of spec.resources) {
       const section = document.createElement('section'), heading = document.createElement('h2');
-      heading.textContent = resource.name; section.append(heading);
+      heading.textContent = resource.name; heading.id = resource.slug + '-heading'; heading.tabIndex = -1; section.append(heading);
       const form = document.createElement('form'), inputs = {};
+      form.setAttribute('aria-label', resource.name + ' records');
       for (const [field, kind] of Object.entries(resource.fields)) {
         const label = document.createElement('label'), input = document.createElement('input');
         label.textContent = field + ' '; input.type = kind === 'boolean' ? 'checkbox' : kind === 'integer' ? 'number' : 'text';
+        input.id = resource.slug + '-' + field; input.name = field; label.htmlFor = input.id;
         input.maxLength = 2000; label.append(input); form.append(label); inputs[field] = input;
       }
       const submit = document.createElement('button'); submit.textContent = 'Create record'; form.append(submit);
@@ -37,17 +42,23 @@ async function refresh() {
         event.preventDefault();
         const data = Object.fromEntries(Object.entries(resource.fields).map(([field, kind]) =>
           [field, kind === 'boolean' ? inputs[field].checked : kind === 'integer' ? Number(inputs[field].value) : inputs[field].value]));
-        try { await call('/api/records/' + resource.slug, { method: 'POST', body: JSON.stringify(data) }); await refresh(); }
+        const focused = document.activeElement === submit;
+        submit.disabled = true; form.setAttribute('aria-busy', 'true');
+        try { await call('/api/records/' + resource.slug, { method: 'POST', body: JSON.stringify(data) }); await refresh(resource.slug); }
         catch (error) { status.textContent = error.message; }
+        finally { submit.disabled = false; form.setAttribute('aria-busy', 'false'); if (focused && submit.isConnected) submit.focus({preventScroll: true}); }
       };
       section.append(form);
       try { const records = await call('/api/records/' + resource.slug); const pre = document.createElement('pre');
-        pre.textContent = JSON.stringify(records.records, null, 2); section.append(pre); }
+        pre.textContent = JSON.stringify(records.records, null, 2); pre.tabIndex = 0; pre.setAttribute('role', 'region'); pre.setAttribute('aria-label', resource.name + ' records'); section.append(pre); }
       catch (error) { const message = document.createElement('p'); message.textContent = error.message; section.append(message); }
-      root.append(section);
+      content.append(section);
     }
+    root.replaceChildren(content);
+    if (typeof focusResource === 'string') document.getElementById(focusResource + '-heading')?.focus();
     status.textContent = 'Application loaded';
   } catch (error) { status.textContent = error.message; }
+  finally { root.setAttribute('aria-busy', 'false'); }
 }
 document.getElementById('refresh').onclick = refresh;
 document.getElementById('logout').onclick = async () => {
@@ -67,7 +78,10 @@ document.getElementById('docs-search').onclick = async () => {
           const page = await call('/api/documentation?document_id=' + encodeURIComponent(guide.id));
           const pre = document.createElement('pre'), citation = document.createElement('p');
           pre.textContent = page.markdown; citation.textContent = page.citation + ' · ' + page.digest;
+          const focused = document.activeElement === button;
+          pre.tabIndex = 0; pre.setAttribute('role', 'region'); pre.setAttribute('aria-label', guide.title + ' guide text');
           section.replaceChildren(button, pre, citation);
+          if (focused) button.focus({preventScroll: true});
         } catch (error) { notice.textContent = error.message; }
       };
       root.append(section);

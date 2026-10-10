@@ -57,6 +57,18 @@ class SecurityTests(unittest.TestCase):
         self.assertEqual(self.request(token=False)['status'], 401)
         self.client.require.assert_not_called()
 
+    def test_accessibility_styles_are_public_but_arbitrary_files_are_not(self):
+        response = {}
+        def start(status, headers):
+            response.update(status=int(status.split()[0]), headers=dict(headers))
+        body = b''.join(server.application({'REQUEST_METHOD': 'GET', 'PATH_INFO': '/ui.css'}, start))
+        self.assertEqual(response['status'], 200)
+        self.assertEqual(response['headers']['Content-Type'], 'text/css')
+        self.assertIn(b'.skip-link', body)
+        self.client.require.assert_not_called()
+        self.assertNotEqual(self.request(path='/server.py', token=False)['status'], 200)
+        self.assertNotEqual(self.request(path='/../ui.css', token=False)['status'], 200)
+
     def test_header_uses_server_session_and_never_accepts_browser_bearer(self):
         sid, csrf, token = [secrets.token_urlsafe(32) for _ in range(3)]
         server.SESSIONS[sid] = {'token': token, 'csrf': csrf, 'expires': server.time.time() + 60}

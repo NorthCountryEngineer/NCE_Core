@@ -1,12 +1,13 @@
 {% extends 'core_chat/base.html' %}
+{% block title %}{% if conversation.kind == 'channel' %}# {% endif %}{{ conversation.title }} · {{ product_name }}{% endblock %}
 {% block chat_content %}
 <div class="chat-toolbar"><div><h1>{% if conversation.kind == 'channel' %}# {% endif %}{{ conversation.title }}</h1><small>{{ conversation.topic|default:conversation.get_kind_display }}{% if conversation.connection_id %} · Shared across organizations{% endif %}{% if conversation.ai_enabled %} · AI messaging enabled{% endif %}</small></div>
 <div class="chat-tools">{% if can_edit %}<a href="{% url 'chat_settings' organization.slug conversation.pk %}">Participants and permissions</a>{% endif %}<button type="button" id="chat-refresh">Refresh conversation</button>
 <form method="get" class="chat-search" role="search"><label for="chat-query" class="sr-only">Search messages</label><input id="chat-query" type="search" name="q" value="{{ query }}" placeholder="Search messages" maxlength="160"><button type="submit">Search</button>{% if query %}<a href="{% url 'chat_room' organization.slug conversation.pk %}">Clear</a>{% endif %}</form></div></div>
 {% if unavailable %}<p class="notice">The shared chat instance is unavailable. Refresh to reconnect.</p>{% endif %}
 {% if query %}<p class="chat-compose-hint">Search results{% if conversation.connection_id %} from the first 100 shared messages{% else %} · up to 200 matching messages{% endif %}. Clear search to return to live chat.</p>{% endif %}
-<p role="status" id="chat-status"></p>
-<div aria-live="polite" aria-label="Messages" id="chat-history" data-room="{{ conversation.pk }}">
+<p role="status" id="chat-status" tabindex="-1"></p>
+<div role="log" aria-live="polite" aria-relevant="additions" aria-atomic="false" aria-label="Messages" id="chat-history" data-room="{{ conversation.pk }}">
 {% if has_older %}<button type="button" id="chat-older">Load earlier messages</button>{% endif %}
 {% for message in chat_messages %}<section id="message-{{ message.id }}" data-message="{{ message.id }}" data-cursor="{{ message.cursor }}"><span class="chat-avatar" aria-hidden="true">{{ message.sender_name|default:message.actor_kind|first|upper }}</span><div class="chat-message-content">
 <div class="chat-message-meta"><strong>{{ message.sender_name|default:message.agent_name|default:message.actor_kind }}</strong><time datetime="{{ message.created }}">{{ message.created }}</time>{% if message.actor_kind == 'ai' or message.actor_kind == 'federated_ai' %}<small>AI agent</small>{% endif %}</div>
@@ -21,7 +22,7 @@
 <label for="id_text" class="sr-only">Message</label>{{ form.text }}
 <div class="chat-compose-actions"><div><label for="chat-mention" class="sr-only">Mention a person</label><select id="chat-mention"><option value="">@ Mention someone</option>{% for person in mention_people %}<option value="{{ person.email }}">{{ person.get_full_name|default:person.email }}</option>{% endfor %}</select></div><button type="submit">Send message <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 14 14 2M3 2h11v11"/></svg></button></div>
 </form>{% endif %}
-<p id="chat-read-only" {% if can_send %}hidden{% endif %}>You have read-only access to this conversation.</p>
+<p id="chat-read-only" tabindex="-1" {% if can_send %}hidden{% endif %}>You have read-only access to this conversation.</p>
 <div class="chat-compose-actions"><span class="chat-compose-hint">Share a link in your message · Ctrl/⌘ + Enter to send · Enter for a new line</span><label for="chat-notification-mode" class="sr-only">Conversation notifications</label><select id="chat-notification-mode" aria-label="Conversation notifications"><option value="all" {% if notification_mode == 'all' %}selected{% endif %}>Notify: all messages</option><option value="mentions" {% if notification_mode == 'mentions' %}selected{% endif %}>Notify: mentions only</option><option value="muted" {% if notification_mode == 'muted' %}selected{% endif %}>Mute conversation</option></select></div>
 </div>
 {% endblock %}

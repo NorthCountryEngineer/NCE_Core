@@ -1,4 +1,5 @@
-{% extends "identity/base.html" %}{% block content %}
+{% extends "identity/base.html" %}
+{% block title %}{{ organization.name }} · Identity and access policy · {{ product_name }}{% endblock %}{% block content %}
 <h1>{{ organization.name }} · Identity and access policy</h1>
 <p>Organization ID: <code>{{ organization.pk }}</code></p>
 <div class="actions"><a href="{% url 'authentication_policy' organization.slug %}">Authentication policy</a><a href="{% url 'provider_add' organization.slug %}">Add OIDC provider</a><a href="{% url 'identity_link_add' organization.slug %}">Link external account</a><a href="{% url 'permission_tag_add' organization.slug %}">Create permission tag</a></div>

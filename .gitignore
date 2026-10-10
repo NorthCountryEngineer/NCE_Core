@@ -9,3 +9,4 @@ staticfiles/
 *.egg-info/
 .ci-tools/
 artifacts/
+node_modules/

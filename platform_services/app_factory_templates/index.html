@@ -1,8 +1,10 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application</title><script src="/header.js" defer></script><script src="/ui.js" defer></script></head>
-<body><h1 id="title">Application</h1><a href="/login">Sign in with your organization</a><button id="logout">Sign out</button>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Core application</title><link rel="stylesheet" href="/ui.css"><script src="/header.js" defer></script><script src="/ui.js" defer></script></head>
+<body><header id="app-banner"><a class="skip-link" href="#main-content">Skip to main content</a><div class="app-title"><h1 id="title">Application</h1><nav aria-label="Application account"><a href="/login">Sign in with your organization</a><button id="logout">Sign out</button></nav></div></header>
+<main id="main-content" tabindex="-1">
 <p>Access and data permissions are managed by your platform administrator.</p>
 <label>Purpose code (if required) <input id="purpose" maxlength="80"></label>
-<button id="refresh">Load application</button><p id="status" role="status"></p><main id="collections"></main>
+<button id="refresh">Load application</button><p id="status" role="status"></p><div id="collections" aria-busy="false"></div>
 <section><h2>Organization and application guides</h2><label>Search documentation <input id="docs-query" maxlength="200"></label>
-<button id="docs-search">Find guides</button><p id="docs-status" role="status"></p><div id="docs-results"></div></section></body></html>
+<button id="docs-search">Find guides</button><p id="docs-status" role="status"></p><div id="docs-results"></div></section>
+</main></body></html>

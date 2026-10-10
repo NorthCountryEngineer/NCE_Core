@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ run.definition_name }} · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ run.definition_name }}</h1><p>{{ run.status }} · {{ run.created }}</p>
 <p>{{ run.environment }}{% if run.task %} · {{ run.task.name }}{% endif %} · Consumed by {{ run.consumer.package.name }}</p>

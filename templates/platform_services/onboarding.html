@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}Developer onboarding · Step {{ state.step }} · {{ title }} · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Developer onboarding</h1><p>Step {{ state.step }} of 5 · {{ title }}</p>
 <section>

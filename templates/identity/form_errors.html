@@ -1,0 +1,10 @@
+{% if form.errors %}
+<div class="error-summary" id="{{ error_summary_id|default:'form-errors' }}" role="alert" tabindex="-1" aria-labelledby="{{ error_summary_id|default:'form-errors' }}-title" data-form-errors>
+<p id="{{ error_summary_id|default:'form-errors' }}-title"><strong>Review the errors before continuing</strong></p>
+<ul>
+{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+{% for field in form.visible_fields %}{% for error in field.errors %}<li><a href="#{{ field.id_for_label|default:field.auto_id }}">{{ field.label }}: {{ error }}</a></li>{% endfor %}{% endfor %}
+{% for field in form.hidden_fields %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}
+</ul>
+</div>
+{% endif %}

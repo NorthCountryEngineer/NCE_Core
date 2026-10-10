@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ service.name }} · {{ product_name }}{% endblock %}
 {% block content %}
 <p><a href="{% url 'protected_resource_add' brand_organization.slug service.pk %}">Register a tagged application resource</a></p>
 {% for resource in protected_resources %}<p><a href="{% url 'protected_resource' brand_organization.slug service.pk resource.pk %}">{{ resource.name }}</a> · {{ resource.resource_type }} · <a href="{% url 'resource_tags' brand_organization.slug 'protectedresource' resource.pk %}">Permission tags</a></p>{% endfor %}

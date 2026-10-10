@@ -1,0 +1,7 @@
+{% extends 'identity/base.html' %}
+{% block title %}Access denied · {{ product_name }}{% endblock %}
+{% block content %}
+<section><h1>Access denied</h1>
+<p>Your current account, permissions or access context cannot open this page. Contact your organization administrator if you need access.</p>
+<p><a href="{% url 'home' %}">Return to your organizations</a> · <a href="{% url 'login' %}">Go to sign in</a></p></section>
+{% endblock %}

@@ -1,0 +1,8 @@
+{
+  "name": "core-accessibility-verification",
+  "private": true,
+  "description": "Local, optional axe-core checks for the shared Core UI",
+  "devDependencies": {
+    "axe-core": "4.10.3"
+  }
+}

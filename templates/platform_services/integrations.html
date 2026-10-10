@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ organization.name }} · Applications and integrations · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ organization.name }} · Applications and integrations</h1>
 <div class="actions"><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a>

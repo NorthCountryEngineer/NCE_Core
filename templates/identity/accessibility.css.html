@@ -1,0 +1,22 @@
+.skip-link { position: fixed; top: 8px; left: 8px; transform: translateY(-180%); z-index: 100; background: white; color: #155c99; padding: .8rem 1rem; border: 2px solid #155c99; border-radius: 4px; }
+.skip-link:focus { transform: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+:focus-visible { outline: 3px solid #155c99; outline-offset: 3px; }
+core-header [slot=account] :focus-visible { outline-color: currentColor; }
+#main-content:focus { outline-offset: -3px; }
+.error-summary { border: 2px solid #a32020; background: #fff; padding: 1rem; margin: 1rem 0; }
+.error-summary p { margin-top: 0; }
+.error-summary a { display: inline-block; min-height: 24px; line-height: 1.5; }
+.error-summary li { margin-block: .25rem; }
+.table-scroll { max-width: 100%; overflow-x: auto; margin: 1rem 0; }
+pre { max-width: 100%; overflow-x: auto; }
+@media (max-width: 700px) {
+  main a, main summary { scroll-margin-block: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within, #chat-history { scroll-behavior: auto; }
+}
+@media (forced-colors: active) {
+  :focus-visible, core-header [slot=account] :focus-visible { outline-color: Highlight; }
+  .error-summary, .skip-link { border-color: CanvasText; }
+}

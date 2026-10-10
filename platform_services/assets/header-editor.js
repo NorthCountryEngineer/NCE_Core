@@ -43,9 +43,11 @@
     const total = field('links-TOTAL_FORMS'), count = Number(total.value);
     if (count >= 8) { note.textContent = 'Up to eight link rows. Remove an existing link and save before adding another.'; return; }
     const fragment = document.getElementById('header-link-template').content.cloneNode(true);
-    fragment.querySelectorAll('[name],[id],[for]').forEach(node => ['name', 'id', 'for'].forEach(key => {
+    fragment.querySelectorAll('[name],[id],[for],[aria-describedby],[aria-labelledby],[href^="#"]').forEach(node => ['name', 'id', 'for', 'aria-describedby', 'aria-labelledby', 'href'].forEach(key => {
       if (node.hasAttribute(key)) node.setAttribute(key, node.getAttribute(key).replaceAll('__prefix__', String(count)));
     }));
+    const firstField = fragment.querySelector('input:not([type=hidden])');
     document.getElementById('header-links').append(fragment); total.value = count + 1; update();
+    firstField?.focus();
   };
 })();

@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ organization.name }} administration · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ organization.name }} administration</h1>
 <a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
@@ -8,12 +9,12 @@
 <p>Manage access to {{ product_name }} and applications in this organization.</p>
 <div class="actions"><a href="{% url 'branding' organization.slug %}">Organization settings</a><a href="{% url 'invite' organization.slug %}">Invite a user</a></div>
 <section><h2>Users</h2>
-<table><tr><th>Email</th><th>Organization role</th><th>Access</th></tr>
+<div class="table-scroll" role="region" aria-label="Organization members" tabindex="0"><table><caption class="sr-only">Organization members</caption><tr><th scope="col">Email</th><th scope="col">Organization role</th><th scope="col">Access</th></tr>
 {% for membership in memberships %}<tr>
   <td><a href="{% url 'membership' organization.slug membership.pk %}">{{ membership.user.email }}</a> · <a href="{% url 'resource_tags' organization.slug 'membership' membership.pk %}">Tags and grants</a></td>
   <td>{{ membership.get_kind_display }}{% for role in membership.roles.all %} · {{ role.name }}{% endfor %}</td>
   <td>{% if membership.active %}Active{% else %}Disabled{% endif %}</td>
-</tr>{% endfor %}</table></section>
+</tr>{% endfor %}</table></div></section>
 <section><h2>Services</h2><a href="{% url 'service_add' organization.slug %}">Register a service</a>
 <ul>{% for service in services %}<li><a href="{% url 'service' organization.slug service.pk %}">{{ service.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'service' service.pk %}">Tags and grants</a>{% if not service.active %} (disabled){% endif %}</li>{% empty %}<li>No services registered.</li>{% endfor %}</ul></section>
 <section><h2>Roles</h2>

@@ -1,1 +1,2 @@
-{% extends 'identity/base.html' %}{% block content %}<h1>Training approval required</h1><p>{{ message }}</p><a href="{% url 'training' organization.slug %}">Return to training</a>{% endblock %}
+{% extends 'identity/base.html' %}
+{% block title %}Training approval required · {{ product_name }}{% endblock %}{% block content %}<h1>Training approval required</h1><p>{{ message }}</p><a href="{% url 'training' organization.slug %}">Return to training</a>{% endblock %}

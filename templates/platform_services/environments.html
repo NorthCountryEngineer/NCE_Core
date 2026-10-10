@@ -1,10 +1,11 @@
 {% extends "identity/base.html" %}
+{% block title %}Deployment environments · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Deployment environments</h1>
 <p>Each environment has a separate namespace, runtime account, workload credentials, and resource boundary tag. Permissions and audit policies also apply within each environment.</p>
 <p><a href="{% url 'environment_add' organization.slug %}">Create environment</a> · <a href="{% url 'runtime_add' organization.slug %}">Connect an environment runtime</a> · <a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a></p>
-<table><tr><th>Environment</th><th>Namespace</th><th>Access</th></tr>
+<div class="table-scroll" role="region" aria-label="Deployment environments" tabindex="0"><table><caption class="sr-only">Deployment environments</caption><tr><th scope="col">Environment</th><th scope="col">Namespace</th><th scope="col">Access</th></tr>
 {% for environment in environments %}<tr><td><a href="{% url 'environment_edit' organization.slug environment.pk %}">{{ environment.get_name_display }}</a> · {{ environment.active|yesno:"active,disabled" }}</td><td>{{ environment.namespace }}</td><td>Assign <code>{{ environment.boundary_tag.slug }}</code> to datasets, conversations, workflows, training scenarios, fabric contracts, and application resources. <a href="{% url 'resource_tags' organization.slug 'deploymentenvironment' environment.pk %}">Additional policies</a></td></tr>{% empty %}<tr><td colspan="3">Create sandbox, development, and production with distinct namespaces.</td></tr>{% endfor %}
-</table>
+</table></div>
 <p>Organization administrators manage every environment. Other people require environment-tag grants. Environment-bound machines cannot access unassigned resources or cross an environment boundary.</p>
 {% endblock %}

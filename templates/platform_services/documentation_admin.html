@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ organization.name }} · Documentation administration · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ organization.name }} · Documentation administration</h1>
 <p class="actions"><a href="{% url 'documentation' organization.slug %}">Read documentation</a><a href="{% url 'documentation_add' organization.slug %}">Add organization or scoped application guide</a><a href="{% url 'documentation_publish' organization.slug %}">Publish application source</a><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a></p>

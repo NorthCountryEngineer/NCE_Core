@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{{ product_name }}</title>
+  <title>{% block title %}{% if title %}{{ title }} · {% endif %}{{ product_name }}{% endblock %}</title>
   <style>
     :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182b40; background: #f3f6fa; }
     body { margin: 0; } header { background: #182b40; color: white; padding: 1.25rem 5%; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
@@ -11,7 +11,7 @@
     section { background: white; padding: 1.5rem; border: 1px solid #d8e0e9; border-radius: 8px; margin: 1.25rem 0; }
     a { color: #155c99; } h1, h2 { line-height: 1.3; } h2 { font-size: 1.25rem; }
     table { width: 100%; border-collapse: collapse; } td, th { text-align: left; padding: .7rem; border-bottom: 1px solid #d8e0e9; }
-    input:not([type=checkbox]), textarea, select { display: block; padding: .65rem; border: 1px solid #8797a8; border-radius: 4px; max-width: 95%; margin: .4rem 0; }
+    input:not([type=checkbox]), textarea, select { display: block; padding: .65rem; border: 1px solid #67778b; border-radius: 4px; max-width: 95%; margin: .4rem 0; }
     textarea { width: 90%; } button, input[type=submit] { background: #155c99; color: white; padding: .7rem 1rem; border: 0; border-radius: 4px; cursor: pointer; }
     label { font-weight: 600; } .helptext { display: block; font-size: .9rem; color: #526476; }
     .errorlist { color: #a32020; } code { overflow-wrap: anywhere; } .notice { background: #e0eef7; padding: 1rem; }
@@ -19,16 +19,21 @@
   </style>
   {% block extra_head %}{% endblock %}
   <style>{% include 'identity/mobile-foundation.css.html' %}</style>
+  <style>{% include 'identity/accessibility.css.html' %}</style>
 </head>
 <body>
 {% if header_organization %}
+<div role="banner">
+<a class="skip-link" href="#main-content">Skip to main content</a>
 <core-header endpoint="{% url 'header_state' header_organization.slug %}" organization-id="{{ header_organization.pk }}" brand="{{ header_organization.brand }}" csrf-token="{{ csrf_token }}">
   <form slot="account" method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button type="submit" style="background:transparent;color:inherit;padding:8px;font-size:12px">Sign out</button></form>
 </core-header>
 <script src="{% url 'header_component' %}" defer></script>
 <noscript><p><a href="{% url 'home' %}">Organizations</a> · <a href="{% url 'password_change' %}">Password</a> · <a href="{% url 'chat' header_organization.slug %}">Chat</a></p></noscript>
+</div>
 {% else %}
 <header>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <strong>{{ product_name }}{% if brand_organization %} · {{ brand_organization.name }}{% endif %}</strong>
   {% if user.is_authenticated %}
     {% if user.is_developer %}<span>Developer</span>{% endif %}
@@ -38,8 +43,9 @@
   {% endif %}
 </header>
 {% endif %}
-<main>
-  {% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}
+<main id="main-content" tabindex="-1">
+  {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+  {% include 'identity/form_errors.html' %}
   {% block access_controls %}{% if user.is_authenticated and brand_organization %}
   <form method="post" action="{% url 'access_purpose' brand_organization.slug %}">{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -49,5 +55,6 @@
   {% endif %}{% endblock %}
   {% block content %}{% endblock %}
 </main>
+<script>{% include 'identity/accessibility.js.html' %}</script>
 </body>
 </html>

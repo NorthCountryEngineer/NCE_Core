@@ -122,9 +122,9 @@ def application(environ, start_response):
     try:
         if method == 'GET' and path == '/health':
             return reply('200 OK', {'status': 'ok'})
-        if method == 'GET' and path in {'/', '/ui.js', '/header.js'}:
+        if method == 'GET' and path in {'/', '/ui.js', '/header.js', '/ui.css'}:
             name = 'index.html' if path == '/' else path.removeprefix('/')
-            return reply('200 OK', (ROOT / name).read_bytes(), mime='text/html' if path == '/' else 'application/javascript')
+            return reply('200 OK', (ROOT / name).read_bytes(), mime='text/html' if path == '/' else 'text/css' if path == '/ui.css' else 'application/javascript')
         cookies = SimpleCookie()
         cookies.load(environ.get('HTTP_COOKIE', ''))
         sid = cookies['core_app_session'].value if 'core_app_session' in cookies else ''

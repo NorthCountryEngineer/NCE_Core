@@ -1,23 +1,24 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ object.name }} · {{ object.kind }} · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ object.name }} · {{ object.kind }}</h1>
 <p><a href="{% url 'development_workspace' organization.slug %}">Development operations</a> · <a href="{% url 'resource_tags' organization.slug 'developmentobject' object.pk %}">Permission tags</a></p>
 <p>Owner: {{ object.installation.package.name }} · Environment: {{ object.environment.name }} · {% if object.active %}Active{% else %}Disabled{% endif %}</p>
 {% if error %}<p role="alert">{{ error }}</p>{% endif %}
 <h2>Immutable revisions</h2>
-<table><thead><tr><th>Revision</th><th>Digest / reference</th><th>Status</th><th>Review</th></tr></thead><tbody>
+<div class="table-scroll" role="region" aria-label="Object revisions" tabindex="0"><table><caption class="sr-only">Object revisions</caption><thead><tr><th scope="col">Revision</th><th scope="col">Digest / reference</th><th scope="col">Status</th><th scope="col">Review</th></tr></thead><tbody>
 {% for version in versions %}<tr><td>{{ version.number }}</td><td><code>{{ version.pk }}</code><br><code>{{ version.digest }}</code><br><a href="{% url 'resource_tags' organization.slug 'developmentrevision' version.pk %}">Revision tags</a></td><td>{% if version.published %}Published{% else %}Draft / withdrawn{% endif %}</td><td>
 <form method="post">{% csrf_token %}<input type="hidden" name="revision_id" value="{{ version.pk }}"><button name="action" value="{% if version.published %}withdraw{% else %}publish{% endif %}">{% if version.published %}Withdraw{% else %}Review and publish{% endif %}</button></form>
-<a href="{% url 'development_export' organization.slug version.pk %}">Export recipe bundle</a></td></tr>{% endfor %}</tbody></table>
+<a href="{% url 'development_export' organization.slug version.pk %}">Export recipe bundle</a></td></tr>{% endfor %}</tbody></table></div>
 <h2>Create a new draft revision</h2>
 <p>Editing creates a new version. Existing compositions and runs retain their pinned revisions.</p>
-<form method="post">{% csrf_token %}<input type="hidden" name="action" value="revision">{{ revision_form.as_p }}<button type="submit">Save new draft</button></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="revision">{% include 'identity/form_errors.html' with form=revision_form error_summary_id='revision-errors' %}{{ revision_form.as_p }}<button type="submit">Save new draft</button></form>
 <h2>Application sharing</h2>
 <p>Approve each dependency separately. Sharing a workflow grants no access to its data, agents, or subordinate objects. Cross-organization data uses separately approved Data Fabric contracts.</p>
-<form method="post">{% csrf_token %}<input type="hidden" name="action" value="sharing">{{ share_form.as_p }}<button type="submit">Save sharing and availability</button></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="sharing">{% include 'identity/form_errors.html' with form=share_form error_summary_id='sharing-errors' %}{{ share_form.as_p }}<button type="submit">Save sharing and availability</button></form>
 <h2>Run an experiment</h2>
 <p>Local operations accept at most 200 flat records, 48 expanded operators, and 500 training epochs. Dataset reads and agent steps use central quotas. Select a published revision; model and connection inputs are composed inside a workflow. External inputs use {"port_name": [{"field": 1}]}.</p>
-<form method="post">{% csrf_token %}<input type="hidden" name="action" value="run"><label>Revision <select name="revision_id">{% for version in versions %}{% if version.published %}<option value="{{ version.pk }}">{{ version.number }}</option>{% endif %}{% endfor %}</select></label>{{ run_form.as_p }}<button type="submit">Run reviewed experiment</button></form>
+<form method="post">{% csrf_token %}<input type="hidden" name="action" value="run"><label>Revision <select name="revision_id">{% for version in versions %}{% if version.published %}<option value="{{ version.pk }}">{{ version.number }}</option>{% endif %}{% endfor %}</select></label>{% include 'identity/form_errors.html' with form=run_form error_summary_id='run-errors' %}{{ run_form.as_p }}<button type="submit">Run reviewed experiment</button></form>
 <h2>Recent experiments</h2>
 {% for item in runs %}<article><h3>{{ item.run.pk }} · {{ item.run.status }} · {{ item.run.created }}</h3><p>Revision {{ item.run.object_revision.number }} · <a href="{% url 'resource_tags' organization.slug 'developmentrun' item.run.pk %}">Run tags</a></p><details><summary>Output / model metrics</summary><pre>{{ item.result }}</pre></details><details><summary>Pinned lineage and agent attribution</summary><pre>{{ item.lineage }}</pre></details></article>{% empty %}<p>No visible experiments yet.</p>{% endfor %}
 {% endblock %}

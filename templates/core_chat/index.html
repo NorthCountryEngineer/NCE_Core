@@ -1,7 +1,8 @@
 {% extends 'core_chat/base.html' %}
+{% block title %}Conversations · {{ product_name }}{% endblock %}
 {% block chat_content %}
 <div class="chat-toolbar"><div><h1>Conversations</h1><small>Your team, connected.</small></div></div>
-<div class="chat-empty-state"><div class="chat-empty-icon" aria-hidden="true">☷</div><h1>A place for every conversation.</h1>
+<div class="chat-empty-state"><div class="chat-empty-icon" aria-hidden="true">☷</div><h2>A place for every conversation.</h2>
 <p>Open a channel, direct message, or group from the sidebar. Share links, reply to messages, and keep up with mentions in your notification inbox.</p>
 {% if not can_create %}<p>An organization administrator can grant you access to create conversations. You can open conversations shared with you in the sidebar.</p>{% endif %}
 {% if not workspace.rooms %}<p>No conversations have been shared with you.</p>{% endif %}

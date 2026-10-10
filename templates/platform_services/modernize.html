@@ -1,8 +1,9 @@
 {% extends "identity/base.html" %}
+{% block title %}Modernize a Kubernetes application · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Modernize a Kubernetes application</h1>
 <p>Connect an existing Deployment to this organization's identity, chat, data pipeline, agents, workflows, training, and data fabric. Choose the consuming container and approve only the Core capabilities it needs.</p>
 <p>The application owner retains Kubernetes releases, replicas, storage, Services, and Ingress. Integration configuration triggers a pod rollout. Applications use the generated OIDC settings and service discovery through their existing framework or the Core SDK.</p>
-<table><tr><th>Environment / Deployment</th><th>Containers</th><th>Last observed</th></tr>{% for application in applications %}<tr><td>{{ application }}</td><td>{% for container in application.containers %}{{ container.name }} · {{ container.image }}<br>{% endfor %}</td><td>{{ application.observed_at }}</td></tr>{% empty %}<tr><td colspan="3">Connect an environment runtime and run the connector to discover Deployments. Kubernetes credentials remain on the connector host.</td></tr>{% endfor %}</table>
+<div class="table-scroll" role="region" aria-label="Discovered Kubernetes applications" tabindex="0"><table><caption class="sr-only">Discovered Kubernetes applications</caption><tr><th scope="col">Environment / Deployment</th><th scope="col">Containers</th><th scope="col">Last observed</th></tr>{% for application in applications %}<tr><td>{{ application }}</td><td>{% for container in application.containers %}{{ container.name }} · {{ container.image }}<br>{% endfor %}</td><td>{{ application.observed_at }}</td></tr>{% empty %}<tr><td colspan="3">Connect an environment runtime and run the connector to discover Deployments. Kubernetes credentials remain on the connector host.</td></tr>{% endfor %}</table></div>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Approve and connect application</button></form>
 {% endblock %}

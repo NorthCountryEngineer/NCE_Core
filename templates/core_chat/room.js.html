@@ -13,16 +13,20 @@ const notificationMode = document.getElementById('chat-notification-mode');
 function csrfToken() { return document.querySelector('input[name=csrfmiddlewaretoken]').value; }
 function nearBottom() { return chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < 70; }
 function setSending(allowed) {
+  const displaced = !allowed && (composer?.contains(document.activeElement) || document.activeElement?.matches('.chat-reply'));
   if (composer) {
     composer.hidden = !allowed;
     for (const field of composer.elements) field.disabled = !allowed;
   }
   for (const button of document.querySelectorAll('.chat-reply')) button.hidden = !allowed;
   readOnly.hidden = allowed;
+  if (displaced) readOnly.focus();
 }
 function revokeChat() {
+  const displaced = chatHistory.contains(document.activeElement) || composer?.contains(document.activeElement) || document.activeElement === notificationMode;
   revoked = true; chatHistory.replaceChildren(); setSending(false); readOnly.hidden = true;
   notificationMode.disabled = true; chatStatus.textContent = 'Conversation access has been revoked.';
+  if (displaced) chatStatus.focus();
 }
 async function savePreferences(values) {
   const response = await fetch('{% url "chat_preferences" organization.slug conversation.pk %}', {

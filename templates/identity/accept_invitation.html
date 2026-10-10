@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}Join {{ invitation.organization.name }} · {{ product_name }}{% endblock %}
 {% block content %}
 <section><h1>Join {{ invitation.organization.name }}</h1>
 <p>Invited account: {{ invitation.email }}</p>

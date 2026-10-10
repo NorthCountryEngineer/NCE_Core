@@ -1,0 +1,8 @@
+{% extends 'identity/base.html' %}
+{% block title %}Form verification failed · {{ product_name }}{% endblock %}
+{% block content %}
+<section><h1>Form verification failed</h1>
+<p>Your form could not be verified. Reload the page and try again. Sign in again if your session has ended.</p>
+<p>If the problem continues, contact your organization's support team.</p>
+<p><a href="{% url 'home' %}">Return to your organizations</a> · <a href="{% url 'login' %}">Go to sign in</a></p></section>
+{% endblock %}

@@ -74,7 +74,7 @@ class AppFactoryTests(TestCase):
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), '-m', 'unittest', 'test_server', '-v'],
                 cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('Ran 17 tests', result.stderr)
+            self.assertIn('Ran 18 tests', result.stderr)
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), 'ci/source_digest.py'], cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), source_hash)

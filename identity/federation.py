@@ -23,6 +23,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from .models import AuthenticationEvidence, AuditEvent, FederatedIdentity, IdentityProvider, Membership
+from .forms import CoreAuthenticationForm
 
 
 class FederationError(Exception):
@@ -139,6 +140,7 @@ def safe_next(request, value):
 
 class ProviderLoginView(LoginView):
     template_name = "registration/login.html"
+    authentication_form = CoreAuthenticationForm
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

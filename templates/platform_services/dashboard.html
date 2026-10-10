@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ organization.name }} · Central admin · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ organization.name }} · Central admin</h1>
 <div class="actions">
@@ -30,13 +31,13 @@
 <section><h2>Deployed instances</h2>
 <p>The controller and core services are included in this inventory. A missing or stale report means current health is unknown.</p>
 <a href="{% url 'adopt_controller' organization.slug %}">Connect this controller's Kubernetes deployment</a>
-<table><tr><th>Instance</th><th>Status</th><th>Management</th></tr>
+<div class="table-scroll" role="region" aria-label="Deployed instances" tabindex="0"><table><caption class="sr-only">Deployed instances</caption><tr><th scope="col">Instance</th><th scope="col">Status</th><th scope="col">Management</th></tr>
 {% for deployment in deployments %}<tr><td>{{ deployment.installation.package.name }} · <a href="{% url 'resource_tags' organization.slug 'deployment' deployment.pk %}">Tags</a><br>{{ deployment.get_target_display }} · {{ deployment.environment.get_name_display|default:"legacy / unassigned" }} · {{ deployment.namespace }}{% if deployment.parent %} · managed by {{ deployment.parent.name }}{% endif %}</td>
 <td>{{ deployment.status }} · desired {{ deployment.desired_state }}<br>Last report: {{ deployment.last_seen|default:"not received" }}{% if deployment.message %}<br>{{ deployment.message }}{% endif %}</td>
 <td>{% if deployment.target != 'embedded' %}<form method="post" action="{% url 'deployment_action' organization.slug deployment.pk %}">{% csrf_token %}
 {% if deployment.target != 'kubernetes-controller' %}<button name="action" value="start">{% if deployment.target == 'kubernetes-adopted' %}Enable integration{% else %}Start{% endif %}</button> <button name="action" value="stop">{% if deployment.target == 'kubernetes-adopted' %}Disable integration{% else %}Stop{% endif %}</button>{% endif %} {% if deployment.target != 'kubernetes-adopted' %}<button name="action" value="restart">Restart</button>{% endif %}
 </form>{% else %}Managed through installation settings{% endif %}</td></tr>{% empty %}<tr><td colspan="3">No instances registered.</td></tr>{% endfor %}
-</table></section>
+</table></div></section>
 <section><h2>Kubernetes runtimes</h2>
 {% for node in nodes %}<p>{{ node.name }} · <a href="{% url 'resource_tags' organization.slug 'runtimenode' node.pk %}">Tags and runtime grants</a> · {{ node.namespace }} · {% if not node.active %}disabled{% elif node.online %}connected{% else %}awaiting report{% endif %}
 {% if node.active %}<form class="inline" method="post" action="{% url 'runtime_disable' organization.slug node.pk %}">{% csrf_token %}<button type="submit">Revoke runtime access</button></form>{% endif %}</p>{% empty %}<p>No cluster is connected.</p>{% endfor %}</section>

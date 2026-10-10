@@ -1,8 +1,9 @@
 {% extends "identity/base.html" %}
+{% block title %}Shared application header · {{ product_name }}{% endblock %}
 {% block extra_head %}
 <style>
   .header-editor fieldset{border:0;padding:0;margin:1rem 0}.header-editor legend{font-size:1.2rem;font-weight:700;margin-bottom:.6rem}
-  .header-editor .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+  .header-editor .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:1rem}
   .header-editor .widget{display:flex;gap:1rem;align-items:center;border-bottom:1px solid #d8e0e9;padding:.65rem 0}.header-editor .widget label{flex:1}
   .header-editor .widget input[type=number]{width:65px}.header-editor .link-card{border:1px solid #d8e0e9;border-radius:8px;padding:1rem;margin:.8rem 0}
   .header-preview{border:1px solid #d8e0e9;border-radius:10px;overflow:hidden}.preview-note{font-size:.9rem;color:#526476}.header-editor input[type=color]{width:100px;height:45px}
@@ -15,7 +16,7 @@
 <h1>Shared application header</h1>
 <p>Customize {{ organization.name }}’s header once for Core and integrated applications. App access, Chat access, and permission tags still apply to each user.</p>
 <section><h2>Live preview</h2>
-  <div class="header-preview"><core-header id="header-preview" preview endpoint="{% url 'header_state' organization.slug %}" organization-id="{{ organization.pk }}"></core-header></div>
+  <div class="header-preview"><core-header id="header-preview" preview inert aria-hidden="true" endpoint="{% url 'header_state' organization.slug %}" organization-id="{{ organization.pk }}"></core-header></div>
   <p class="preview-note" id="preview-note" role="status">Unsaved appearance preview. Applications shown here are limited to your own access. Preview buttons do not open tools or send requests.</p>
 </section>
 <form method="post" id="header-editor" class="header-editor">
@@ -24,7 +25,7 @@
   <p>{{ form.unified_header_enabled }} {{ form.unified_header_enabled.label_tag }} {{ form.unified_header_enabled.errors }}</p>
   <p class="helptext">Each installed app can inherit this default, show the header, or use its own header in Set service access.</p>
   <div class="grid">{% for field in form %}{% if field.name == 'identity_name' or field.name == 'logo_url' or field.name == 'preset' or field.name == 'background' or field.name == 'foreground' or field.name == 'accent' or field.name == 'density' %}
-    <div>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}</div>
+    <div>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</span>{% endif %}</div>
   {% endif %}{% endfor %}</div>
   <p>{{ form.show_organization }} {{ form.show_organization.label_tag }} {{ form.show_organization.errors }}</p>
   <p class="helptext">Custom text and background colors must meet 4.5:1 contrast. A blocked or unavailable logo falls back to the platform name. Logos load in the browser; Core does not fetch remote images.</p>
@@ -35,12 +36,12 @@
   <p class="helptext">Widgets are built-in tools, not executable embeds. Account tools include documentation and administration when the user has access.</p>
 </fieldset></section>
 <section><fieldset><legend>Shared application shortcuts</legend>
-  {{ form.shortcuts.label_tag }}{{ form.shortcuts }}{{ form.shortcuts.errors }}<span class="helptext">{{ form.shortcuts.help_text }}</span>
+  {{ form.shortcuts.label_tag }}{{ form.shortcuts }}{{ form.shortcuts.errors }}<span class="helptext" id="{{ form.shortcuts.auto_id }}_helptext">{{ form.shortcuts.help_text }}</span>
 </fieldset></section>
 <section><fieldset><legend>Organization links</legend>
   <p>Up to eight links. Set a position to order them. Permission tags hide sensitive links from users and application backends without the required grants. A link does not grant access to its destination.</p>
   {{ links.management_form }}{{ links.non_form_errors }}
-  <div id="header-links">{% for link in links %}<div class="link-card">{{ link.non_field_errors }}{{ link.as_p }}</div>{% endfor %}</div>
+  <div id="header-links">{% for link in links %}<div class="link-card">{% include 'identity/form_errors.html' with form=link error_summary_id=link.prefix %}{{ link.non_field_errors }}{{ link.as_p }}</div>{% endfor %}</div>
   <template id="header-link-template"><div class="link-card">{{ links.empty_form.as_p }}</div></template>
   <button type="button" id="add-header-link" class="secondary">Add organization link</button>
 </fieldset></section>

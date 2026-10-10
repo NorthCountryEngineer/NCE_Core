@@ -1,4 +1,5 @@
 {% extends 'identity/base.html' %}
+{% block title %}{{ account.name }} · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ account.name }}</h1><p>Agent account {{ account.pk }}{% if account.listing %} · {{ account.listing.name }} {{ account.listing_version }}{% endif %}</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button>Save account</button></form>

@@ -385,7 +385,7 @@ class ChatBrowserChecks:
         preview = self.admin.locator('#header-preview')
         expect(preview.locator('.brand strong')).to_have_text('Organization workspace')
         expect(preview.locator('.bar')).to_have_css('background-color', 'rgb(21, 60, 49)')
-        expect(preview.get_by_role('link', name='Organization docs', exact=True)).to_be_visible()
+        expect(preview.locator('.shared-links a').filter(has_text='Organization docs')).to_be_visible()
         expect(preview.locator('.logo')).to_be_visible()
         self.check('administrator can preview logo, theme, widgets, app shortcuts, and new links before saving')
         self.submit(self.admin, 'Save shared header')

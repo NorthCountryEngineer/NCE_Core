@@ -1,0 +1,29 @@
+/* Progressive keyboard support; no requests, credentials or access decisions. */
+(() => {
+  const summary = document.querySelector('[data-form-errors]');
+  const results = document.querySelector('[data-query-results]');
+  if (summary) summary.focus();
+  else if (results) results.focus();
+  document.querySelectorAll('[data-form-errors] a').forEach(link => link.addEventListener('click', event => {
+    const field = document.getElementById(link.hash.slice(1));
+    if (!field) return;
+    event.preventDefault();
+    const target = field.matches('input,select,textarea,button') ? field : field.querySelector('input,select,textarea,button');
+    (target || field).focus();
+    (target || field).scrollIntoView({block: 'center'});
+  }));
+  const updateScrollTarget = target => {
+    const scrolls = target.scrollWidth > target.clientWidth + 1;
+    if (scrolls) target.tabIndex = 0;
+    else if (document.activeElement !== target) target.removeAttribute('tabindex');
+  };
+  const observer = new ResizeObserver(entries => entries.forEach(({target}) => updateScrollTarget(target)));
+  document.querySelectorAll('.table-scroll, .documentation-content, main pre').forEach((region, index) => {
+    if (region.matches('pre') && !region.hasAttribute('aria-label') && !region.hasAttribute('aria-labelledby')) {
+      region.setAttribute('role', 'region');
+      region.setAttribute('aria-label', `Text block ${index + 1}`);
+    }
+    region.addEventListener('blur', () => updateScrollTarget(region));
+    observer.observe(region);
+  });
+})();

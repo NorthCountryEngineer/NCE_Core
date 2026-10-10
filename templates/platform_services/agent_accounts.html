@@ -1,4 +1,5 @@
 {% extends 'identity/base.html' %}
+{% block title %}{{ organization.name }} · Agent accounts · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>{{ organization.name }} · Agent accounts</h1>
 <p>Agents have their own identities. Approve each consuming application, environment, and service role before use.</p>

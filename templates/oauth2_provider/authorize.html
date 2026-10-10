@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}Application authorization · {{ product_name }}{% endblock %}
 {% block content %}
 <section>
 {% if error %}<h1>Sign-in request could not be completed</h1><p>{{ error.description }}</p>

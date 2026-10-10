@@ -2,22 +2,39 @@ const workspaceInitial = JSON.parse(document.getElementById('workspace-state').t
 let workspacePrevious = workspaceInitial;
 let workspaceFetching = false;
 let workspaceRevoked = false;
+let workspaceRendered = false;
 const inbox = document.getElementById('chat-inbox');
 const inboxButton = document.querySelector('.chat-inbox-toggle');
 const currentRoom = document.getElementById('chat-history')?.dataset.room;
 const desktopKey = 'core-chat-desktop-{{ user.pk|escapejs }}';
-function toggleInbox(open) { inbox.hidden = !open; inboxButton.setAttribute('aria-expanded', String(open)); }
+function toggleInbox(open) {
+  if (open === !inbox.hidden) return;
+  inbox.hidden = !open; inboxButton.setAttribute('aria-expanded', String(open));
+  if (open) document.getElementById('chat-inbox-close').focus(); else inboxButton.focus();
+}
 inboxButton.addEventListener('click', () => toggleInbox(inbox.hidden));
 document.getElementById('chat-inbox-close').addEventListener('click', () => toggleInbox(false));
-document.addEventListener('keydown', event => { if (event.key === 'Escape') toggleInbox(false); });
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !inbox.hidden && inbox.contains(document.activeElement)) {
+    event.preventDefault(); toggleInbox(false);
+  }
+});
 function filterRooms() {
   const query = document.getElementById('conversation-filter').value.toLocaleLowerCase();
   for (const link of document.querySelectorAll('.chat-room-link')) link.hidden = !link.textContent.toLocaleLowerCase().includes(query);
 }
 document.getElementById('conversation-filter').addEventListener('input', filterRooms);
 function renderWorkspace(state) {
-  document.getElementById('notification-count').textContent = state.notifications;
   const list = document.getElementById('chat-room-list');
+  const notifications = document.getElementById('chat-notification-list');
+  const active = document.activeElement;
+  const focusedRoom = active?.dataset.room;
+  const focusedList = list.contains(active) ? list : notifications.contains(active) ? notifications : null;
+  if (workspacePrevious && (state.notifications !== workspacePrevious.notifications || state.unread !== workspacePrevious.unread))
+    document.getElementById('workspace-status').textContent = `${state.notifications} notifications, ${state.unread || 0} unread messages.`;
+  document.getElementById('notification-count').textContent = state.notifications;
+  if (workspaceRendered && JSON.stringify(state.rooms) === JSON.stringify(workspacePrevious.rooms)) { workspacePrevious = state; return; }
+  workspaceRendered = true;
   list.replaceChildren();
   for (const [kind, label, icon] of [['channel', 'Channels', '#'], ['direct', 'Direct messages', '›'], ['group', 'Group messages', '◉']]) {
     const rooms = state.rooms.filter(room => room.kind === kind);
@@ -37,12 +54,21 @@ function renderWorkspace(state) {
     }
   }
   filterRooms();
-  const notifications = document.getElementById('chat-notification-list'); notifications.replaceChildren();
+  notifications.replaceChildren();
   for (const room of state.rooms.filter(room => room.notifications)) {
-    const link = document.createElement('a'); link.className = 'chat-notification'; link.href = room.url; link.textContent = room.title;
+    const link = document.createElement('a'); link.className = 'chat-notification'; link.href = room.url; link.textContent = room.title; link.dataset.room = room.id;
     const count = document.createElement('small'); count.textContent = room.notifications + ' new notification' + (room.notifications === 1 ? '' : 's') + (room.mentions ? ' · ' + room.mentions + ' mention' + (room.mentions === 1 ? '' : 's') : ''); link.append(count); notifications.append(link);
   }
   if (!notifications.children.length) { const empty = document.createElement('p'); empty.textContent = 'You’re all caught up.'; notifications.append(empty); }
+  if (focusedList) {
+    const replacement = Array.from(focusedList.querySelectorAll('[data-room]')).find(link => link.dataset.room === focusedRoom);
+    if (replacement) replacement.focus({preventScroll: true});
+    else {
+      (focusedList === notifications ? document.getElementById('chat-inbox-close') : inboxButton).focus();
+      document.getElementById('workspace-status').textContent = 'Conversation access changed. Review the available conversations.';
+    }
+  }
+  workspacePrevious = state;
 }
 function desktopEnabled() { try { return sessionStorage.getItem(desktopKey) === 'enabled'; } catch { return false; } }
 const desktopButton = document.getElementById('desktop-notifications');

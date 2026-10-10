@@ -1,4 +1,5 @@
-{% extends 'identity/base.html' %}{% block content %}
+{% extends 'identity/base.html' %}
+{% block title %}{{ run.scenario.name }} · Training run · {{ product_name }}{% endblock %}{% block content %}
 <h1>{{ run.scenario.name }} · Training run</h1><p>{{ run.status }} · Scenario revision {{ document.revision }} · Seed {{ document.seed }}</p>
 <p>Agent {{ document.runner_agent_id }} · {{ document.environment }}{% if document.task_id %} · Task {{ document.task_id }}{% endif %} · <a href="{% url 'resource_tags' organization.slug 'trainingrun' run.pk %}">Permission tags</a></p>
 {% if run.error %}<p>{{ run.error }}</p>{% endif %}

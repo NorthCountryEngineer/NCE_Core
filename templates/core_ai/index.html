@@ -1,4 +1,5 @@
 {% extends 'identity/base.html' %}
+{% block title %}Ask {{ organization.brand }} · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Ask {{ organization.brand }}</h1>
 <p>Find evidence across the applications you can access.</p>
@@ -9,7 +10,7 @@
 <p>Leave sources unselected to use all accessible sources (up to ten). An empty search browses the next page.</p>
 </section>
 {% if result %}
-<section aria-label="Query results" role="status">
+<section aria-label="Query results" tabindex="-1" data-query-results>
 <h2>Evidence</h2>
 {% if result.partial %}<p class="notice">Some sources could not be queried. These results are partial; review source status below.</p>{% endif %}
 {% for item in result.evidence %}

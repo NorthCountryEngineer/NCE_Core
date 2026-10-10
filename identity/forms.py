@@ -1,6 +1,13 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from .models import Application, Invitation, Membership, Organization, Role, Service, ServicePermission, User
+
+
+class CoreAuthenticationForm(AuthenticationForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Let keyboard users reach the skip link before entering credentials.
+        self.fields['username'].widget.attrs.pop('autofocus', None)
 
 
 class BrandingForm(forms.ModelForm):

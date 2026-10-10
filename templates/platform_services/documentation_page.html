@@ -1,10 +1,11 @@
 {% extends "identity/base.html" %}
+{% block title %}{{ document.title }} · {{ product_name }}{% endblock %}
 {% block content %}
 <p><a href="{% url 'documentation' organization.slug %}">All documentation</a></p>
 <h1>{{ document.title }}</h1><p>{{ document.summary }}</p>
 <p>Organization revision {{ document.revision }} · {{ document.environment|default:"Organization guidance" }} · {{ document.mode }}</p>
 {% if document.source %}<p>Inherited from {{ document.source.package }} {{ document.source.version }}, source revision {{ document.source.revision }}. Source digest: <code>{{ document.source.digest }}</code>.</p>{% endif %}
 <p class="actions"><a href="?{{ exports.markdown }}">Download Markdown</a><a href="?{{ exports.json }}">Download JSON with provenance</a><a href="?{{ exports.jsonl }}">Download AI chunks (JSONL)</a></p>
-<article><section style="overflow-x:auto">{{ html }}</section></article>
+<article><section class="documentation-content" role="region" aria-label="Document content" style="overflow-x:auto">{{ html }}</section></article>
 <p>Citation: <code>{{ document.citation }}</code><br>Content digest: <code>{{ document.digest }}</code></p>
 {% endblock %}

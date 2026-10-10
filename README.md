@@ -236,6 +236,10 @@ service for introspection. Keep all confidential client secrets on the backend.
 
 ## Validate
 
+[The accessibility review](docs/accessibility.md) documents the shared navigation,
+forms, Chat/header focus behavior, generated-app improvements, optional browser
+checks, and remaining assistive-technology acceptance tests.
+
 [The chat guide](docs/chat.md) covers the native chat UI, application API/SDK,
 permission-tagged conversations, shared history across trusted Core instances,
 and explicitly authorized AI messaging tools.
@@ -246,7 +250,7 @@ Actions, GitLab CI, Azure Pipelines, Jenkins, CircleCI, Bitbucket, and AWS
 CodeBuild/CodePipeline. Execution is manual and external release steps default off.
 
 ```sh
-CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests core_chat.tests core_fabric.tests
+CORE_DEBUG=1 uv run python manage.py test --noinput
 CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
 ```
 

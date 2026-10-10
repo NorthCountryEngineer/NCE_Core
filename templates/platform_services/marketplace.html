@@ -1,4 +1,5 @@
 {% extends "identity/base.html" %}
+{% block title %}Platform marketplace · {{ product_name }}{% endblock %}
 {% block content %}
 <h1>Platform marketplace</h1><p>Core services, applications, and agents are installed and managed in the same place.</p>
 <a href="{% url 'platform_dashboard' organization.slug %}">Admin panel</a>
