@@ -213,3 +213,9 @@ and incident procedures. These controls prepare the authorization foundation;
 the software and configuration alone do not establish HIPAA compliance. Native
 MFA enrollment, account recovery delivery, emergency-access approval workflows,
 and field-level data encryption are not implemented.
+
+For GDPR/UK privacy readiness, cross-border processing and other international
+constraints, see the [international regulatory review](international-regulatory-review.md)
+and [privacy implementation queue](tasks/privacy-compliance.md). They distinguish
+implemented authorization controls from missing lifecycle capabilities and the
+legal/operational decisions required for each deployment.

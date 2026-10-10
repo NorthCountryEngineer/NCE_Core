@@ -72,6 +72,12 @@ Core Data Fabric supports [bilaterally approved data federation](docs/data-fabri
 between independent deployments, with scoped reads/writes and live permission checks.
 Start with [the local testing walkthrough](docs/local-testing.md) to run it on your Mac.
 
+The [international regulatory review](docs/international-regulatory-review.md)
+assesses GDPR/UK privacy readiness and other international launch constraints.
+It identifies gaps in subject rights, retention, transfer governance, and application
+lifecycle integration; the [privacy implementation queue](docs/tasks/privacy-compliance.md)
+records the proposed work. Existing permission controls do not establish compliance.
+
 The [iOS/Android architecture review](docs/mobile-architecture.md) and
 [sequential mobile delivery playlist](docs/tasks/mobile-delivery.md) define native
 hosts around the same shared UI. The shared mobile UI foundation is implemented;
