@@ -406,7 +406,7 @@ class AgentTask(TaggedResource):
     name = models.CharField(max_length=160)
     description = models.TextField(help_text='Approved task scope and acceptance criteria.')
     resources = models.JSONField(default=dict, blank=True,
-        help_text='Explicit resource scope: datasets, conversations, fabric_contracts, integrations, service_resources, app_projects, and documentation contain approved UUID lists. Empty lists deny access.')
+        help_text='Explicit resource scope: datasets, conversations, fabric_contracts, integrations, service_resources, app_projects, documentation, and development_objects contain approved UUID lists. Empty lists deny access.')
     installation = models.ForeignKey(Installation, on_delete=models.PROTECT)
     environment = models.CharField(max_length=20, choices=AGENT_ENVIRONMENTS, default='uat')
     expires_at = models.DateTimeField()
@@ -415,9 +415,9 @@ class AgentTask(TaggedResource):
 
     def clean(self):
         from django.apps import apps
-        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources', 'fabric_contracts', 'integrations', 'app_projects', 'documentation'}:
+        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources', 'fabric_contracts', 'integrations', 'app_projects', 'documentation', 'development_objects'}:
             raise ValidationError('Task resources must contain dataset, conversation, fabric contract, integration, or registered service resource ID lists.')
-        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'), ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration'), ('app_projects', 'platform_services.AppProject'), ('documentation', 'platform_services.DocumentationPage')]:
+        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'), ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration'), ('app_projects', 'platform_services.AppProject'), ('documentation', 'platform_services.DocumentationPage'), ('development_objects', 'platform_services.DevelopmentObject')]:
             ids = self.resources.get(key, [])
             if not isinstance(ids, list) or len(ids) > 100 or any(not isinstance(value, str) for value in ids):
                 raise ValidationError('Task resource scopes use lists of at most 100 IDs.')
@@ -433,6 +433,8 @@ class AgentTask(TaggedResource):
                 raise ValidationError('Task integrations must match the consuming application and environment.')
             if key == 'app_projects' and apps.get_model(label).objects.filter(pk__in=ids).exclude(environment__name=self.environment).exists():
                 raise ValidationError('Task projects must match the development environment.')
+            if key == 'development_objects' and apps.get_model(label).objects.filter(pk__in=ids).exclude(environment__name=self.environment).exists():
+                raise ValidationError('Task development objects must match the deployment environment.')
             if key == 'documentation':
                 from django.db.models import Q
                 pages = apps.get_model(label).objects.filter(pk__in=ids)
@@ -615,3 +617,4 @@ from .integration_models import ApplicationIntegration, IntegrationConnection, I
 from .app_factory_models import AppProject  # noqa: E402,F401
 from .documentation_models import DocumentationPage, DocumentationRevision, DocumentationSource  # noqa: E402,F401
 from .rule_models import AIRulePolicy, AIRuleRevision, AIUsageMeter, AIUsageReservation  # noqa: E402,F401
+from .development_models import DevelopmentObject, DevelopmentRevision, DevelopmentRun  # noqa: E402,F401

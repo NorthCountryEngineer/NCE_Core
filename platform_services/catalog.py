@@ -6,7 +6,7 @@ CORE_CATALOG = [
     ("core-platform", "Core Platform", "Identity, organization administration, marketplace, documentation, AI rules, shared usage budgets, and instance management.", [], ['docs.read', 'docs.admin', 'docs.manage', 'rules.read', 'rules.manage', 'usage.reserve', 'usage.report', 'usage.read']),
     ("core-data", "Core Data", "Schema-validated, idempotent ingestion and cursor-based data consumption.", [], ["data.read", "data.write"]),
     ("core-agents", "Core Agents", "Managed agents with an explicit, bounded tool registry.", ["core-data"], ["agents.run", "data.read", "data.write"]),
-    ("core-workflows", "Core Workflows", "Durable agent workflows with resumable steps and centralized policy checks.", ["core-agents", "core-data"], ["workflows.run", "workflows.read", "data.read", "data.write"]),
+    ("core-workflows", "Core Workflows", "Durable agents and composable development objects, data fusions, and local ML experiments.", ["core-agents", "core-data"], ["workflows.run", "workflows.read", "data.read", "data.write", 'development.read', 'development.write', 'development.run']),
     ("core-chat", "Core Chat", "Shared conversations, application messaging, and permission-checked AI tools across trusted Core instances.", [],
      ["chat.read", "chat.send", "chat.manage", "chat.ai", "chat.federate"]),
     ('core-training', 'Core Training', 'AI-led simulation scenarios, synthetic pipeline data, agent workflows, and reproducible evaluations.',

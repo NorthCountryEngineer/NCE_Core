@@ -3,7 +3,7 @@ import hashlib
 from functools import wraps
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.shortcuts import get_object_or_404
 from oauth2_provider.models import get_access_token_model
 
@@ -38,14 +38,25 @@ def integration_api(methods=('GET',), *, namespace='integration'):
                     return response({'error': 'invalid_user_token'}, 401)
                 request.access_principal = Principal(user=token.user, evidence=evidence_for(raw), application=token.application,
                     purpose=purpose, request_id=request.integration_source.request_id)
+            from .ai_rules import RuleConflict, RuleDenied
             try:
                 with transaction.atomic():
                     return view(request, *args, **kwargs)
             except IntegrationVersionConflict:
                 return response({'error': 'version_conflict'}, 409)
+            except RuleConflict:
+                return response({'error': 'revision_or_idempotency_conflict'}, 409)
+            except RuleDenied as error:
+                from .api import rule_denial
+                resource = getattr(request, 'integration_audit_resource', request.organization)
+                record_decision(request.access_principal, resource, namespace + '.quota_denied', False, error.reason, [])
+                return rule_denial(error)
+            except OperationalError:
+                return response({'error': 'service_temporarily_unavailable'}, 503)
             except ValidationError:
                 detail = ('Review the documentation query, format, and approved scope.' if namespace == 'documentation'
                     else 'Review the AI rule schema, query plan, reservation state, and integer usage bounds.' if namespace == 'ai_rules'
+                    else 'Review the typed recipe, pinned revisions, resource bindings, and execution bounds.' if namespace == 'development'
                     else 'Review the integration schema, revision, and credential replacement controls.')
                 return response({'error': 'invalid_request', 'detail': detail}, 400)
             except PermissionDenied as error:

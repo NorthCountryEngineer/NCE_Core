@@ -79,7 +79,7 @@ def resource_organization(resource):
         return resource
     if hasattr(resource, "organization_id"):
         return resource.organization
-    for field in ["installation", "service", "dataset", "run", "conversation"]:
+    for field in ["installation", "service", "dataset", "run", "conversation", "development_object", "object_revision"]:
         parent = getattr(resource, field, None)
         if parent is not None:
             return resource_organization(parent)
@@ -95,7 +95,7 @@ def resource_chain(resource):
         seen.add(key)
         result.append(item)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
-                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy']:
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy', 'development_object', 'object_revision']:
             if field == 'connection' and item._meta.label_lower == 'platform_services.applicationintegration' and item.mode != 'platform':
                 continue
             parent = getattr(item, field, None)
@@ -106,6 +106,16 @@ def resource_chain(resource):
                 visit(parent)
         if item._meta.label_lower in {'platform_services.applicationintegration', 'platform_services.integrationconnection'}:
             visit(item.definition)
+        if item._meta.label_lower == 'platform_services.developmentrevision':
+            from platform_services.development import RESOURCE_MODELS
+            for key, pk in item.resources.items():
+                if key in RESOURCE_MODELS:
+                    model = RESOURCE_MODELS[key]
+                    filters = {('account__organization' if key == 'binding_id' else 'organization'): item.development_object.organization}
+                    for target in model.objects.filter(pk=pk, **filters):
+                        visit(target)
+            for dependency in item.dependencies.all():
+                visit(dependency)
         if item._meta.label_lower in {'platform_services.workflowrun', 'platform_services.trainingrun'}:
             from platform_services.models import AgentBinding, AgentDefinition, Dataset
             if getattr(item, 'source_workflow_id', None):
@@ -191,6 +201,7 @@ def decision(principal, resource):
                     'platform_services.applicationintegration': 'integrations',
                     'platform_services.appproject': 'app_projects',
                     'platform_services.documentationpage': 'documentation',
+                    'platform_services.developmentobject': 'development_objects',
                     'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
                 if scope and str(item.pk) not in task.resources.get(scope, []):
                     return False, 'agent_task_resource_scope', tags

@@ -18,6 +18,13 @@ OIDC registration, and workload credentials automatically.
 
 ## Core services and central administration
 
+[Development operations](docs/development-objects.md) provides versioned, composable
+connections, pipelines, data fusions, ML models, agents, and cross-application workflow
+graphs through Core Workflows. Review and share recipes in Central admin → Development
+operations; local experiments retain source permissions, central quotas, model metrics,
+and pinned lineage. Applications and AI agents use `development_client.py`; portable
+imports require local resource bindings and fresh administrator review.
+
 The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**,
 **Core Workflows**, **Core Chat**, **Core Training**, **Core Data Fabric**, and **Core App Factory** alongside application packages.
 Core packages currently execute inside the core runtime; each organization receives its own installation, service

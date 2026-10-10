@@ -20,6 +20,7 @@ GUIDES = [
     ('core-data', 'data-api', 'Core data ingestion and consumption', 'api', 'administrators', 'docs/platform.md'),
     ('core-agents', 'agent-accounts', 'Agent accounts, marketplace, and task permissions', 'administration', 'administrators', 'docs/agent-accounts.md'),
     ('core-workflows', 'workflows', 'Durable agent workflows', 'operations', 'administrators', 'docs/platform.md'),
+    ('core-workflows', 'development-objects', 'Composable data, ML, and agent development operations', 'operations', 'administrators', 'docs/development-objects.md'),
     ('core-chat', 'chat', 'Central and federated chat', 'user-guide', 'administrators', 'docs/chat.md'),
     ('core-training', 'training', 'Synthetic training and evaluations', 'user-guide', 'administrators', 'docs/training.md'),
     ('core-fabric', 'data-fabric', 'Bilateral data federation', 'architecture', 'administrators', 'docs/data-fabric.md'),

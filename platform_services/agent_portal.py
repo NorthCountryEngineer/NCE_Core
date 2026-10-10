@@ -107,7 +107,7 @@ def task(request, organization, pk=None):
     if request.method == 'POST' and form.is_valid():
         from django.apps import apps
         for name, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'),
-                ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration'), ('app_projects', 'platform_services.AppProject'), ('documentation', 'platform_services.DocumentationPage')]:
+                ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration'), ('app_projects', 'platform_services.AppProject'), ('documentation', 'platform_services.DocumentationPage'), ('development_objects', 'platform_services.DevelopmentObject')]:
             for resource in apps.get_model(label).objects.filter(pk__in=form.cleaned_data['resources'].get(name, [])):
                 require_access(principal, resource, 'agent.task_scope_approve')
         item = form.save(commit=False)

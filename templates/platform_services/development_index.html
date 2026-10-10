@@ -1,0 +1,11 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.brand }} · Development operations</h1>
+<p><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a> · <a href="{% url 'development_create' organization.slug %}">Create object</a> · <a href="{% url 'documentation' organization.slug %}">Organization documentation</a></p>
+<p>Compose connections, data pipelines, fusions, models, agents, and workflows. Revisions are immutable; an administrator publishes them and approves each consuming application. Every dependency retains its live roles, classification tags, and environment.</p>
+<table><thead><tr><th>Object</th><th>Kind</th><th>Owner</th><th>Environment</th><th>Latest visible revision</th></tr></thead><tbody>
+{% for entry in entries %}<tr><td><a href="{% url 'development_object' organization.slug entry.object.pk %}">{{ entry.object.name }}</a></td><td>{{ entry.object.kind }}</td><td>{{ entry.object.installation.package.name }}</td><td>{{ entry.object.environment.name }}</td><td>{{ entry.version.number }} · {% if entry.version.published %}Published{% else %}Draft{% endif %}{% if not entry.object.active %} · Disabled{% endif %}</td></tr>{% empty %}<tr><td colspan="5">Create a pipeline to start experimenting with records, or a connection to an existing Core dataset.</td></tr>{% endfor %}</tbody></table>
+<h2>Import portable recipes</h2>
+<p>Exports contain recipes and unbound resource references. Select local bindings before import. Imported objects have new identities, no sharing grants, and require local review; publish dependencies before their workflow.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Import as new drafts</button></form>
+{% endblock %}

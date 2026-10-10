@@ -47,7 +47,8 @@ def resource_types():
         "Installation", "RuntimeNode", "Deployment", "WorkloadCredential", "Dataset", "Pipeline", "AgentDefinition", "Workflow", "WorkflowRun",
         'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask',
         'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback', 'DeploymentEnvironment',
-        'IntegrationDefinition', 'IntegrationConnection', 'ApplicationIntegration', 'AppProject', 'DocumentationPage', 'AIRulePolicy', 'AIUsageReservation']})
+        'IntegrationDefinition', 'IntegrationConnection', 'ApplicationIntegration', 'AppProject', 'DocumentationPage', 'AIRulePolicy', 'AIUsageReservation',
+        'DevelopmentObject', 'DevelopmentRevision', 'DevelopmentRun']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     from core_fabric.models import FabricContract, FabricPeer
@@ -72,6 +73,8 @@ def tenant_filter(model, organization):
         return {'binding__account__organization': organization}
     if 'run' in fields:
         return {'run__organization': organization}
+    if 'development_object' in fields:
+        return {'development_object__organization': organization}
     raise ValueError("Unsupported resource boundary.")
 
 

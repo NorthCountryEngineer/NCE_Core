@@ -4,8 +4,18 @@ from . import integration_api, integration_portal
 from . import app_factory_api, app_factory_portal
 from . import documentation_api, documentation_portal
 from . import rules_api, rules_portal
+from . import development_api, development_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/development/', development_portal.index, name='development_workspace'),
+    path('organizations/<slug:slug>/platform/development/new/', development_portal.create, name='development_create'),
+    path('organizations/<slug:slug>/platform/development/objects/<uuid:pk>/', development_portal.detail, name='development_object'),
+    path('organizations/<slug:slug>/platform/development/revisions/<uuid:pk>/export/', development_portal.export, name='development_export'),
+    path('api/platform/v1/development/objects/', development_api.objects),
+    path('api/platform/v1/development/objects/<uuid:pk>/revisions/', development_api.revisions),
+    path('api/platform/v1/development/revisions/<uuid:pk>/', development_api.detail),
+    path('api/platform/v1/development/revisions/<uuid:pk>/runs/', development_api.execute),
+    path('api/platform/v1/development/runs/<uuid:pk>/', development_api.run),
     path('organizations/<slug:slug>/platform/ai-rules/', rules_portal.administration, name='ai_rules_admin'),
     path('organizations/<slug:slug>/platform/ai-rules/<uuid:pk>/acknowledge/', rules_portal.reconcile, name='ai_rules_reconcile'),
     path('api/platform/v1/ai-rules/', rules_api.rules),
