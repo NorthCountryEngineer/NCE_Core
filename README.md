@@ -72,6 +72,13 @@ Core Data Fabric supports [bilaterally approved data federation](docs/data-fabri
 between independent deployments, with scoped reads/writes and live permission checks.
 Start with [the local testing walkthrough](docs/local-testing.md) to run it on your Mac.
 
+The [iOS/Android architecture review](docs/mobile-architecture.md) and
+[sequential mobile delivery playlist](docs/tasks/mobile-delivery.md) define native
+hosts around the same shared UI. The shared mobile UI foundation is implemented;
+native authentication, app projects, device validation and store releases remain
+ordered future tasks. Stores distribute the app packages; Core's backend remains
+on the organization's server.
+
 Core Data validates JSON records, applies select/rename transformations, accepts
 idempotent events, and exposes cursor-based consumption. Core Agents includes
 inspect, select, publish, and bounded rule-based tool selection. Core Workflows

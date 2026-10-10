@@ -25,6 +25,12 @@
     .compose{padding:12px;border-top:1px solid #e8e9ef}.compose textarea{display:block;width:100%;resize:vertical;min-height:72px;max-height:180px;padding:10px;border:1px solid #cecede;border-radius:8px}.compose button{background:var(--core-accent,#6250ac);color:var(--core-accent-foreground,#fff);float:right;margin-top:8px}.compose button:hover{filter:brightness(.9)}
     .status{font-size:12px;color:#7a3e50;min-height:18px;padding:5px 12px}.mode{display:flex;gap:8px;align-items:center;padding:8px 12px;font-size:12px;border-bottom:1px solid #eee}.mode select{width:auto;flex:1}
     @media(max-width:700px){.bar,.bar.compact{padding:8px 10px;gap:6px}.bar>button{padding:6px 8px;font-size:12px}.brand{max-width:100px}.tools a{display:none}.account-toggle{display:block}.pinned,.shared-links{order:10;flex-basis:100%;max-width:100%}.drawer{top:64px;right:8px;max-width:calc(100vw - 16px);height:calc(100dvh - 76px)}.tools{margin-left:auto;gap:5px}}
+    /* Embedded apps may not consume their page's safe area. Core's base page
+       sets these three component insets to zero after padding its body. */
+    .bar,.bar.compact{padding-top:calc(8px + var(--core-header-inset-top,env(safe-area-inset-top,0px)));padding-right:calc(20px + var(--core-header-inset-right,env(safe-area-inset-right,0px)));padding-left:calc(20px + var(--core-header-inset-left,env(safe-area-inset-left,0px)))}
+    .bar.compact{padding-top:calc(5px + var(--core-header-inset-top,env(safe-area-inset-top,0px)));padding-right:calc(14px + var(--core-header-inset-right,env(safe-area-inset-right,0px)));padding-left:calc(14px + var(--core-header-inset-left,env(safe-area-inset-left,0px)))}
+    .drawer{right:calc(12px + var(--core-safe-area-right,env(safe-area-inset-right,0px)));max-width:calc(100vw - 24px - var(--core-safe-area-left,env(safe-area-inset-left,0px)) - var(--core-safe-area-right,env(safe-area-inset-right,0px)))}
+    @media(max-width:700px){.bar,.bar.compact{padding-top:calc(8px + var(--core-header-inset-top,env(safe-area-inset-top,0px)));padding-right:calc(10px + var(--core-header-inset-right,env(safe-area-inset-right,0px)));padding-left:calc(10px + var(--core-header-inset-left,env(safe-area-inset-left,0px)))}input,textarea,select{font-size:16px}.bar button,.pinned a,.shared-links a,.top button,.row button,.compose button{min-height:44px}}
     @media(prefers-reduced-motion:no-preference){.drawer{animation:enter .12s ease-out}@keyframes enter{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}}
   `;
   function el(tag, text, attrs = {}) {
@@ -97,7 +103,7 @@
     positionDrawer() {
       const top = Math.max(8, Math.min(Math.round(this.bar.getBoundingClientRect().bottom + 8), Math.max(8, innerHeight - 200)));
       if (this.drawerTop === top) return; this.drawerTop = top;
-      const text = `.drawer{top:${top}px;height:min(720px,calc(100dvh - ${top + 12}px))}`;
+      const text = `.drawer{top:${top}px;height:min(720px,calc(100dvh - ${top + 12}px - var(--core-safe-area-bottom,env(safe-area-inset-bottom,0px))))}`;
       if ('adoptedStyleSheets' in this.root && 'replaceSync' in CSSStyleSheet.prototype) {
         if (!this.placementSheet) { this.placementSheet = new CSSStyleSheet(); this.root.adoptedStyleSheets = [...this.root.adoptedStyleSheets, this.placementSheet]; }
         this.placementSheet.replaceSync(text);

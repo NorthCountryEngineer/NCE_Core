@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{{ product_name }}</title>
   <style>
     :root { color-scheme: light; font-family: system-ui, sans-serif; color: #182b40; background: #f3f6fa; }
@@ -18,6 +18,7 @@
     .actions { display: flex; gap: 1rem; flex-wrap: wrap; } .inline { display: inline; }
   </style>
   {% block extra_head %}{% endblock %}
+  <style>{% include 'identity/mobile-foundation.css.html' %}</style>
 </head>
 <body>
 {% if header_organization %}
