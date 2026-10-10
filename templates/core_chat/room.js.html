@@ -1,0 +1,169 @@
+const chatState = JSON.parse(document.getElementById('chat-state').textContent);
+let cursor = chatState.cursor;
+let fetching = false;
+let revoked = false;
+let sending = false;
+let lastAcknowledged = 0;
+const chatHistory = document.getElementById('chat-history');
+const chatStatus = document.getElementById('chat-status');
+const composer = document.getElementById('chat-composer');
+const readOnly = document.getElementById('chat-read-only');
+const notificationMode = document.getElementById('chat-notification-mode');
+function csrfToken() { return document.querySelector('input[name=csrfmiddlewaretoken]').value; }
+function nearBottom() { return chatHistory.scrollHeight - chatHistory.scrollTop - chatHistory.clientHeight < 70; }
+function setSending(allowed) {
+  if (composer) {
+    composer.hidden = !allowed;
+    for (const field of composer.elements) field.disabled = !allowed;
+  }
+  for (const button of document.querySelectorAll('.chat-reply')) button.hidden = !allowed;
+  readOnly.hidden = allowed;
+}
+function revokeChat() {
+  revoked = true; chatHistory.replaceChildren(); setSending(false); readOnly.hidden = true;
+  notificationMode.disabled = true; chatStatus.textContent = 'Conversation access has been revoked.';
+}
+async function savePreferences(values) {
+  const response = await fetch('{% url "chat_preferences" organization.slug conversation.pk %}', {
+    method: 'POST', credentials: 'same-origin', redirect: 'error',
+    headers: {'X-CSRFToken': csrfToken()}, body: new URLSearchParams(values)
+  });
+  if (response.status === 403 || response.status === 404) revokeChat();
+  if (!response.ok) throw new Error();
+}
+async function acknowledge() {
+  if (revoked || document.hidden || chatState.query || !nearBottom() || cursor <= lastAcknowledged) return;
+  const snapshot = cursor;
+  try { await savePreferences({cursor: snapshot}); lastAcknowledged = Math.max(lastAcknowledged, snapshot); refreshWorkspace(); }
+  catch { chatStatus.textContent = 'Unable to save read status. Reconnect and try again.'; }
+}
+notificationMode.addEventListener('change', async () => {
+  try { await savePreferences({notifications: notificationMode.value}); refreshWorkspace(); }
+  catch { chatStatus.textContent = 'Unable to save notification settings.'; }
+});
+function localTime(element) {
+  const date = new Date(element.dateTime);
+  if (!Number.isNaN(date.valueOf())) { element.title = date.toLocaleString(); element.textContent = date.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}); }
+}
+for (const element of chatHistory.querySelectorAll('time')) localTime(element);
+function textWithLinks(element, text) {
+  const pattern = /https?:\/\/[^\s<>"']+/g;
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    element.append(document.createTextNode(text.slice(offset, match.index)));
+    try {
+      const url = new URL(match[0]);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+      const link = document.createElement('a'); link.href = url.href; link.textContent = match[0]; link.rel = 'noopener noreferrer'; element.append(link);
+    } catch { element.append(document.createTextNode(match[0])); }
+    offset = match.index + match[0].length;
+  }
+  element.append(document.createTextNode(text.slice(offset)));
+}
+function appendMessage(message, beforeElement = null) {
+  if (chatHistory.querySelector('[data-message="' + message.id + '"]')) return;
+  if (chatState.query && !message.text.toLocaleLowerCase().includes(chatState.query.toLocaleLowerCase())) return;
+  document.getElementById('chat-empty')?.remove();
+  const section = document.createElement('section'); section.id = 'message-' + message.id; section.dataset.message = message.id; section.dataset.cursor = message.cursor;
+  const name = message.sender_name || message.agent_name || message.actor_kind;
+  const avatar = document.createElement('span'); avatar.className = 'chat-avatar'; avatar.setAttribute('aria-hidden', 'true'); avatar.textContent = name.slice(0, 1).toLocaleUpperCase();
+  const content = document.createElement('div'); content.className = 'chat-message-content';
+  const meta = document.createElement('div'); meta.className = 'chat-message-meta';
+  const author = document.createElement('strong'); author.textContent = name;
+  const time = document.createElement('time'); time.dateTime = message.created; localTime(time); meta.append(author, time);
+  if (message.actor_kind.endsWith('ai')) { const badge = document.createElement('small'); badge.textContent = 'AI agent'; meta.append(badge); }
+  content.append(meta);
+  if (message.reply_to) {
+    const quote = document.createElement('div'); quote.className = 'chat-reply-quote';
+    const link = document.createElement('a'); link.href = '?message=' + encodeURIComponent(message.reply_to) + '#message-' + encodeURIComponent(message.reply_to); link.textContent = 'Reply to message';
+    quote.append(link, document.createElement('br'), document.createTextNode(message.reply_preview || '')); content.append(quote);
+  }
+  const text = document.createElement('p'); text.className = 'chat-message-text'; textWithLinks(text, message.text); content.append(text);
+  const actions = document.createElement('div'); actions.className = 'chat-message-actions';
+  if (composer) { const reply = document.createElement('button'); reply.type = 'button'; reply.className = 'chat-reply'; reply.dataset.reply = message.id; reply.textContent = 'Reply'; reply.hidden = composer.hidden; actions.append(reply); }
+  const share = document.createElement('a'); share.className = 'chat-message-link'; share.href = '?message=' + encodeURIComponent(message.id) + '#message-' + encodeURIComponent(message.id); share.textContent = 'Share link'; actions.append(share);
+  content.append(actions); section.append(avatar, content); chatHistory.insertBefore(section, beforeElement);
+}
+const older = document.getElementById('chat-older');
+let beforeCursor = chatState.before;
+older?.addEventListener('click', async () => {
+  older.disabled = true;
+  const height = chatHistory.scrollHeight;
+  try {
+    const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?before=' + beforeCursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (response.status === 403 || response.status === 404) { revokeChat(); return; }
+    if (!response.ok) throw new Error();
+    const page = await response.json();
+    const first = chatHistory.querySelector('section');
+    for (const message of page.messages) appendMessage(message, first);
+    beforeCursor = page.before; older.hidden = !page.has_more;
+    chatHistory.scrollTop += chatHistory.scrollHeight - height;
+  } catch { chatStatus.textContent = 'Earlier messages are unavailable. Retry when connected.'; }
+  finally { older.disabled = false; }
+});
+async function refreshChat() {
+  if (fetching || revoked || document.hidden) return;
+  fetching = true;
+  try {
+    const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?after=' + cursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (response.status === 403 || response.status === 404) { revokeChat(); return; }
+    if (!response.ok) throw new Error();
+    const page = await response.json();
+    const stick = nearBottom();
+    setSending(page.can_send);
+    for (const message of page.messages) appendMessage(message);
+    cursor = page.next_cursor;
+    if (stick) chatHistory.scrollTop = chatHistory.scrollHeight;
+    chatStatus.textContent = '';
+    await acknowledge();
+  } catch { chatStatus.textContent = 'Chat is unavailable. Reconnect or sign in again to continue.'; }
+  finally { fetching = false; }
+}
+if (composer) {
+  const text = composer.elements.text;
+  const replyId = composer.elements.reply_to;
+  const banner = document.getElementById('reply-banner');
+  function cancelReply() { replyId.value = ''; banner.hidden = true; }
+  document.getElementById('reply-cancel').addEventListener('click', cancelReply);
+  chatHistory.addEventListener('click', event => {
+    const button = event.target.closest('.chat-reply');
+    if (!button || composer.hidden) return;
+    replyId.value = button.dataset.reply; banner.hidden = false;
+    document.getElementById('reply-description').textContent = 'Replying to: ' + button.closest('section').querySelector('.chat-message-text').textContent.slice(0, 140);
+    text.focus();
+  });
+  document.getElementById('chat-mention').addEventListener('change', event => {
+    if (!event.target.value) return;
+    text.setRangeText('@' + event.target.value + ' ', text.selectionStart, text.selectionEnd, 'end'); text.focus(); event.target.value = '';
+  });
+  text.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); composer.requestSubmit(); }
+  });
+  composer.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (sending || revoked || composer.hidden || !text.value.trim()) return;
+    sending = true;
+    const button = composer.querySelector('button[type=submit]'); button.disabled = true;
+    const draft = text.value;
+    try {
+      const response = await fetch(composer.dataset.post, {method: 'POST', credentials: 'same-origin', redirect: 'error', body: new FormData(composer)});
+      if (response.status === 403 || response.status === 404) { setSending(false); chatStatus.textContent = 'Sending is no longer permitted. Refresh to check your access.'; return; }
+      if (!response.ok) { chatStatus.textContent = response.status === 409 ? 'This message ID was already used. Refresh before sending again.' : 'Message was not sent. Your draft is preserved; retry when connected.'; return; }
+      if (text.value === draft) text.value = '';
+      const bytes = crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 15) | 64; bytes[8] = (bytes[8] & 63) | 128;
+      const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+      composer.elements.request_id.value = hex.slice(0, 8) + '-' + hex.slice(8, 12) + '-' + hex.slice(12, 16) + '-' + hex.slice(16, 20) + '-' + hex.slice(20);
+      cancelReply();
+      await refreshChat();
+    } catch { chatStatus.textContent = 'Message was not sent. Your draft is preserved; retry when connected.'; }
+    finally { sending = false; button.disabled = revoked || composer.hidden; }
+  });
+}
+document.getElementById('chat-refresh').addEventListener('click', refreshChat);
+chatHistory.addEventListener('scroll', acknowledge);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshChat(); });
+if (location.hash.startsWith('#message-')) document.getElementById(location.hash.slice(1))?.scrollIntoView();
+else chatHistory.scrollTop = chatHistory.scrollHeight;
+setInterval(refreshChat, 3000);
+refreshChat();

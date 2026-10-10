@@ -1,0 +1,84 @@
+const workspaceInitial = JSON.parse(document.getElementById('workspace-state').textContent);
+let workspacePrevious = workspaceInitial;
+let workspaceFetching = false;
+let workspaceRevoked = false;
+const inbox = document.getElementById('chat-inbox');
+const inboxButton = document.querySelector('.chat-inbox-toggle');
+const currentRoom = document.getElementById('chat-history')?.dataset.room;
+const desktopKey = 'core-chat-desktop-{{ user.pk|escapejs }}';
+function toggleInbox(open) { inbox.hidden = !open; inboxButton.setAttribute('aria-expanded', String(open)); }
+inboxButton.addEventListener('click', () => toggleInbox(inbox.hidden));
+document.getElementById('chat-inbox-close').addEventListener('click', () => toggleInbox(false));
+document.addEventListener('keydown', event => { if (event.key === 'Escape') toggleInbox(false); });
+function filterRooms() {
+  const query = document.getElementById('conversation-filter').value.toLocaleLowerCase();
+  for (const link of document.querySelectorAll('.chat-room-link')) link.hidden = !link.textContent.toLocaleLowerCase().includes(query);
+}
+document.getElementById('conversation-filter').addEventListener('input', filterRooms);
+function renderWorkspace(state) {
+  document.getElementById('notification-count').textContent = state.notifications;
+  const list = document.getElementById('chat-room-list');
+  list.replaceChildren();
+  for (const [kind, label, icon] of [['channel', 'Channels', '#'], ['direct', 'Direct messages', '↗'], ['group', 'Group messages', '◉']]) {
+    const rooms = state.rooms.filter(room => room.kind === kind);
+    if (!rooms.length) continue;
+    const heading = document.createElement('h2'); heading.textContent = label; list.append(heading);
+    for (const room of rooms) {
+      const link = document.createElement('a'); link.className = 'chat-room-link'; link.href = room.url; link.dataset.room = room.id;
+      link.setAttribute('aria-label', room.title);
+      link.setAttribute('aria-description', room.unread + ' unread messages, ' + room.mentions + ' mentions');
+      if (room.id === currentRoom) { link.classList.add('selected'); link.setAttribute('aria-current', 'page'); }
+      const symbol = document.createElement('span'); symbol.textContent = icon; symbol.setAttribute('aria-hidden', 'true');
+      const title = document.createElement('span'); title.className = 'chat-room-title'; title.textContent = room.title;
+      link.append(symbol, title);
+      if (room.unread) { const badge = document.createElement('span'); badge.className = 'chat-badge'; badge.textContent = room.unread + (room.unread === 200 ? '+' : ''); link.append(badge); }
+      if (room.mentions) { const mention = document.createElement('span'); mention.className = 'chat-mention'; mention.textContent = '@'; mention.setAttribute('aria-label', 'Mentions'); link.append(mention); }
+      list.append(link);
+    }
+  }
+  filterRooms();
+  const notifications = document.getElementById('chat-notification-list'); notifications.replaceChildren();
+  for (const room of state.rooms.filter(room => room.notifications)) {
+    const link = document.createElement('a'); link.className = 'chat-notification'; link.href = room.url; link.textContent = room.title;
+    const count = document.createElement('small'); count.textContent = room.notifications + ' new notification' + (room.notifications === 1 ? '' : 's') + (room.mentions ? ' · ' + room.mentions + ' mention' + (room.mentions === 1 ? '' : 's') : ''); link.append(count); notifications.append(link);
+  }
+  if (!notifications.children.length) { const empty = document.createElement('p'); empty.textContent = 'You’re all caught up.'; notifications.append(empty); }
+}
+function desktopEnabled() { try { return sessionStorage.getItem(desktopKey) === 'enabled'; } catch { return false; } }
+const desktopButton = document.getElementById('desktop-notifications');
+function updateDesktopButton() {
+  desktopButton.textContent = desktopEnabled() ? 'Disable desktop notifications' : 'Enable desktop notifications';
+  if (!('Notification' in window) || !window.isSecureContext) { desktopButton.disabled = true; document.getElementById('desktop-status').textContent = 'Desktop notifications require a supported browser and HTTPS (or local development).'; }
+}
+desktopButton.addEventListener('click', async () => {
+  try {
+    if (desktopEnabled()) sessionStorage.removeItem(desktopKey);
+    else if (await Notification.requestPermission() === 'granted') sessionStorage.setItem(desktopKey, 'enabled');
+    else document.getElementById('desktop-status').textContent = 'Notifications are blocked. You can enable them in your browser settings.';
+  } catch { document.getElementById('desktop-status').textContent = 'Desktop notifications are unavailable in this browser.'; }
+  updateDesktopButton();
+});
+async function refreshWorkspace() {
+  if (workspaceFetching || workspaceRevoked || (document.hidden && !desktopEnabled())) return;
+  workspaceFetching = true;
+  try {
+    const response = await fetch('{% url "chat_activity" organization.slug %}', {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
+    if (response.status === 403 || response.status === 404) {
+      workspaceRevoked = true; renderWorkspace({rooms: [], notifications: 0});
+      document.getElementById('workspace-status').textContent = 'Chat access has been revoked.'; return;
+    }
+    if (!response.ok) throw new Error();
+    const state = await response.json();
+    const changed = state.rooms.some(room => room.notifications > (workspacePrevious.rooms.find(previous => previous.id === room.id)?.notifications || 0));
+    if (changed && document.hasFocus() === false && desktopEnabled() && 'Notification' in window && Notification.permission === 'granted') {
+      // Keep message bodies, names, and organization metadata off the lock screen.
+      const notification = new Notification('New chat activity', {body: 'Open your workspace to view new messages or mentions.', tag: 'core-chat'});
+      notification.onclick = () => { window.focus(); toggleInbox(true); notification.close(); };
+    }
+    renderWorkspace(state); workspacePrevious = state;
+  } catch { document.getElementById('workspace-status').textContent = 'Unable to refresh notifications.'; }
+  finally { workspaceFetching = false; }
+}
+renderWorkspace(workspaceInitial); updateDesktopButton();
+setInterval(refreshWorkspace, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshWorkspace(); });

@@ -1,5 +1,20 @@
 # Test and redeploy Core Chat
 
+The Chat workspace includes channels, direct and group messages, topics,
+contextual replies, link sharing, search, unread indicators, mention notifications,
+and per-conversation notification settings. After pulling this update, run
+`CORE_DEBUG=1 .venv/bin/python manage.py migrate --noinput` before restarting the
+web server and worker. Existing rooms become channels and retain their permissions.
+See [Team workspace](chat.md#team-workspace) for behavior and limits.
+
+The deployment browser suite creates a three-person group and a direct
+conversation, verifies access with multiple accounts, sends replies and shared
+links, searches messages, checks live mentions/muting, exercises desktop-notification
+consent, and verifies a 390-pixel phone viewport. It saves synthetic-account
+screenshots to the ignored `artifacts/chat-modern-desktop.png` and
+`artifacts/chat-modern-mobile.png` for visual inspection. Browser permission checks
+do not establish OS-level notification delivery.
+
 Core Chat runs inside the Core Platform web process. Its monitored embedded
 instance receives health reports from the separate Core worker. Updating Chat
 therefore updates Core's web image/process; a marketplace toggle alone does not

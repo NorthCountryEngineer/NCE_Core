@@ -1,71 +1,31 @@
-{% extends 'identity/base.html' %}
-{% block content %}
-<h1>{{ conversation.title }}</h1>
-<p><a href="{% url 'chat' organization.slug %}">Conversations</a>{% if can_edit %} · <a href="{% url 'chat_settings' organization.slug conversation.pk %}">Participants and permissions</a>{% endif %}</p>
+{% extends 'core_chat/base.html' %}
+{% block chat_content %}
+<div class="chat-toolbar"><div><h1>{% if conversation.kind == 'channel' %}# {% endif %}{{ conversation.title }}</h1><small>{{ conversation.topic|default:conversation.get_kind_display }}{% if conversation.connection_id %} · Shared across organizations{% endif %}{% if conversation.ai_enabled %} · AI messaging enabled{% endif %}</small></div>
+<div class="chat-tools">{% if can_edit %}<a href="{% url 'chat_settings' organization.slug conversation.pk %}">Participants and permissions</a>{% endif %}<button type="button" id="chat-refresh">Refresh conversation</button>
+<form method="get" class="chat-search" role="search"><label for="chat-query" class="sr-only">Search messages</label><input id="chat-query" type="search" name="q" value="{{ query }}" placeholder="Search messages" maxlength="160"><button type="submit">Search</button>{% if query %}<a href="{% url 'chat_room' organization.slug conversation.pk %}">Clear</a>{% endif %}</form></div></div>
 {% if unavailable %}<p class="notice">The shared chat instance is unavailable. Refresh to reconnect.</p>{% endif %}
-<p role="status" id="chat-status"></p><div aria-live="polite" id="chat-history">
-{% for message in chat_messages %}<section>
-<strong>{{ message.actor_kind }}{% if message.agent_name %} · {{ message.agent_name }}{% endif %}</strong>
-<p>{{ message.text|linebreaksbr }}</p>
-<small>{{ message.created }} · {{ message.actor_id }}{% if conversation.connection_id %} · {{ message.origin_issuer }}{% endif %}</small>
-</section>{% empty %}<p id="chat-empty">No messages yet.</p>{% endfor %}
+{% if query %}<p class="chat-compose-hint">Search results{% if conversation.connection_id %} from the first 100 shared messages{% else %} · up to 200 matching messages{% endif %}. Clear search to return to live chat.</p>{% endif %}
+<p role="status" id="chat-status"></p>
+<div aria-live="polite" aria-label="Messages" id="chat-history" data-room="{{ conversation.pk }}">
+{% if has_older %}<button type="button" id="chat-older">Load earlier messages</button>{% endif %}
+{% for message in chat_messages %}<section id="message-{{ message.id }}" data-message="{{ message.id }}" data-cursor="{{ message.cursor }}"><span class="chat-avatar" aria-hidden="true">{{ message.sender_name|default:message.actor_kind|first|upper }}</span><div class="chat-message-content">
+<div class="chat-message-meta"><strong>{{ message.sender_name|default:message.agent_name|default:message.actor_kind }}</strong><time datetime="{{ message.created }}">{{ message.created }}</time>{% if message.actor_kind == 'ai' or message.actor_kind == 'federated_ai' %}<small>AI agent</small>{% endif %}</div>
+{% if message.reply_to %}<div class="chat-reply-quote"><a href="?message={{ message.reply_to }}#message-{{ message.reply_to }}">Reply to message</a><br>{{ message.reply_preview }}</div>{% endif %}
+<p class="chat-message-text">{{ message.text|urlize }}</p>
+<div class="chat-message-actions">{% if can_send %}<button type="button" class="chat-reply" data-reply="{{ message.id }}">Reply</button>{% endif %}<a class="chat-message-link" href="?message={{ message.id }}#message-{{ message.id }}">Share link</a>{% if conversation.connection_id %}<small>{{ message.origin_issuer }}</small>{% endif %}</div>
+</div></section>{% empty %}<p id="chat-empty">{% if query %}No messages match your search.{% else %}No messages yet. Start the conversation.{% endif %}</p>{% endfor %}
 </div>
-{% if can_send %}<form id="chat-composer" method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Send message</button></form>{% endif %}
+<div class="chat-compose-area">
+{% if can_send %}<form id="chat-composer" method="post" data-post="{% url 'chat_post' organization.slug conversation.pk %}">{% csrf_token %}{{ form.non_field_errors }}{{ form.text.errors }}{{ form.request_id }}{{ form.reply_to }}
+<div id="reply-banner" hidden><button type="button" id="reply-cancel" aria-label="Cancel reply">×</button><span id="reply-description"></span></div>
+<label for="id_text" class="sr-only">Message</label>{{ form.text }}
+<div class="chat-compose-actions"><div><label for="chat-mention" class="sr-only">Mention a person</label><select id="chat-mention"><option value="">@ Mention someone</option>{% for person in mention_people %}<option value="{{ person.email }}">{{ person.get_full_name|default:person.email }}</option>{% endfor %}</select></div><button type="submit">Send message <span aria-hidden="true">↗</span></button></div>
+</form>{% endif %}
 <p id="chat-read-only" {% if can_send %}hidden{% endif %}>You have read-only access to this conversation.</p>
-<button type="button" id="chat-refresh">Refresh conversation</button>
+<div class="chat-compose-actions"><span class="chat-compose-hint">Share a link in your message · Ctrl/⌘ + Enter to send · Enter for a new line</span><label for="chat-notification-mode" class="sr-only">Conversation notifications</label><select id="chat-notification-mode" aria-label="Conversation notifications"><option value="all" {% if notification_mode == 'all' %}selected{% endif %}>Notify: all messages</option><option value="mentions" {% if notification_mode == 'mentions' %}selected{% endif %}>Notify: mentions only</option><option value="muted" {% if notification_mode == 'muted' %}selected{% endif %}>Mute conversation</option></select></div>
+</div>
+{% endblock %}
+{% block chat_script %}
 {{ chat_state|json_script:'chat-state' }}
-<script>
-let cursor = JSON.parse(document.getElementById('chat-state').textContent).cursor;
-let fetching = false;
-let revoked = false;
-const chatHistory = document.getElementById('chat-history');
-const chatStatus = document.getElementById('chat-status');
-const composer = document.getElementById('chat-composer');
-const readOnly = document.getElementById('chat-read-only');
-function setSending(allowed) {
-  if (composer) {
-    composer.hidden = !allowed;
-    for (const field of composer.elements) field.disabled = !allowed;
-  }
-  readOnly.hidden = allowed;
-}
-async function refreshChat() {
-  if (fetching || revoked || document.hidden) return;
-  fetching = true;
-  try {
-    const response = await fetch('{% url "chat_feed" organization.slug conversation.pk %}?after=' + cursor, {credentials: 'same-origin', redirect: 'error', cache: 'no-store'});
-    if (response.status === 403 || response.status === 404) {
-      revoked = true;
-      chatHistory.replaceChildren();
-      setSending(false);
-      readOnly.hidden = true;
-      chatStatus.textContent = 'Conversation access has been revoked.';
-      return;
-    }
-    if (!response.ok) throw new Error('Chat unavailable');
-    const page = await response.json();
-    setSending(page.can_send);
-    if (page.messages.length) document.getElementById('chat-empty')?.remove();
-    for (const message of page.messages) {
-      const section = document.createElement('section');
-      const author = document.createElement('strong');
-      author.textContent = message.actor_kind + (message.agent_name ? ' · ' + message.agent_name : '');
-      const text = document.createElement('p');
-      text.style.whiteSpace = 'pre-wrap';
-      text.textContent = message.text;
-      const attribution = document.createElement('small');
-      attribution.textContent = message.created + ' · ' + message.actor_id + ' · ' + message.origin_issuer;
-      section.append(author, text, attribution);
-      chatHistory.append(section);
-    }
-    cursor = page.next_cursor;
-    chatStatus.textContent = '';
-  } catch (error) {
-    chatStatus.textContent = 'Chat is unavailable. Reconnect or sign in again to continue.';
-  } finally { fetching = false; }
-}
-document.getElementById('chat-refresh').addEventListener('click', refreshChat);
-setInterval(refreshChat, 3000);
-refreshChat();
-</script>
+<script>{% include 'core_chat/room.js.html' %}</script>
 {% endblock %}

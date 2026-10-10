@@ -101,6 +101,11 @@ def relay(principal, conversation, method, participant, **values):
                         not all(isinstance(message.get(k), str) for k in ['actor_id', 'origin_issuer', 'agent_name', 'created'])):
                     raise ValueError
                 UUID(message['id'])
+                if ('sender_name' in message and (not isinstance(message['sender_name'], str) or len(message['sender_name']) > 320) or
+                        'reply_preview' in message and (not isinstance(message['reply_preview'], str) or len(message['reply_preview']) > 240)):
+                    raise ValueError
+                if message.get('reply_to') is not None:
+                    UUID(message['reply_to'])
         record_decision(principal, conversation, 'chat.federated_' + ('read' if method == 'GET' else 'sent'), True, 'authority_verified', [])
         result['conversation_id'] = str(conversation.pk)
         result['organization_id'] = str(conversation.organization_id)

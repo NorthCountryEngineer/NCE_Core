@@ -28,6 +28,8 @@ class Conversation(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey('identity.Organization', on_delete=models.CASCADE, related_name='chat_conversations')
     title = models.CharField(max_length=160)
+    kind = models.CharField(max_length=12, choices=[('channel', 'Channel'), ('direct', 'Direct message'), ('group', 'Group message')], default='channel')
+    topic = models.CharField(max_length=500, blank=True)
     ai_enabled = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
     connection = models.ForeignKey(FederationConnection, on_delete=models.PROTECT, null=True, blank=True)
@@ -57,6 +59,8 @@ class Participant(TaggedResource):
     allow_ai = models.BooleanField(default=False)
     federated_issuer = models.URLField(blank=True, help_text='Exact issuer of an approved remote Core instance; services only.')
     active = models.BooleanField(default=True)
+    last_read_cursor = models.PositiveBigIntegerField(default=0)
+    notifications = models.CharField(max_length=10, choices=[('all', 'All messages'), ('mentions', 'Mentions only'), ('muted', 'Muted')], default='all')
 
     class Meta:
         constraints = [
@@ -100,6 +104,7 @@ class Message(TaggedResource):
     via_installation_id = models.UUIDField(null=True, blank=True)
     agent_name = models.CharField(max_length=160, blank=True)
     text = models.TextField()
+    reply_to = models.ForeignKey('self', on_delete=models.PROTECT, null=True, blank=True, related_name='replies')
     created = models.DateTimeField(auto_now_add=True)
 
     class Meta:

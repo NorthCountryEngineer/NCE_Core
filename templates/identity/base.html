@@ -17,6 +17,7 @@
     .errorlist { color: #a32020; } code { overflow-wrap: anywhere; } .notice { background: #e0eef7; padding: 1rem; }
     .actions { display: flex; gap: 1rem; flex-wrap: wrap; } .inline { display: inline; }
   </style>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
 <header>
@@ -30,13 +31,13 @@
 </header>
 <main>
   {% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}
-  {% if user.is_authenticated and brand_organization %}
+  {% block access_controls %}{% if user.is_authenticated and brand_organization %}
   <form method="post" action="{% url 'access_purpose' brand_organization.slug %}">{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <label for="access-purpose">Access purpose</label><input id="access-purpose" name="purpose_code" value="{{ access_purpose }}" maxlength="80" placeholder="Configured purpose code">
     <button type="submit">Set purpose for this organization</button>
   </form>
-  {% endif %}
+  {% endif %}{% endblock %}
   {% block content %}{% endblock %}
 </main>
 </body>

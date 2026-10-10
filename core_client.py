@@ -326,18 +326,21 @@ class CoreClient:
             raise CoreServiceError('Chat organization mismatch.')
         return value
 
-    def chat_create(self, title, ai_enabled=False):
-        return self.request('POST', '/chat/conversations/create/', json={'title': title, 'ai_enabled': ai_enabled})
+    def chat_create(self, title, ai_enabled=False, *, kind='channel', topic=''):
+        return self.request('POST', '/chat/conversations/create/', json={'title': title, 'ai_enabled': ai_enabled, 'kind': kind, 'topic': topic})
 
     def chat_messages(self, conversation_id, after=0, limit=100, user_access_token=None):
         from uuid import UUID
         return self._chat_request('GET', f'/chat/conversations/{UUID(str(conversation_id))}/messages/',
                                  user_access_token, params={'after': after, 'limit': limit})
 
-    def chat_send(self, conversation_id, request_id, text, *, ai=False, agent_name='', user_access_token=None):
+    def chat_send(self, conversation_id, request_id, text, *, ai=False, agent_name='', user_access_token=None, reply_to=None):
         from uuid import UUID
+        values = {'request_id': request_id, 'text': text, 'ai': ai, 'agent_name': agent_name}
+        if reply_to is not None:
+            values['reply_to'] = str(UUID(str(reply_to)))
         return self._chat_request('POST', f'/chat/conversations/{UUID(str(conversation_id))}/send/', user_access_token,
-            json={'request_id': request_id, 'text': text, 'ai': ai, 'agent_name': agent_name})
+            json=values)
 
     def chat_participant(self, conversation_id, **permissions):
         from uuid import UUID

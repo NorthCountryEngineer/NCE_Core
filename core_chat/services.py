@@ -66,16 +66,18 @@ def can_manage(principal, conversation):
 
 
 @transaction.atomic
-def create_conversation(principal, organization, title, ai_enabled=False, connection=None, remote_id=None):
+def create_conversation(principal, organization, title, ai_enabled=False, connection=None, remote_id=None, *, kind='channel', topic=''):
     capability(principal, organization, 'chat.manage')
     if not isinstance(title, str) or not 1 <= len(title.strip()) <= 160 or type(ai_enabled) is not bool:
         raise ValidationError('Use a title of 1–160 characters and a boolean AI setting.')
+    if not isinstance(kind, str) or kind not in {'channel', 'direct', 'group'} or not isinstance(topic, str) or len(topic) > 500:
+        raise ValidationError('Choose a conversation type and a topic up to 500 characters.')
     if connection:
         require_access(principal, connection, 'chat.federation_connect')
         if not connection.active:
             raise ValidationError('The federation connection is disabled.')
     conversation = Conversation(organization=organization, title=title.strip(), ai_enabled=ai_enabled,
-                                connection=connection, remote_conversation_id=remote_id)
+                                connection=connection, remote_conversation_id=remote_id, kind=kind, topic=topic)
     conversation.full_clean()
     conversation.save()
     from platform_services.environments import principal_environment
@@ -90,11 +92,28 @@ def create_conversation(principal, organization, title, ai_enabled=False, connec
     return conversation
 
 
-def serialize(message):
+def serialize(message, principal=None):
+    name = message.agent_name or message.actor_kind.replace('_', ' ').title()
+    if message.actor_kind == 'user':
+        from identity.models import User
+        # Reuse names within a single authorized operation, never across requests.
+        names = getattr(principal, '_chat_sender_names', {}) if principal else {}
+        key = (message.conversation.organization_id, message.actor_id)
+        if key not in names:
+            user = User.objects.filter(pk=message.actor_id, memberships__organization_id=key[0]).first()
+            names[key] = user.get_full_name() or user.email if user else name
+        name = names[key]
+        if principal:
+            principal._chat_sender_names = names
+    parent = message.reply_to if message.reply_to_id else None
+    if parent and (not principal or not decision(principal, parent)[0]):
+        parent = None
     return {'id': str(message.public_id), 'cursor': message.pk, 'text': message.text,
             'actor_kind': message.actor_kind, 'actor_id': message.actor_id, 'origin_issuer': message.origin_issuer,
             'via_installation_id': str(message.via_installation_id) if message.via_installation_id else None,
-            'agent_name': message.agent_name, 'created': message.created.isoformat()}
+            'agent_name': message.agent_name, 'sender_name': name, 'created': message.created.isoformat(),
+            'reply_to': str(parent.public_id) if parent else None,
+            'reply_preview': parent.text[:240] if parent else ''}
 
 
 def participant_identity(principal):
@@ -114,12 +133,12 @@ def message_page(principal, conversation, after=0, limit=100, federation_issuer=
             raise PermissionDenied('Federation targets must hold authoritative conversations.')
         from .federation import relay
         return relay(principal, conversation, 'GET', participant, after=after, limit=limit)
-    rows = list(conversation.messages.filter(pk__gt=after)[:limit])
+    rows = list(conversation.messages.select_related('conversation', 'reply_to__conversation').filter(pk__gt=after)[:limit])
     visible = []
     for row in rows:
         if decision(principal, row)[0]:
             require_access(principal, row, 'chat.message_read')
-            visible.append(serialize(row))
+            visible.append(serialize(row, principal))
     record_decision(principal, conversation, 'chat.read', True, 'participant_authorized', effective_tags(conversation))
     return {'organization_id': str(conversation.organization_id), 'conversation_id': str(conversation.pk),
             'authority_issuer': settings.ISSUER, 'messages': visible, 'next_cursor': rows[-1].pk if rows else after}
@@ -131,13 +150,26 @@ def validate_peer(principal, conversation, participant, issuer):
         raise PermissionDenied('Federated origin is not approved for this participant.')
 
 
-def send_message(principal, conversation, request_id, text, *, ai=False, agent_name='', origin=None, via_installation_id=None):
+def send_message(principal, conversation, request_id, text, *, ai=False, agent_name='', origin=None, via_installation_id=None, reply_to=None):
     if (not isinstance(request_id, str) or not re.fullmatch(r'[-a-zA-Z0-9_:./]{1,160}', request_id) or
             not isinstance(text, str) or not text.strip() or len(text.encode()) > 16384 or '\x00' in text or
             type(ai) is not bool or not isinstance(agent_name, str) or len(agent_name) > 160 or
             (ai and not agent_name.strip()) or (not ai and agent_name)):
         raise ValidationError('Use a request ID, nonempty text up to 16 KiB, and an agent name for AI messages.')
     participant = authorize(principal, conversation, 'send', ai=ai)
+    parent = None
+    if reply_to is not None:
+        from uuid import UUID
+        try:
+            reply_to = str(UUID(str(reply_to)))
+        except (ValueError, TypeError, AttributeError):
+            raise ValidationError('Choose a message in this conversation to reply to.')
+        authorize(principal, conversation)
+        if not conversation.connection_id:
+            parent = conversation.messages.filter(public_id=reply_to).first()
+            if not parent:
+                raise ValidationError('Choose a message in this conversation to reply to.')
+            require_access(principal, parent, 'chat.reply')
     user = principal.user
     actor_id = str(principal.agent_binding.account_id if principal.agent_binding else user.pk if user else principal.credential.installation_id)
     kind = 'ai' if ai else 'user' if user else 'application'
@@ -162,15 +194,20 @@ def send_message(principal, conversation, request_id, text, *, ai=False, agent_n
         sender_key = 'peer:' + hashlib.sha256(f'{via}:{origin_issuer}:{kind}:{actor_id}'.encode()).hexdigest()
     if conversation.connection_id:
         from .federation import relay
-        return relay(principal, conversation, 'POST', participant, request_id=request_id, text=text, ai=ai, agent_name=agent_name)
+        values = {'request_id': request_id, 'text': text, 'ai': ai, 'agent_name': agent_name}
+        if reply_to:
+            values['reply_to'] = reply_to
+        return relay(principal, conversation, 'POST', participant, **values)
     with transaction.atomic():
         # Serialize room writes so cursor order follows committed visibility.
         Conversation.objects.select_for_update().get(pk=conversation.pk)
         message, created = Message.objects.get_or_create(conversation=conversation, sender_key=sender_key, request_id=request_id,
             defaults={'text': text, 'actor_kind': kind, 'actor_id': actor_id, 'origin_issuer': origin_issuer,
-                      'via_installation_id': via, 'agent_name': agent_name})
+                      'via_installation_id': via, 'agent_name': agent_name, 'reply_to': parent})
         if (message.text, message.actor_kind, message.actor_id, message.origin_issuer, message.agent_name, message.via_installation_id) != (text, kind, actor_id, origin_issuer, agent_name, via):
             raise IdempotencyConflict('Message request ID already used with different content.')
+        if message.reply_to_id != (parent.pk if parent else None):
+            raise IdempotencyConflict('Message request ID already used with a different reply.')
         record_decision(principal, conversation, 'chat.ai_sent' if ai else 'chat.sent', True, 'participant_authorized', effective_tags(conversation))
     return {'organization_id': str(conversation.organization_id), 'conversation_id': str(conversation.pk),
-            'authority_issuer': settings.ISSUER, 'message': serialize(message), 'created': created}
+            'authority_issuer': settings.ISSUER, 'message': serialize(message, principal), 'created': created}

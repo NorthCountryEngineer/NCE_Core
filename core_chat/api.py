@@ -104,7 +104,7 @@ def conversations(request):
         except PermissionDenied:
             continue
         rows.append({'id': str(conversation.pk), 'title': conversation.title, 'ai_enabled': conversation.ai_enabled,
-                     'shared': bool(conversation.connection_id)})
+                     'shared': bool(conversation.connection_id), 'kind': conversation.kind, 'topic': conversation.topic})
         if len(rows) == 200:
             break
     return response({'organization_id': str(request.organization.pk), 'conversations': rows})
@@ -113,9 +113,10 @@ def conversations(request):
 @chat_api('manage', ('POST',))
 def create(request):
     values = body(request)
-    if set(values) - {'title', 'ai_enabled'}:
+    if set(values) - {'title', 'ai_enabled', 'kind', 'topic'}:
         raise ValidationError('Unsupported conversation fields.')
-    conversation = create_conversation(request.access_principal, request.organization, values.get('title'), values.get('ai_enabled', False))
+    conversation = create_conversation(request.access_principal, request.organization, values.get('title'), values.get('ai_enabled', False),
+                                       kind=values.get('kind', 'channel'), topic=values.get('topic', ''))
     if request.chat_credential and request.access_principal.user and request.chat_credential.environment_id:
         conversation.permission_tags.add(request.chat_credential.environment.boundary_tag)
     if request.chat_credential and request.access_principal.user:
@@ -137,10 +138,12 @@ def messages(request, pk):
 @chat_api('send', ('POST',))
 def send(request, pk):
     values = body(request)
-    if set(values) - {'request_id', 'text', 'ai', 'agent_name', 'origin'}:
+    if set(values) - {'request_id', 'text', 'ai', 'agent_name', 'origin', 'reply_to'}:
         raise ValidationError('Unsupported message fields; sender identity comes from authentication.')
     ai = values.get('ai', False)
     conversation = room(request, pk, 'send', ai=ai)
+    if values.get('reply_to') is not None:
+        room(request, pk, 'read')
     if ai and request.chat_credential and not credential_allows(request.chat_credential, ['chat.ai']):
         raise PermissionDenied
     origin = values.get('origin')
@@ -149,7 +152,7 @@ def send(request, pk):
             origin and origin.get('issuer') != issuer):
         raise ValidationError('Federation header and sender provenance must agree.')
     result = send_message(request.access_principal, conversation, values.get('request_id'), values.get('text'),
-                          ai=ai, agent_name=values.get('agent_name', ''), origin=origin,
+                          ai=ai, agent_name=values.get('agent_name', ''), origin=origin, reply_to=values.get('reply_to'),
                           via_installation_id=request.chat_credential.installation_id if request.chat_credential else None)
     return response(result, 201 if result['created'] else 200)
 

@@ -13,6 +13,48 @@ The browser polls every three seconds and preserves drafts. Every poll rechecks
 authorization. Cursor APIs support remote applications without requiring Redis,
 a message broker, or WebSocket ingress.
 
+## Team workspace
+
+Chat uses a responsive workspace with a channel, direct-message, and group-message
+sidebar. **Create conversation** lets an authorized creator choose the type, set
+a topic, and invite organization members. A direct message invites one person;
+a group invites at least two. These are private conversations: selecting a type
+never grants organization-wide access or bypasses a member's Chat role. Existing
+conversations migrate to channels without changing participants or permissions.
+
+Messages send without a page reload. Use **Reply** for a contextual response,
+**Share link** for an access-controlled message permalink, or paste a URL into a
+message to share it. **Search** searches local history (up to 200 matching messages);
+**Load earlier messages** retrieves older local history. The default local view
+opens the latest 100 messages. Shared-instance search covers its first 100 messages;
+the normal shared conversation continues to load cursor pages from its authority.
+Messages and links are escaped; message permalinks never confer access.
+
+Choose **@ Mention someone** to insert an exact `@email` mention. **Notifications**
+opens an in-app inbox. Unread badges and mention counts are private to each
+participant. Choose all messages, mentions only, or mute for each conversation.
+Muting suppresses notifications while retaining unread badges. Your own messages
+do not notify you. A visible conversation acknowledges messages when you reach
+the bottom; opening a search, a background tab, or making a GET request does not
+mark messages read. Read markers only move forward, including across concurrent
+tabs. They persist across deployments and do not alter another participant's state.
+
+Optional desktop notifications require a supported browser, a secure context,
+browser permission, and an explicit account-specific opt-in. They operate while
+the workspace is open, including background tabs; there is no background push
+service or paid notification provider. Alerts contain a generic activity notice,
+not message text, names, or organization metadata. You can disable them in the
+notification inbox. Native OS delivery depends on browser/operating-system settings.
+
+The workspace shows up to 100 joined conversations and scans up to 200 unread
+messages per conversation on each refresh. A `200+` badge signals this bound;
+opening the conversation processes subsequent pages. Counts and previews are
+computed under current authorization, including participant, organization, service,
+message, and reply-parent tags. Restricted messages cannot leak through search,
+notification counts, or quoted reply previews. Federation keeps shared history at
+the authoritative instance, including reply relationships; unavailable authorities
+do not supply cached notifications.
+
 See [Chat testing and deployment](chat-testing.md) for a member creation walkthrough,
 Mac update steps, and the disposable PostgreSQL/web/worker/browser test suite.
 
@@ -96,9 +138,9 @@ Routes beneath `/api/platform/v1/chat`:
 | Method and route | Behavior |
 | --- | --- |
 | `GET /conversations/` | List up to 200 joined, authorized conversations. |
-| `POST /conversations/create/` | Create with `title` and optional `ai_enabled`; creator becomes an owner. |
+| `POST /conversations/create/` | Create with `title`, optional `ai_enabled`, `kind` (`channel`, `direct`, `group`), and `topic`; creator becomes an owner. Add approved participants through the participant API. |
 | `GET /conversations/{id}/messages/?after=0&limit=100` | Read a cursor page. |
-| `POST /conversations/{id}/send/` | Send `request_id`, `text`, optional `ai` and `agent_name`. |
+| `POST /conversations/{id}/send/` | Send `request_id`, `text`, optional `ai`, `agent_name`, and `reply_to` (a visible message UUID in this conversation). Replies require read permission as well as send permission. |
 | `POST /conversations/{id}/participants/` | Owner/admin updates `user_id` or `installation_id`, `role`, `allow_ai`, and `active`. |
 
 API authentication is a bearer workload credential or chat-service OAuth token.

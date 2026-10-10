@@ -1,0 +1,38 @@
+{% extends 'identity/base.html' %}
+{% block extra_head %}<style>{% include 'core_chat/workspace.css.html' %}</style>{% endblock %}
+{% block access_controls %}
+{% if brand_organization %}<details class="chat-access"><summary>Access purpose</summary>
+<form method="post" action="{% url 'access_purpose' brand_organization.slug %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><label for="access-purpose">Purpose code</label><input id="access-purpose" name="purpose_code" value="{{ access_purpose }}" maxlength="80"><button type="submit">Set purpose for this organization</button></form>
+</details>{% endif %}
+{% endblock %}
+{% block content %}
+<div class="chat-workspace">
+<aside class="chat-sidebar" aria-label="Chat navigation">
+  <div class="chat-brand"><span class="chat-logo" aria-hidden="true">C</span><div><strong>{{ organization.name }}</strong><small>Team workspace</small></div></div>
+  <a class="chat-home" href="{% url 'chat' organization.slug %}">Conversations</a>
+  <button class="chat-inbox-toggle" type="button" aria-controls="chat-inbox" aria-expanded="false">Notifications <span id="notification-count" class="chat-badge">{{ workspace.notifications }}</span></button>
+  <label class="sr-only" for="conversation-filter">Find a conversation</label><input id="conversation-filter" type="search" placeholder="Find a conversation" autocomplete="off">
+  <nav id="chat-room-list" aria-label="Your conversations">
+  {% regroup workspace.rooms by kind as kinds %}{% for group in kinds %}
+  <h2>{% if group.grouper == 'channel' %}Channels{% elif group.grouper == 'direct' %}Direct messages{% else %}Group messages{% endif %}</h2>
+  {% for room in group.list %}<a class="chat-room-link{% if room.id == conversation.pk|stringformat:'s' %} selected{% endif %}" href="{{ room.url }}" data-room="{{ room.id }}" {% if room.id == conversation.pk|stringformat:'s' %}aria-current="page"{% endif %}><span aria-hidden="true">{% if room.kind == 'channel' %}#{% elif room.kind == 'direct' %}↗{% else %}◉{% endif %}</span><span class="chat-room-title">{{ room.title }}</span>{% if room.unread %}<span class="chat-badge">{{ room.unread }}{% if room.unread == 200 %}+{% endif %}</span>{% endif %}{% if room.mentions %}<span class="chat-mention" aria-label="Mentions">@</span>{% endif %}</a>{% endfor %}
+  {% endfor %}</nav>
+  {% if can_create %}<a class="chat-create" href="{% url 'chat_create' organization.slug %}">＋ Create conversation</a>{% endif %}
+  <div class="chat-account"><span class="chat-avatar">{{ user.email|first|upper }}</span><span>{{ user.get_full_name|default:user.email }}<small>Your account</small></span></div>
+</aside>
+<div class="chat-main">
+{% block chat_content %}{% endblock %}
+</div>
+<aside id="chat-inbox" class="chat-inbox" hidden aria-label="Notification inbox">
+  <div class="chat-inbox-heading"><h2>Notifications</h2><button type="button" id="chat-inbox-close" aria-label="Close notifications">×</button></div>
+  <p>New messages and mentions from your conversations.</p>
+  <div id="chat-notification-list"></div>
+  <button id="desktop-notifications" type="button">Enable desktop notifications</button>
+  <small id="desktop-status">Desktop alerts are optional and use this browser.</small>
+</aside>
+</div>
+<p id="workspace-status" role="status" class="sr-only"></p>
+{{ workspace|json_script:'workspace-state' }}
+<script>{% include 'core_chat/workspace.js.html' %}</script>
+{% block chat_script %}{% endblock %}
+{% endblock %}

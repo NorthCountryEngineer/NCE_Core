@@ -104,6 +104,9 @@ class LiveFederationTests(LiveServerTestCase):
                     self.assertEqual(first['message']['actor_kind'], 'federated_application')
                     self.assertEqual(first['message']['actor_id'], str(installation.pk))
                     self.assertFalse(client.chat_send(str(room.pk), 'shared-message', 'Message through consuming instance')['created'])
+                    reply = client.chat_send(str(room.pk), 'shared-reply', 'Reply across instances', reply_to=first['message']['id'])
+                    self.assertEqual(reply['message']['reply_to'], first['message']['id'])
+                    self.assertEqual(reply['message']['reply_preview'], 'Message through consuming instance')
                     ai = client.invoke_chat_tool({'text': 'AI conversation handoff'}, conversation_id=str(room.pk),
                         request_id='ai-handoff', agent_name='conversation-assistant')
                     self.assertEqual(ai['message']['actor_kind'], 'federated_ai')
@@ -130,7 +133,7 @@ class LiveFederationTests(LiveServerTestCase):
                     authoritative = remote.chat_messages(state['conversation_id'])
                     shared = client.chat_messages(str(room.pk))
                     self.assertEqual([m['id'] for m in shared['messages']], [m['id'] for m in authoritative['messages']])
-                    self.assertEqual(len(shared['messages']), 3)
+                    self.assertEqual(len(shared['messages']), 4)
                     self.assertFalse(Message.objects.exists(), 'Shared history must remain authoritative, without local cached copies.')
                     # Expected remote organization is checked before any response is consumed.
                     from uuid import uuid4

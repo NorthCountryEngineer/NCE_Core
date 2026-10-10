@@ -1,6 +1,7 @@
 """Real administrator/member UI checks against a disposable Chat deployment."""
 import secrets
-from urllib.parse import urlparse
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
@@ -95,7 +96,14 @@ class ChatBrowserChecks:
 
     def send(self, page, text):
         page.locator('#chat-composer [name=text]').fill(text)
-        self.submit(page, 'Send message')
+        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/post/')) as posted:
+            page.get_by_role('button', name='Send message', exact=True).click()
+        if posted.value.status not in {200, 201}:
+            raise AssertionError('Asynchronous message send failed.')
+        if posted.value.request.all_headers().get('origin') != self.origin:
+            raise AssertionError('Asynchronous send did not use the trusted origin.')
+        expect(page.locator('#chat-history .chat-message-text').filter(has_text=text)).to_have_count(1)
+        expect(page.locator('#chat-composer [name=text]')).to_have_value('')
 
     def forged_send(self, page, origin=None, token=True):
         data = {'text': 'Forbidden browser probe', 'request_id': str(uuid.uuid4())}
@@ -243,6 +251,8 @@ class ChatBrowserChecks:
             self.open(self.member, self.organization + path, 403)
         self.check('conversation manager cannot administer platform, marketplace, roles, invitations or federation')
 
+        self.modern_workspace()
+
         self.open(self.member, self.shared_path)
         self.participant(active=False)
         expect(self.member.locator('#chat-status')).to_have_text('Conversation access has been revoked.')
@@ -268,6 +278,122 @@ class ChatBrowserChecks:
         expect(self.member.get_by_text('Message from test user', exact=True)).to_be_visible()
         self.check('native logout/login preserves account permissions and durable history')
         return self.checks
+
+    def modern_workspace(self):
+        self.open(self.member, self.organization + 'chat/new/')
+        self.member.locator('[name=title]').fill('Direct exchange')
+        self.member.locator('[name=kind]').select_option('direct')
+        self.member.locator('[name=members]').select_option(label=self.admin_email)
+        self.submit(self.member)
+        direct_path = urlparse(self.member.url).path
+        expect(self.member.get_by_text('Direct message', exact=True)).to_be_visible()
+        self.send(self.member, 'A private direct message')
+        self.open(self.admin, direct_path)
+        expect(self.admin.get_by_text('A private direct message', exact=True)).to_be_visible()
+        self.check('direct conversation creation invites the selected organization member')
+
+        third_email = self.engine + '-group@example.test'
+        third_password = secrets.token_urlsafe(32)
+        self.open(self.admin, self.organization + 'invite/')
+        self.admin.locator('[name=email]').fill(third_email)
+        self.admin.locator('[name=kind]').select_option('member')
+        self.submit(self.admin, status=200)
+        invitation = self.admin.locator('code').inner_text()
+        third_context = self.browser.new_context()
+        try:
+            third = third_context.new_page()
+            third.on('pageerror', lambda error: self.errors.append(type(error).__name__))
+            self.open(third, urlparse(invitation).path)
+            third.locator('[name=password1]').fill(third_password)
+            third.locator('[name=password2]').fill(third_password)
+            self.submit(third, 'Accept invitation')
+            self.open(self.admin, self.organization)
+            self.admin.get_by_role('link', name=third_email, exact=True).click()
+            self.admin.locator('[name=roles]').select_option(label='Chat User')
+            self.submit(self.admin)
+            self.open(self.member, self.organization + 'chat/new/')
+            self.member.locator('[name=title]').fill('Release group')
+            self.member.locator('[name=kind]').select_option('group')
+            self.member.locator('[name=topic]').fill('Release planning together')
+            self.member.locator('[name=members]').select_option(label=[self.admin_email, third_email])
+            self.submit(self.member)
+            group_path = urlparse(self.member.url).path
+            self.send(self.member, 'A shared group discussion')
+            self.open(third, group_path)
+            expect(third.get_by_text('A shared group discussion', exact=True)).to_be_visible()
+            expect(third.get_by_text('Release planning together', exact=True)).to_be_visible()
+            self.open(third, direct_path, 403)
+            self.check('group messages reach invited users and direct messages deny an uninvited account')
+        finally:
+            third_context.close()
+
+        self.open(self.member, self.shared_path)
+        original = self.member.locator('#chat-history section').filter(has=self.member.get_by_text('Administrator reply', exact=True))
+        original.get_by_role('button', name='Reply', exact=True).click()
+        expect(self.member.locator('#reply-banner')).to_be_visible()
+        self.send(self.member, 'A contextual reply')
+        reply = self.member.locator('#chat-history section').filter(has=self.member.get_by_text('A contextual reply', exact=True))
+        expect(reply.locator('.chat-reply-quote')).to_contain_text('Administrator reply')
+        expect(self.member.locator('#reply-banner')).to_be_hidden()
+        self.send(self.member, 'Review https://example.test/report')
+        expect(self.member.get_by_role('link', name='https://example.test/report', exact=True)).to_be_visible()
+        share = reply.get_by_role('link', name='Share link').get_attribute('href')
+        self.open(self.member, urlparse(urljoin(self.member.url, share)).path + '?' + urlparse(share).query + '#' + urlparse(share).fragment)
+        expect(self.member.get_by_text('A contextual reply', exact=True)).to_be_visible()
+        self.member.locator('#chat-query').fill('A contextual reply')
+        with self.member.expect_navigation():
+            self.member.get_by_role('button', name='Search', exact=True).click()
+        expect(self.member.locator('#chat-history section')).to_have_count(1)
+        expect(self.member.get_by_text('A contextual reply', exact=True)).to_be_visible()
+        self.check('replies, safe link sharing, message permalinks and message search work in the browser')
+
+        self.open(self.member, self.shared_path)
+        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/')) as saved:
+            self.member.locator('#chat-notification-mode').select_option('mentions')
+        if saved.value.status != 200:
+            raise AssertionError('Notification preferences were not saved.')
+        self.open(self.member, self.organization + 'chat/')
+        self.open(self.admin, self.shared_path)
+        self.send(self.admin, 'Ordinary notification probe')
+        self.send(self.admin, 'Please review @' + self.email)
+        self.member.bring_to_front()
+        self.member.get_by_role('button', name='Notifications', exact=False).click()
+        notice = self.member.locator('#chat-notification-list .chat-notification').filter(has_text='Laptop Test')
+        expect(notice).to_contain_text('1 mention')
+        expect(notice).to_contain_text('1 new notification')
+        self.member.locator('#chat-inbox-close').click()
+        self.member.get_by_role('link', name='Laptop Test', exact=True).click()
+        expect(self.member.locator('#chat-notification-mode')).to_have_value('mentions')
+        with self.member.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith('/preferences/')):
+            self.member.locator('#chat-notification-mode').select_option('muted')
+        self.open(self.member, self.organization + 'chat/')
+        self.send(self.admin, 'Muted probe @' + self.email)
+        self.member.bring_to_front()
+        expect(self.member.locator('.chat-room-link').filter(has_text='Laptop Test').locator('.chat-badge')).to_have_text('1')
+        expect(self.member.locator('#notification-count')).to_have_text('0')
+        self.check('live mention notifications and unread badges honor per-user mute preferences')
+
+        self.open(self.member, self.shared_path)
+        self.member_context.grant_permissions(['notifications'], origin=self.origin)
+        self.member.get_by_role('button', name='Notifications', exact=False).click()
+        self.member.locator('#desktop-notifications').click()
+        expect(self.member.locator('#desktop-notifications')).to_have_text('Disable desktop notifications')
+        self.member.locator('#desktop-notifications').click()
+        expect(self.member.locator('#desktop-notifications')).to_have_text('Enable desktop notifications')
+        self.member.locator('#chat-inbox-close').click()
+        self.check('desktop notifications require browser permission and an explicit user opt-in')
+
+        self.member.set_viewport_size({'width': 1440, 'height': 900})
+        Path('artifacts').mkdir(exist_ok=True)
+        self.member.screenshot(path='artifacts/chat-modern-desktop.png')
+        self.member.set_viewport_size({'width': 390, 'height': 844})
+        expect(self.member.locator('#chat-composer')).to_be_visible()
+        if self.member.evaluate('document.documentElement.scrollWidth > window.innerWidth'):
+            raise AssertionError('Chat workspace overflows a phone-sized viewport.')
+        self.member.screenshot(path='artifacts/chat-modern-mobile.png')
+        self.member.set_viewport_size({'width': 1280, 'height': 720})
+        self.member.locator('#chat-notification-mode').select_option('all')
+        self.check('desktop and phone-sized layouts keep messages and composer usable')
 
     def check_restart(self):
         self.login(self.admin, self.admin_email, self.instance['password'])
