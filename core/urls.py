@@ -27,5 +27,6 @@ urlpatterns = [
     path("", include("platform_services.urls")),
     path("", include("core_chat.urls")),
     path("", include("core_fabric.urls")),
+    path("", include("core_ai.urls")),
     path("", include("identity.urls")),
 ]

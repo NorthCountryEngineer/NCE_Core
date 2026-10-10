@@ -1,4 +1,6 @@
 CORE_CATALOG = [
+    ("core-ai", "Core AI", "Permission-aware unified application queries and evidence-first conversations; no provider key required.",
+     ["core-data", "core-fabric"], ["ai.query", "ai.manage"]),
     ('core-app-factory', 'Core App Factory', 'Description-led application development with scoped agent accounts and inherited platform security.',
      ['core-agents', 'core-workflows'], ['appfactory.create', 'appfactory.read', 'appfactory.build', 'appfactory.release']),
     ('core-fabric', 'Core Data Fabric', 'Bilateral administrator-approved data federation between Core deployments.',

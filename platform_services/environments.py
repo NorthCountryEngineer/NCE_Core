@@ -35,7 +35,7 @@ SCOPED_RESOURCES = {'platform_services.dataset', 'platform_services.pipeline', '
     'platform_services.workflow', 'platform_services.workflowrun', 'platform_services.trainingrun',
     'platform_services.trainingscenario', 'core_chat.conversation', 'core_fabric.fabriccontract', 'identity.protectedresource',
     'platform_services.applicationintegration', 'platform_services.integrationconnection', 'platform_services.appproject',
-    'platform_services.developmentobject', 'platform_services.developmentrevision', 'platform_services.developmentrun'}
+    'platform_services.developmentobject', 'platform_services.developmentrevision', 'platform_services.developmentrun', 'core_ai.querysource'}
 
 
 def unassigned_resources(organization, chain):

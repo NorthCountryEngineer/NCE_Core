@@ -60,6 +60,8 @@ class FabricContract(TaggedResource):
     active = models.BooleanField(default=True)
     allowed_installations = models.ManyToManyField('platform_services.Installation', blank=True, related_name='fabric_contracts')
     allowed_bindings = models.ManyToManyField('platform_services.AgentBinding', blank=True, related_name='fabric_contracts')
+    allowed_memberships = models.ManyToManyField('identity.Membership', blank=True,
+        help_text='Explicit recipient members permitted to read this agreement. Never grants writes or administration.')
     approved_by = models.ForeignKey('identity.User', on_delete=models.PROTECT, null=True, blank=True, editable=False)
     approved_at = models.DateTimeField(null=True, blank=True, editable=False)
     approved_hash = models.CharField(max_length=64, blank=True, editable=False)
@@ -105,6 +107,7 @@ class FabricPermit(models.Model):
     request_hash = models.CharField(max_length=64)
     terms_hash = models.CharField(max_length=64)
     actor = models.ForeignKey('identity.User', on_delete=models.PROTECT, null=True)
+    application = models.ForeignKey('identity.Application', on_delete=models.PROTECT, null=True, blank=True)
     credential = models.ForeignKey('platform_services.WorkloadCredential', on_delete=models.PROTECT, null=True)
     agent_binding = models.ForeignKey('platform_services.AgentBinding', on_delete=models.PROTECT, null=True)
     agent_credential = models.ForeignKey('platform_services.AgentCredential', on_delete=models.PROTECT, null=True)

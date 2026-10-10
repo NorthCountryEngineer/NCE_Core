@@ -406,6 +406,30 @@ def core_query(organization, principal, requested_rows, callback):
 
 
 @transaction.atomic
+def settle_core_query(reservation, inspected_rows):
+    """Trusted retrieval accounting after I/O, even when access has been revoked.
+
+    This has no HTTP entry point and grants no data access. Immutable reservation
+    subject/consumer keys determine the meters; model/provider spend stays zero.
+    """
+    Organization.objects.select_for_update().get(pk=reservation.organization_id)
+    row = AIUsageReservation.objects.select_for_update().get(pk=reservation.pk, organization_id=reservation.organization_id)
+    actual = amounts({'requests': 1, 'query_rows': inspected_rows})
+    if row.operation != 'query' or row.estimated['tokens'] or row.estimated['cost_micros'] or inspected_rows > row.estimated['query_rows']:
+        raise RuleConflict
+    if row.state == 'settled' and row.actual == actual:
+        return row
+    if row.state != 'running':
+        raise RuleConflict
+    meters = [get_meter(row.organization, row.subject, row.day), get_meter(row.organization, '*', row.day)]
+    change(meters, 'held', row.estimated, -1)
+    change(meters, 'used', actual)
+    row.state, row.actual = 'settled', actual
+    row.save(update_fields=['state', 'actual', 'updated'])
+    return row
+
+
+@transaction.atomic
 def core_step(organization, principal, key, callback):
     """Transactional, deterministic Core tools have no paid/model side effects."""
     row = reserve(organization, principal, {'request_key': digest(key), 'operation': 'workflow',

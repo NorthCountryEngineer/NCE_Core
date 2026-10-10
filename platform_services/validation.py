@@ -8,8 +8,8 @@ from jsonschema import Draft202012Validator, SchemaError
 CAPABILITIES = {"development.read", "development.write", "development.run", "rules.read", "rules.manage", "usage.reserve", "usage.report", "usage.read", "docs.read", "docs.admin", "docs.manage", "appfactory.create", "appfactory.read", "appfactory.build", "appfactory.release", "data.read", "data.write", "agents.run", "workflows.run", "workflows.read",
                 "chat.read", "chat.send", "chat.manage", "chat.ai", "chat.federate",
                 'training.run', 'training.read', 'training.manage', 'training.evaluate',
-                'fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer'}
-CORE_PACKAGES = {"core-app-factory", "core-platform", "core-agents", "core-workflows", "core-data", "core-chat", 'core-training', 'core-fabric'}
+                'fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer', 'ai.query', 'ai.manage'}
+CORE_PACKAGES = {"core-ai", "core-app-factory", "core-platform", "core-agents", "core-workflows", "core-data", "core-chat", 'core-training', 'core-fabric'}
 
 
 def validate_schema(schema):

@@ -31,7 +31,7 @@ CSRF_TRUSTED_ORIGINS = [ISSUER]
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "oauth2_provider", "identity", "platform_services", "core_chat", "core_fabric",
+    "oauth2_provider", "identity", "platform_services", "core_chat", "core_fabric", "core_ai",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

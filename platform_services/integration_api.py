@@ -1,5 +1,6 @@
 """Backend APIs for integration consumption and embedded application settings."""
 import hashlib
+from contextlib import nullcontext
 from functools import wraps
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -15,7 +16,7 @@ from .integrations import (IntegrationVersionConflict, authorize, backend_creden
                            descriptor, require_management, settings_document)
 
 
-def integration_api(methods=('GET',), *, namespace='integration'):
+def integration_api(methods=('GET',), *, namespace='integration', atomic=True):
     def decorate(view):
         @workload_api(methods=methods)
         @wraps(view)
@@ -40,7 +41,7 @@ def integration_api(methods=('GET',), *, namespace='integration'):
                     purpose=purpose, request_id=request.integration_source.request_id)
             from .ai_rules import RuleConflict, RuleDenied
             try:
-                with transaction.atomic():
+                with transaction.atomic() if atomic else nullcontext():
                     return view(request, *args, **kwargs)
             except IntegrationVersionConflict:
                 return response({'error': 'version_conflict'}, 409)
@@ -58,6 +59,7 @@ def integration_api(methods=('GET',), *, namespace='integration'):
                     else 'Review the documentation query, format, and approved scope.' if namespace == 'documentation'
                     else 'Review the AI rule schema, query plan, reservation state, and integer usage bounds.' if namespace == 'ai_rules'
                     else 'Review the typed recipe, pinned revisions, resource bindings, and execution bounds.' if namespace == 'development'
+                    else 'Review the approved query sources, literal text, cursors, and inspection budget.' if namespace == 'ai'
                     else 'Review the integration schema, revision, and credential replacement controls.')
                 return response({'error': 'invalid_request', 'detail': detail}, 400)
             except PermissionDenied as error:

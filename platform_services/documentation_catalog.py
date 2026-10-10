@@ -6,6 +6,7 @@ from .models import DocumentationSource, Installation, MarketplacePackage
 
 ROOT = Path(__file__).resolve().parent.parent
 GUIDES = [
+    ('core-ai', 'central-ai', 'Query accessible application data with Core AI', 'user-guide', 'users', 'docs/central-ai.md'),
     ('core-platform', 'getting-started', 'Organization getting started', 'getting-started', 'users', 'docs/organization-guide.md'),
     ('core-platform', 'platform', 'Platform administration and onboarding', 'administration', 'administrators', 'docs/platform.md'),
     ('core-platform', 'security', 'Identity, roles, and classification controls', 'security', 'administrators', 'docs/security.md'),

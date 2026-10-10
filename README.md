@@ -45,6 +45,12 @@ in a live preview editor, with organization defaults and app overrides.
 Native Core and newly generated apps include it; existing apps use
 the browser component and same-origin backend adapter.
 
+[Core AI](docs/central-ai.md) provides unified, cited retrieval across application datasets
+and bilaterally approved deployment federation. Users and consuming applications retain
+their live roles, tags, and environment boundaries. The conversational workspace performs
+bounded literal search without API keys; model generation stays inactive. Implementation
+tasks and ownership are recorded in [the Core AI task list](docs/tasks/central-ai.md).
+
 [Core AI rules](docs/ai-rules.md) compose inherited budgets and query constraints, enforce
 shared user/agent quotas across apps, and monitor reserved/reported spend centrally.
 Paid operations start disabled; no provider is called by the rules service.

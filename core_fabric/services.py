@@ -158,6 +158,12 @@ def authorize_consumer(principal, contract, operation):
         allowed = contract.allowed_installations.filter(pk=principal.credential.installation_id, organization=contract.organization).exists()
     else:
         allowed = current_administrator(principal.user, contract.organization)
+        if not allowed and operation == 'read':
+            membership = contract.allowed_memberships.filter(organization=contract.organization,
+                user=principal.user, active=True, user__is_active=True).first()
+            allowed = bool(membership)
+            if membership:
+                require_access(principal, membership, 'fabric.member_read')
     if not allowed:
         raise PermissionDenied('This application or agent is not approved to consume the agreement.')
 
@@ -185,7 +191,7 @@ def matches(contract, data):
 
 def permit_principal(permit):
     return Principal(user=permit.actor, credential=permit.credential, agent_binding=permit.agent_binding,
-        agent_credential=permit.agent_credential, evidence=permit.evidence, purpose=permit.contract.purpose_code)
+        agent_credential=permit.agent_credential, evidence=permit.evidence, application=permit.application, purpose=permit.contract.purpose_code)
 
 
 def identity(principal):
@@ -195,7 +201,7 @@ def identity(principal):
         'id': str(principal.credential.installation_id if principal.credential else principal.user.pk)}
 
 
-def consume(principal, contract, operation, values):
+def consume(principal, contract, operation, values, *, timeout_ms=None):
     authorize_consumer(principal, contract, operation)
     validate_operation(contract, operation, values)
     with transaction.atomic():
@@ -204,11 +210,12 @@ def consume(principal, contract, operation, values):
         if FabricPermit.objects.filter(contract__organization=contract.organization).count() >= 100:
             raise ValidationError('Too many concurrent federation operations; retry shortly.')
         permit = FabricPermit.objects.create(contract=contract, operation=operation, request_hash=digest(values), terms_hash=fingerprint(contract),
-            actor=principal.user, credential=principal.credential, agent_binding=principal.agent_binding,
+            actor=principal.user, application=principal.application, credential=principal.credential, agent_binding=principal.agent_binding,
             agent_credential=principal.agent_credential, evidence=principal.evidence)
     try:
+        options = {'timeout_ms': timeout_ms} if timeout_ms is not None else {}
         result = request_peer(contract.peer, f'exports/{contract.agreement_id}/{operation}/', {
-            'permit_id': str(permit.pk), 'terms_hash': permit.terms_hash, 'purpose_code': contract.purpose_code, 'request': values})
+            'permit_id': str(permit.pk), 'terms_hash': permit.terms_hash, 'purpose_code': contract.purpose_code, 'request': values}, **options)
         # Recheck local approvals after I/O too. Never return a revoked or mismatched response.
         contract = FabricContract.objects.get(pk=contract.pk)
         authorize_consumer(principal, contract, operation)

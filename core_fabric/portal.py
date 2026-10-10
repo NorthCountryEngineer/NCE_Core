@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 
 from identity.access import effective_tags, record_decision, request_principal, require_access, visible_resources
 from identity.views import organization_admin
+from identity.models import Membership
 from platform_services.models import AgentBinding, Dataset, Installation
 from .models import FabricContract, FabricPeer
 from .services import administer, approve, canonical, capability, fingerprint, revoke, terms, validate_terms
@@ -51,8 +52,10 @@ def peer_edit(request, organization, pk=None):
 
 def consumer_fields(form, organization, principal):
     for field, queryset in [('allowed_installations', Installation.objects.filter(organization=organization, package__kind='application', enabled=True)),
-            ('allowed_bindings', AgentBinding.objects.filter(account__organization=organization, active=True))]:
+            ('allowed_bindings', AgentBinding.objects.filter(account__organization=organization, active=True)),
+            ('allowed_memberships', Membership.objects.filter(organization=organization, active=True, user__is_active=True))]:
         form.fields[field].queryset = queryset.filter(pk__in=[item.pk for item in visible_resources(principal, queryset)])
+    form.fields['allowed_memberships'].label_from_instance = lambda item: item.user.email
 
 
 @organization_admin
@@ -66,7 +69,7 @@ def contract_edit(request, organization, pk=None):
         class Meta:
             model = FabricContract
             fields = ['name', 'peer', 'dataset', 'purpose_code', 'fields', 'filters', 'allow_read', 'allow_write', 'expires_at',
-                'allowed_installations', 'allowed_bindings', 'active']
+                'allowed_installations', 'allowed_bindings', 'allowed_memberships', 'active']
 
         def clean(self):
             values = super().clean()
@@ -82,7 +85,7 @@ def contract_edit(request, organization, pk=None):
         form.fields['peer'].disabled = form.fields['dataset'].disabled = True
     if request.method == 'POST' and form.is_valid():
         for resource in [form.cleaned_data['peer'], form.cleaned_data.get('dataset'),
-                *form.cleaned_data['allowed_installations'], *form.cleaned_data['allowed_bindings']]:
+                *form.cleaned_data['allowed_installations'], *form.cleaned_data['allowed_bindings'], *form.cleaned_data['allowed_memberships']]:
             if resource:
                 require_access(principal, resource, 'fabric.scope_manage')
         item = form.save()
@@ -101,6 +104,7 @@ def import_terms(request, organization):
         terms = forms.JSONField(label='Exact exported agreement terms (contains no credentials)')
         allowed_installations = forms.ModelMultipleChoiceField(queryset=Installation.objects.none(), required=False)
         allowed_bindings = forms.ModelMultipleChoiceField(queryset=AgentBinding.objects.none(), required=False)
+        allowed_memberships = forms.ModelMultipleChoiceField(queryset=Membership.objects.none(), required=False)
     form = ImportForm(request.POST or None)
     peers = FabricPeer.objects.filter(organization=organization, active=True)
     form.fields['peer'].queryset = peers.filter(pk__in=[item.pk for item in visible_resources(principal, peers)])
@@ -119,11 +123,12 @@ def import_terms(request, organization):
                 allow_read=values['allow_read'], allow_write=values['allow_write'],
                 expires_at=datetime.fromisoformat(values['expires_at']) if values['expires_at'] else None)
             item.full_clean()
-            for resource in [peer, *form.cleaned_data['allowed_installations'], *form.cleaned_data['allowed_bindings']]:
+            for resource in [peer, *form.cleaned_data['allowed_installations'], *form.cleaned_data['allowed_bindings'], *form.cleaned_data['allowed_memberships']]:
                 require_access(principal, resource, 'fabric.scope_manage')
             item.save()
             item.allowed_installations.set(form.cleaned_data['allowed_installations'])
             item.allowed_bindings.set(form.cleaned_data['allowed_bindings'])
+            item.allowed_memberships.set(form.cleaned_data['allowed_memberships'])
             record_decision(principal, item, 'fabric.contract_imported', True, 'recipient_approval_required', effective_tags(item))
         except ValidationError:
             form.add_error('terms', 'Use a valid matching agreement that has not already been imported.')

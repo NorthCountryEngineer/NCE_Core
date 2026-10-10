@@ -13,6 +13,7 @@ from .secrets import encrypt_bundle
 from .validation import CAPABILITIES, validate_manifest
 
 CAPABILITY_PACKAGE = {"data.read": "core-data", "data.write": "core-data", "agents.run": "core-agents",
+                      **{c: 'core-ai' for c in ['ai.query', 'ai.manage']},
                       **{c: 'core-workflows' for c in ['development.read', 'development.write', 'development.run']},
                       **{c: 'core-platform' for c in ['rules.read', 'rules.manage', 'usage.reserve', 'usage.report', 'usage.read']},
                       **{c: 'core-platform' for c in ['docs.read', 'docs.admin', 'docs.manage']},
@@ -73,7 +74,7 @@ def install_package(organization, package, grants=(), actor=None, _path=()):
 
 
 def install_core(organization, actor=None):
-    for slug in ["core-platform", "core-data", "core-agents", "core-workflows", "core-chat", 'core-training', 'core-fabric', 'core-app-factory']:
+    for slug in ["core-platform", "core-data", "core-agents", "core-workflows", "core-chat", 'core-training', 'core-fabric', 'core-app-factory', 'core-ai']:
         install_package(organization, MarketplacePackage.objects.get(slug=slug), actor=actor)
 
 
@@ -174,6 +175,7 @@ def integration_document(installation):
         'app_factory_url': origin + '/api/platform/v1/app-factory',
         'documentation_url': origin + '/api/platform/v1/documentation',
         'ai_rules_url': origin + '/api/platform/v1/ai-rules/',
+        'ai_url': origin + '/api/platform/v1/ai/',
         'development_url': origin + '/api/platform/v1/development/',
         'fabric_url': origin + '/api/platform/v1/fabric',
         'agent_credentials_url': origin + '/api/platform/v1/agent-credentials/exchange/',

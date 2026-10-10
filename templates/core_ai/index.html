@@ -1,0 +1,25 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>Ask {{ organization.brand }}</h1>
+<p>Find evidence across the applications you can access.</p>
+<p class="notice">AI generation is not configured. This service searches literal text in approved fields within a bounded page of records. Your search and results are not saved.</p>
+{% if can_manage %}<a href="{% url 'ai_admin' organization.slug %}">Manage query sources</a>{% endif %}
+<section aria-label="Search applications">
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Find evidence</button></form>
+<p>Leave sources unselected to use all accessible sources (up to ten). An empty search browses the next page.</p>
+</section>
+{% if result %}
+<section aria-label="Query results" role="status">
+<h2>Evidence</h2>
+{% if result.partial %}<p class="notice">Some sources could not be queried. These results are partial; review source status below.</p>{% endif %}
+{% for item in result.evidence %}
+<article><h3>{{ item.source }}</h3><p>{{ item.application }} · {{ item.environment }}{% if item.synthetic %} · Synthetic data{% endif %}</p>
+<dl>{% for field, content in item.data.items %}<dt><strong>{{ field }}</strong></dt><dd>{{ content }}</dd>{% endfor %}</dl>
+<p><small>Citation: <code>{{ item.citation_id }}</code> · Authority: {{ item.authority_organization_id }}</small></p></article>
+{% empty %}<p>No matching accessible evidence in this page.</p>{% endfor %}
+<p>{{ result.usage.inspected_rows }} records inspected · {{ result.usage.tokens }} model tokens · $0 model spend</p>
+<ul>{% for source in result.sources %}<li><code>{{ source.source_id }}</code>: {{ source.status }}{% if source.has_more %} · more may be available{% endif %}</li>{% endfor %}</ul>
+{% if result.has_more %}<form method="post">{% csrf_token %}<input type="hidden" name="text" value="{{ search_text }}"><input type="hidden" name="limit" value="{{ budget }}"><input type="hidden" name="cursors" value="{{ next_cursors_json }}">{% for pk in selected_sources %}<input type="hidden" name="sources" value="{{ pk }}">{% endfor %}<button type="submit">Inspect next page</button></form>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

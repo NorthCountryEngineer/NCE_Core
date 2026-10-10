@@ -53,6 +53,8 @@ def resource_types():
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     from core_fabric.models import FabricContract, FabricPeer
     result.update({'fabriccontract': FabricContract, 'fabricpeer': FabricPeer})
+    from core_ai.models import QuerySource
+    result['aiquerysource'] = QuerySource
     return result
 
 

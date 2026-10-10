@@ -16,7 +16,7 @@ from documentation_client import OrganizationDocumentation
 from identity.access import Principal
 from identity.models import AuditEvent, Membership, Organization, PermissionTag, Role, ServicePermission, User
 from platform_services.agent_identity import issue_credential
-from platform_services.catalog import seed_catalog
+from platform_services.catalog import CORE_CATALOG, seed_catalog
 from platform_services.documentation import (DocumentationContext, chunks, documents, publish_source,
     render_document, safe_html, save_page, source_digest)
 from platform_services.documentation_catalog import GUIDES, sync_bundled_documentation
@@ -89,7 +89,7 @@ class DocumentationTests(TestCase):
 
     def test_bundled_sources_and_organization_inheritance(self):
         self.assertEqual(self.core.documentation_pages.count(), sum(row[0] == 'core-platform' for row in GUIDES))
-        self.assertEqual(self.org.installations.count(), 9)
+        self.assertEqual(self.org.installations.count(), len(CORE_CATALOG) + 1)
         page = self.core.documentation_pages.get(slug='getting-started')
         result = render_document(page, self.reader)
         self.assertIn('Customer Workspace', result['markdown'])

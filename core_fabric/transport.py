@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -39,10 +40,14 @@ def validate_peer(peer):
     credential_path(peer)
 
 
-def request_peer(peer, suffix, values):
+def request_peer(peer, suffix, values, *, timeout_ms=None):
     validate_peer(peer)
     if not peer.active:
         raise PermissionDenied('Peer is disabled.')
+    if timeout_ms is not None and (type(timeout_ms) is not int or not 1 <= timeout_ms <= 10000):
+        raise ValidationError('Use a bounded federation timeout.')
+    seconds = timeout_ms / 1000 if timeout_ms is not None else 10
+    deadline = time.monotonic() + seconds
     try:
         token = credential_path(peer).read_text().strip()
         if not token or len(token) > 256 or any(c.isspace() for c in token):
@@ -50,7 +55,7 @@ def request_peer(peer, suffix, values):
         with requests.post(peer.issuer + '/api/platform/v1/fabric/' + suffix, json=values,
                 headers={'Authorization': 'Bearer ' + token, 'X-Core-Fabric-Issuer': settings.ISSUER,
                          'X-Core-Purpose': values.get('purpose_code', '')},
-                timeout=(3, 10), allow_redirects=False, stream=True) as reply:
+                timeout=(min(3, seconds), seconds), allow_redirects=False, stream=True) as reply:
             if reply.status_code in {401, 403, 404}:
                 raise PermissionDenied('Peer approval or permission was denied.')
             if reply.status_code == 409:
@@ -60,6 +65,8 @@ def request_peer(peer, suffix, values):
                 raise ValueError
             chunks, length = [], 0
             for chunk in reply.iter_content(65536):
+                if time.monotonic() >= deadline:
+                    raise ValueError
                 length += len(chunk)
                 if length > 4 * 1024 * 1024:
                     raise ValueError

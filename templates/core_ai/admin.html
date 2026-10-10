@@ -1,0 +1,9 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>Core AI administration</h1>
+<p class="notice">Retrieval is active. Model providers are inactive; no API keys or model spend are required.</p>
+<div class="actions"><a href="{% url 'ai_source_add' organization.slug %}">Add application query source</a><a href="{% url 'ai' organization.slug %}">Query workspace</a><a href="{% url 'fabric' organization.slug %}">Data federation agreements</a></div>
+<section><h2>Application sources</h2>
+<p>Approve fields, row filters, roles, consumer applications, and environment separately. Members also need Core AI ai-query, Core Data data-read (or Data Fabric fabric-read), the source application's listed permissions, and matching tag grants. Federated members also need an explicit read grant on the import agreement.</p>
+<ul>{% for source in sources %}<li><a href="{% url 'ai_source_edit' organization.slug source.pk %}">{{ source.name }}</a> · {{ source.installation.service.name }} · {{ source.environment.name }}{% if not source.active %} · disabled{% endif %}</li>{% empty %}<li>No sources configured. Install an application, publish its data through Core Data, then add a source.</li>{% endfor %}</ul></section>
+{% endblock %}
