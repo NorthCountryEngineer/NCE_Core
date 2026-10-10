@@ -201,6 +201,7 @@ class DataRecord(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     synthetic = models.BooleanField(default=False, editable=False)
     training_run_id = models.UUIDField(null=True, blank=True, editable=False)
+    federation = models.JSONField(default=dict, blank=True, editable=False)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["dataset", "event_id"], name="unique_data_event")]
@@ -336,7 +337,7 @@ class AgentTask(TaggedResource):
     name = models.CharField(max_length=160)
     description = models.TextField(help_text='Approved task scope and acceptance criteria.')
     resources = models.JSONField(default=dict, blank=True,
-        help_text='Explicit resource scope: datasets, conversations, and service_resources contain approved UUID lists. Empty lists deny access.')
+        help_text='Explicit resource scope: datasets, conversations, fabric_contracts, and service_resources contain approved UUID lists. Empty lists deny access.')
     installation = models.ForeignKey(Installation, on_delete=models.PROTECT)
     environment = models.CharField(max_length=20, choices=AGENT_ENVIRONMENTS, default='uat')
     expires_at = models.DateTimeField()
@@ -345,9 +346,9 @@ class AgentTask(TaggedResource):
 
     def clean(self):
         from django.apps import apps
-        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources'}:
-            raise ValidationError('Task resources must contain dataset, conversation, or registered service resource ID lists.')
-        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource')]:
+        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources', 'fabric_contracts'}:
+            raise ValidationError('Task resources must contain dataset, conversation, fabric contract, or registered service resource ID lists.')
+        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'), ('fabric_contracts', 'core_fabric.FabricContract')]:
             ids = self.resources.get(key, [])
             if not isinstance(ids, list) or len(ids) > 100 or any(not isinstance(value, str) for value in ids):
                 raise ValidationError('Task resource scopes use lists of at most 100 IDs.')

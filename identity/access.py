@@ -94,7 +94,7 @@ def resource_chain(resource):
         seen.add(key)
         result.append(item)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
-                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run']:
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract']:
             parent = getattr(item, field, None)
             if parent is not None:
                 visit(parent)
@@ -154,6 +154,7 @@ def decision(principal, resource):
             task = AgentTask.objects.get(pk=binding.task_id)
             for item in resource_chain(resource):
                 scope = {'platform_services.dataset': 'datasets', 'core_chat.conversation': 'conversations',
+                    'core_fabric.fabriccontract': 'fabric_contracts',
                     'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
                 if scope and str(item.pk) not in task.resources.get(scope, []):
                     return False, 'agent_task_resource_scope', tags

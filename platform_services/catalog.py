@@ -1,4 +1,6 @@
 CORE_CATALOG = [
+    ('core-fabric', 'Core Data Fabric', 'Bilateral administrator-approved data federation between Core deployments.',
+     ['core-data'], ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']),
     ("core-platform", "Core Platform", "Identity, organization administration, marketplace, and instance management.", [], []),
     ("core-data", "Core Data", "Schema-validated, idempotent ingestion and cursor-based data consumption.", [], ["data.read", "data.write"]),
     ("core-agents", "Core Agents", "Managed agents with an explicit, bounded tool registry.", ["core-data"], ["agents.run", "data.read", "data.write"]),

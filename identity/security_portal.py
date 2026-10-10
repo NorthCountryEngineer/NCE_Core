@@ -49,6 +49,8 @@ def resource_types():
         'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
+    from core_fabric.models import FabricContract, FabricPeer
+    result.update({'fabriccontract': FabricContract, 'fabricpeer': FabricPeer})
     return result
 
 

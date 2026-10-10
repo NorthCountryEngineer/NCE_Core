@@ -47,7 +47,7 @@ def load_config(path):
         # Report fields, not values: a misplaced secret must not be printed.
         raise PipelineError('Invalid configuration fields: ' + ', '.join('/'.join(map(str, e.path)) or '<root>' for e in errors))
     k = value['kubernetes']
-    targets = [(kind, item['organization_id'].lower(), item['filename']) for kind in ['provider_secrets', 'chat_federation_secrets'] for item in k.get(kind, [])]
+    targets = [(kind, item['organization_id'].lower(), item['filename']) for kind in ['provider_secrets', 'chat_federation_secrets', 'fabric_secrets'] for item in k.get(kind, [])]
     if len(set(targets)) != len(targets):
         raise PipelineError('Duplicate provider secret mount path.')
     if '..' in value['image_repository'].split('/') or '..' in value['release_branch'].split('/'):
@@ -82,7 +82,8 @@ def test_environment():
         'CORE_ALLOWED_HOSTS': 'localhost,127.0.0.1,testserver', 'CORE_TRUST_PROXY': '0',
         'CORE_SECRET_KEY_FILE': str(ROOT / '.local/django.key'), 'CORE_OIDC_KEY_FILE': str(ROOT / '.local/oidc.key'),
         'CORE_IDP_SECRET_ROOT': str(ROOT / '.local/idp-secrets'),
-        'CORE_CHAT_SECRET_ROOT': str(ROOT / '.local/chat-federation'), 'CORE_CHAT_FEDERATION_ORIGINS': ''}
+        'CORE_CHAT_SECRET_ROOT': str(ROOT / '.local/chat-federation'), 'CORE_CHAT_FEDERATION_ORIGINS': '',
+        'CORE_FABRIC_SECRET_ROOT': str(ROOT / '.local/data-fabric'), 'CORE_FABRIC_ORIGINS': ''}
     environment.pop('CORE_OIDC_PREVIOUS_KEY_FILES', None)
     for name in ['REGISTRY_USERNAME', 'REGISTRY_PASSWORD', 'KUBECONFIG', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
                  'AWS_SESSION_TOKEN', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'AZURE_CLIENT_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS']:
@@ -101,7 +102,7 @@ def check(config):
 def test(config):
     if not os.environ.get('DATABASE_URL', '').startswith(('postgres://', 'postgresql://')):
         raise PipelineError('CI tests require an isolated PostgreSQL DATABASE_URL, never a customer database.')
-    command([PYTHON, 'manage.py', 'test', 'identity.tests', 'platform_services.tests', 'core_chat.tests', '--noinput'],
+    command([PYTHON, 'manage.py', 'test', 'identity.tests', 'platform_services.tests', 'core_chat.tests', 'core_fabric.tests', '--noinput'],
             env=test_environment())
     command([PYTHON, '-m', 'unittest', 'discover', '-s', 'ci/tests', '-v'])
 
@@ -192,6 +193,7 @@ def manifests(config, image, sha):
         'CORE_TRUST_PROXY': '1', 'CORE_SECRET_KEY_FILE': '/run/secrets/core/django.key',
         'CORE_OIDC_KEY_FILE': '/run/secrets/core/oidc.key', 'CORE_IDP_SECRET_ROOT': '/run/secrets/identity-providers',
         'CORE_CHAT_SECRET_ROOT': '/run/secrets/chat-federation',
+        'CORE_FABRIC_SECRET_ROOT': '/run/secrets/data-fabric',
         **k.get('extra_environment', {})}}
     volumes = [{'name': 'runtime', 'secret': {'secretName': k['runtime_secret'], 'defaultMode': 288}},
                {'name': 'scratch', 'emptyDir': {'sizeLimit': '128Mi'}}]
@@ -205,6 +207,11 @@ def manifests(config, image, sha):
         volume = 'chat-federation-' + str(index)
         volumes.append({'name': volume, 'secret': {'secretName': item['secret_name'], 'defaultMode': 288}})
         mounts.append({'name': volume, 'mountPath': '/run/secrets/chat-federation/' + item['organization_id'].lower() + '/' + item['filename'],
+                       'subPath': item['key'], 'readOnly': True})
+    for index, item in enumerate(k.get('fabric_secrets', [])):
+        volume = 'data-fabric-' + str(index)
+        volumes.append({'name': volume, 'secret': {'secretName': item['secret_name'], 'defaultMode': 288}})
+        mounts.append({'name': volume, 'mountPath': '/run/secrets/data-fabric/' + item['organization_id'].lower() + '/' + item['filename'],
                        'subPath': item['key'], 'readOnly': True})
     container = {'name': 'core', 'image': image, 'imagePullPolicy': 'IfNotPresent',
         'envFrom': [{'configMapRef': {'name': name + '-config'}}],
@@ -337,7 +344,8 @@ def deploy(config):
         raise PipelineError('Kubernetes TLS verification must be enabled.')
     secrets = {k['runtime_secret'], k['database_secret'], k['tls_secret'], *k.get('pull_secrets', []),
                *[item['secret_name'] for item in k.get('provider_secrets', [])],
-               *[item['secret_name'] for item in k.get('chat_federation_secrets', [])]}
+               *[item['secret_name'] for item in k.get('chat_federation_secrets', [])],
+               *[item['secret_name'] for item in k.get('fabric_secrets', [])]}
     for name in sorted(secrets):
         kubectl(config, ['get', 'secret', name, '-o', 'name'])
     all_items = [configmap, migration, *workloads]
@@ -395,7 +403,8 @@ def rbac(config):
     metadata = {'name': name, 'namespace': k['namespace']}
     secret_names = sorted({k['runtime_secret'], k['database_secret'], k['tls_secret'], *k.get('pull_secrets', []),
                           *[item['secret_name'] for item in k.get('provider_secrets', [])],
-                          *[item['secret_name'] for item in k.get('chat_federation_secrets', [])]})
+                          *[item['secret_name'] for item in k.get('chat_federation_secrets', [])],
+                          *[item['secret_name'] for item in k.get('fabric_secrets', [])]})
     permissions = ['get', 'list', 'watch', 'create', 'update', 'patch']
     return {'apiVersion': 'v1', 'kind': 'List', 'items': [
         {'apiVersion': 'v1', 'kind': 'ServiceAccount', 'metadata': metadata},

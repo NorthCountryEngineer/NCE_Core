@@ -19,7 +19,7 @@ OIDC registration, and workload credentials automatically.
 ## Core services and central administration
 
 The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**,
-**Core Workflows**, **Core Chat**, and **Core Training** alongside application packages.
+**Core Workflows**, **Core Chat**, **Core Training**, and **Core Data Fabric** alongside application packages.
 Core packages currently execute inside the core runtime; each organization receives its own installation, service
 identity, permission settings, and monitored instance. The central panel manages
 members and roles, application grants, runtimes, deployment state and health,
@@ -27,6 +27,10 @@ datasets, pipelines, agent definitions, and workflow runs.
 
 Core Training supplies an [AI-first simulation and evaluation harness](docs/training.md),
 with synthetic pipeline data, agent workflows, seeded scenarios, and attributed reviews.
+
+Core Data Fabric supports [bilaterally approved data federation](docs/data-fabric.md)
+between independent deployments, with scoped reads/writes and live permission checks.
+Start with [the local testing walkthrough](docs/local-testing.md) to run it on your Mac.
 
 Core Data validates JSON records, applies select/rename transformations, accepts
 idempotent events, and exposes cursor-based consumption. Core Agents includes
@@ -191,7 +195,7 @@ Actions, GitLab CI, Azure Pipelines, Jenkins, CircleCI, Bitbucket, and AWS
 CodeBuild/CodePipeline. Execution is manual and external release steps default off.
 
 ```sh
-CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests core_chat.tests
+CORE_DEBUG=1 uv run python manage.py test identity.tests platform_services.tests core_chat.tests core_fabric.tests
 CORE_DEBUG=1 uv run python manage.py makemigrations --check --dry-run
 ```
 

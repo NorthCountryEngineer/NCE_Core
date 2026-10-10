@@ -1,5 +1,10 @@
 # Integrating a service
 
+[Core Data Fabric](data-fabric.md) lets applications and approved agents consume
+selected source-owned data across independent Core deployments. Discover `fabric_url`
+and use the portable client's `fabric_records` / `fabric_publish` methods under
+a contract approved by administrators on both deployments.
+
 Core Platform provides the identity service described below. Marketplace
 deployments automatically create the service/client registrations and inject the
 trusted issuer, organization, service, and client settings. Applications still

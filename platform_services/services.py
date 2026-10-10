@@ -13,6 +13,7 @@ from .secrets import encrypt_bundle
 from .validation import CAPABILITIES, validate_manifest
 
 CAPABILITY_PACKAGE = {"data.read": "core-data", "data.write": "core-data", "agents.run": "core-agents",
+                      **{c: 'core-fabric' for c in ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']},
                       **{c: 'core-training' for c in ['training.run', 'training.read', 'training.manage', 'training.evaluate']},
                       "workflows.run": "core-workflows", "workflows.read": "core-workflows",
                       **{c: 'core-chat' for c in ['chat.read', 'chat.send', 'chat.manage', 'chat.ai', 'chat.federate']}}
@@ -66,7 +67,7 @@ def install_package(organization, package, grants=(), actor=None, _path=()):
 
 
 def install_core(organization, actor=None):
-    for slug in ["core-platform", "core-data", "core-agents", "core-workflows", "core-chat", 'core-training']:
+    for slug in ["core-platform", "core-data", "core-agents", "core-workflows", "core-chat", 'core-training', 'core-fabric']:
         install_package(organization, MarketplacePackage.objects.get(slug=slug), actor=actor)
 
 
@@ -143,6 +144,7 @@ def integration_document(installation):
         "core_services_url": origin + "/api/platform/v1",
         "chat_url": origin + "/api/platform/v1/chat",
         'training_url': origin + '/api/platform/v1/training',
+        'fabric_url': origin + '/api/platform/v1/fabric',
         'agent_credentials_url': origin + '/api/platform/v1/agent-credentials/exchange/',
         'agent_introspection_url': origin + '/api/platform/v1/agent-credentials/introspect/',
         "capabilities": [c for c in installation.granted_capabilities if feature_enabled(installation.organization, CAPABILITY_PACKAGE[c])],

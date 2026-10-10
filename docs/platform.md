@@ -18,7 +18,7 @@ grants it. A new developer's browser sign-in leads into `/onboarding/`:
    application origin, optional ingress class/TLS secret, and automatic deployment.
 4. Register a runtime connector and save its one-time key, or defer connection when
    automatic deployment is disabled.
-5. Review and activate the five core marketplace services. Automatic deployment
+5. Review and activate the seven core marketplace services. Automatic deployment
    requires a connected runtime; no cluster or infrastructure purchase is made.
 
 The wizard persists progress and creates the first organization administrator.
@@ -33,6 +33,9 @@ integration is implemented. No payment methods, charges, subscriptions, or paid
 model calls are created by this application.
 
 ## Marketplace and permissions
+
+Core Data Fabric is a marketplace service for [administrator-approved federation](data-fabric.md)
+of selected data across independent deployments, with consumable application/agent APIs.
 
 Database migrations seed five built-in packages: `core-platform`, `core-data`,
 `core-agents`, `core-workflows`, `core-chat`, and `core-training`. They use the same installation and service

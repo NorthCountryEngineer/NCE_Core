@@ -26,5 +26,6 @@ urlpatterns = [
     path("oauth/", include((oauth_patterns, "oauth2_provider"), namespace="oauth2_provider")),
     path("", include("platform_services.urls")),
     path("", include("core_chat.urls")),
+    path("", include("core_fabric.urls")),
     path("", include("identity.urls")),
 ]

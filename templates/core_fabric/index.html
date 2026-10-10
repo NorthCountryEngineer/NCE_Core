@@ -1,0 +1,17 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>Data fabric and federation · {{ organization.name }}</h1>
+<p>Share selected data between Core deployments. Both administrators must approve identical terms. Each operation verifies current approval and permissions on both deployments.</p>
+<p><a href="{% url 'fabric_peer_add' organization.slug %}">Configure peer</a> · <a href="{% url 'fabric_contract_add' organization.slug %}">Propose data sharing</a> · <a href="{% url 'fabric_import' organization.slug %}">Import peer agreement</a></p>
+<h2>Peers</h2>
+{% for peer in peers %}<p><a href="{% url 'fabric_peer_edit' organization.slug peer.pk %}">{{ peer.name }}</a> · {{ peer.issuer }} · {% if peer.active %}Enabled{% else %}Disabled{% endif %}</p>{% empty %}<p>No peers configured.</p>{% endfor %}
+<h2>Agreements</h2>
+{% for row in contracts %}
+<article><h3><a href="{% url 'fabric_contract_edit' organization.slug row.contract.pk %}">{{ row.contract.name }}</a></h3>
+<p>{{ row.contract.get_direction_display }} · {{ row.contract.peer.name }} · {% if row.approved %}Approved locally; peer approval is checked on each operation{% else %}Awaiting local approval{% endif %}</p>
+<details><summary>Review and copy exact agreement terms</summary><pre>{{ row.terms_json }}</pre><p>Terms fingerprint: {{ row.hash }}</p></details>
+<form method="post" action="{% url 'fabric_approve' organization.slug row.contract.pk %}">{% csrf_token %}<input type="hidden" name="terms_hash" value="{{ row.hash }}"><button>I approve these data-sharing terms</button></form>
+<form method="post" action="{% url 'fabric_revoke' organization.slug row.contract.pk %}">{% csrf_token %}<button>Revoke local approval</button></form>
+</article>
+{% empty %}<p>No agreements. Creating or importing one does not approve it.</p>{% endfor %}
+{% endblock %}

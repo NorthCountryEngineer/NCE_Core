@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from jsonschema import Draft202012Validator
@@ -25,7 +26,7 @@ def transform(data, transforms):
     return value
 
 
-def publish(dataset, event_id, data, *, training_run_id=None):
+def publish(dataset, event_id, data, *, training_run_id=None, federation=None):
     if not isinstance(event_id, str) or not 1 <= len(event_id) <= 160 or not isinstance(data, dict):
         raise ValidationError("An event ID of at most 160 characters and JSON object data are required.")
     if not dataset.active or not dataset.organization.active:
@@ -40,9 +41,10 @@ def publish(dataset, event_id, data, *, training_run_id=None):
     try:
         with transaction.atomic():
             record, created = DataRecord.objects.get_or_create(dataset=dataset, event_id=event_id, defaults={"data": data,
-                'synthetic': dataset.data_class == 'synthetic', 'training_run_id': training_run_id})
+                'synthetic': dataset.data_class == 'synthetic', 'training_run_id': training_run_id, 'federation': federation or {}})
     except IntegrityError:
         record, created = DataRecord.objects.get(dataset=dataset, event_id=event_id), False
-    if record.data != data or record.training_run_id != training_run_id:
+    if (json.dumps(record.data, sort_keys=True) != json.dumps(data, sort_keys=True) or
+            record.training_run_id != training_run_id or record.federation != (federation or {})):
         raise IdempotencyConflict("This event ID has already been used for different data.")
     return record, created

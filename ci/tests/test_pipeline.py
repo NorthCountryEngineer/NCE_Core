@@ -116,7 +116,29 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(p.PipelineError):
             self.load(self.config)
 
+    def test_fabric_mounts_approved_origins_and_secret_references_on_web_worker_and_migration(self):
+        organization = '11223344-5566-4788-9900-aabbccddeeff'
+        reference_name = 'fabric-peer'
+        self.config['kubernetes']['fabric_secrets'] = [{'secret_name': reference_name,
+            'organization_id': organization, 'key': 'credential', 'filename': 'peer.credential'}]
+        self.config['kubernetes']['extra_environment'] = {'CORE_FABRIC_ORIGINS': 'https://peer.example.test'}
+        self.load(self.config)
+        configmap, job, resources = p.manifests(self.config, self.image, SHA)
+        self.assertEqual(configmap['data']['CORE_FABRIC_ORIGINS'], 'https://peer.example.test')
+        self.assertEqual(configmap['data']['CORE_FABRIC_SECRET_ROOT'], '/run/secrets/data-fabric')
+        for resource in [job, *[item for item in resources if item['kind'] == 'Deployment']]:
+            mounts = resource['spec']['template']['spec']['containers'][0]['volumeMounts']
+            mount = next(item for item in mounts if item['name'].startswith('data-fabric-'))
+            self.assertEqual(mount['mountPath'], '/run/secrets/data-fabric/' + organization + '/peer.credential')
+            self.assertTrue(mount['readOnly'])
+        rules = p.rbac(self.config)['items'][1]['rules']
+        self.assertIn(reference_name, next(item['resourceNames'] for item in rules if item['resources'] == ['secrets']))
+        self.config['kubernetes']['fabric_secrets'].append(self.config['kubernetes']['fabric_secrets'][0])
+        with self.assertRaises(p.PipelineError):
+            self.load(self.config)
+
     def test_ci_environment_does_not_reuse_production_keys_or_issuer(self):
+        self.assertEqual(p.test_environment()['CORE_FABRIC_ORIGINS'], '')
         with patch.dict(os.environ, {'CORE_SECRET_KEY_FILE': '/production/key', 'CORE_OIDC_KEY_FILE': '/production/oidc',
                                     'CORE_ISSUER': 'https://production.example', 'CORE_OIDC_PREVIOUS_KEY_FILES': '/production/old',
                                     'REGISTRY_PASSWORD': secrets.token_urlsafe(32), 'KUBECONFIG': '/production/kubeconfig'}):

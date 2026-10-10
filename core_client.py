@@ -70,6 +70,44 @@ class CoreClient:
     def records(self, dataset, after=0, limit=100):
         return self.request("GET", f"/datasets/{self.slug(dataset)}/records/", params={"after": after, "limit": limit})
 
+    def fabric_contracts(self):
+        return self._fabric_request('GET', '/fabric/contracts/')
+
+    def fabric_records(self, contract_id, after=0, limit=100):
+        from uuid import UUID
+        selected = str(UUID(str(contract_id)))
+        return self._fabric_request('GET', f'/fabric/contracts/{selected}/records/', selected, params={'after': after, 'limit': limit})
+
+    def fabric_publish(self, contract_id, event_id, data):
+        from uuid import UUID
+        selected = str(UUID(str(contract_id)))
+        return self._fabric_request('POST', f'/fabric/contracts/{selected}/events/', selected, json={'event_id': event_id, 'data': data})
+
+    def _fabric_request(self, method, path, contract_id=None, **kwargs):
+        value = self.request(method, path, **kwargs)
+        if value.get('organization_id') != self.organization_id or contract_id and value.get('contract_id') != contract_id:
+            raise CoreServiceError('Federated response belongs to a different organization or contract.')
+        return value
+
+    @staticmethod
+    def fabric_tool_definitions():
+        def tool(name, description, properties, required):
+            return {'type': 'function', 'function': {'name': name, 'description': description, 'parameters': {
+                'type': 'object', 'additionalProperties': False, 'properties': properties, 'required': required}}}
+        return [tool('core_fabric_read', 'Read approved shared records. The host fixes the agreement, organization, purpose, and agent identity.',
+            {'after': {'type': 'integer', 'minimum': 0}, 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 100}}, []),
+            tool('core_fabric_publish', 'Publish within a bilaterally approved writable agreement under this agent account. Fields and row scope are enforced.',
+            {'data': {'type': 'object'}}, ['data'])]
+
+    def invoke_fabric_tool(self, name, arguments, *, contract_id, event_id=None):
+        if not isinstance(arguments, dict):
+            raise ValueError('Use tool argument objects.')
+        if name == 'core_fabric_read' and not set(arguments) - {'after', 'limit'}:
+            return self.fabric_records(contract_id, **arguments)
+        if name == 'core_fabric_publish' and set(arguments) == {'data'} and event_id:
+            return self.fabric_publish(contract_id, event_id, arguments['data'])
+        raise ValueError('The model cannot choose peers, agreements, credentials, purposes, identities, or event IDs.')
+
     def run_workflow(self, workflow, request_id, data, *, environment='development', task_id=None):
         return self.request("POST", f"/workflows/{self.slug(workflow)}/runs/", json={"request_id": request_id, "input": data,
             'environment': environment, 'task_id': str(task_id) if task_id else None})
