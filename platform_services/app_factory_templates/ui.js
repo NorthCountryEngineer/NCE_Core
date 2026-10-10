@@ -4,7 +4,12 @@ async function call(url, options = {}) {
   const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json',
     'X-Core-Purpose': document.getElementById('purpose').value, 'X-CSRF-Token': csrf || '', ...(options.headers || {}) } });
   const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'Request failed');
+  if (!response.ok) {
+    if (value.error === 'quota_exceeded') throw new Error('Your shared ' + (value.metric || 'usage') +
+      ' quota is exhausted across applications.' + (value.reset_at ? ' Resets at ' + new Date(value.reset_at).toLocaleString() + '.' : ' Ask your administrator to review your quota.'));
+    if (value.error === 'usage_overrun_requires_review') throw new Error('Usage needs administrator review before more operations can start.');
+    throw new Error(value.error || 'Request failed');
+  }
   return value;
 }
 async function refresh() {

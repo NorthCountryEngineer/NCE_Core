@@ -30,6 +30,10 @@ contracts and environment-scoped connections with explicit app inheritance and
 live RBAC. App admin panels can use delegated settings APIs; the portable adapter
 also supports independently configured standalone applications.
 
+[Core AI rules](docs/ai-rules.md) compose inherited budgets and query constraints, enforce
+shared user/agent quotas across apps, and monitor reserved/reported spend centrally.
+Paid operations start disabled; no provider is called by the rules service.
+
 [Organization documentation](docs/organization-documentation.md) inherits versioned
 application guides into each organization's platform, with local extensions/replacements,
 environment/deployment context, live permission checks, and Markdown/JSON/JSONL retrieval

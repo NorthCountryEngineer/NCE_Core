@@ -74,7 +74,7 @@ class AppFactoryTests(TestCase):
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), '-m', 'unittest', 'test_server', '-v'],
                 cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn('Ran 13 tests', result.stderr)
+            self.assertIn('Ran 15 tests', result.stderr)
             result = subprocess.run([str(Path('.venv/bin/python').absolute()), 'ci/source_digest.py'], cwd=directory, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), source_hash)
@@ -152,7 +152,7 @@ class AppFactoryTests(TestCase):
         package = release(self.project, self.principal, image, source_hash, 'Reviewed local test run and matching image provenance')
         self.assertEqual(package.organization_id, self.org.pk)
         installation = Installation.objects.get(package=package)
-        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write', 'docs-read'})
+        self.assertEqual(set(installation.service.permissions.values_list('codename', flat=True)), {'app-read', 'app-write', 'docs-read', 'rules-read', 'usage-reserve', 'usage-report'})
         guide = installation.documentation_pages.get(slug='application-guide')
         self.assertEqual(guide.source.package_id, package.pk)
         self.assertEqual(guide.source.version, installation.version)
@@ -301,6 +301,18 @@ class GeneratedServiceLiveTests(LiveServerTestCase):
                     result['status'] = int(status.split()[0])
                 result['body'] = json.loads(b''.join(server.application(environ, start)))
                 return result
+            from core_client import CoreClient
+            from unittest.mock import patch
+            platform = Installation.objects.get(organization=organization, package__slug='core-platform')
+            rule_capabilities = ['rules.read', 'usage.reserve', 'usage.report']
+            installation.granted_capabilities = rule_capabilities
+            installation.save()
+            role.permissions.add(*platform.service.permissions.filter(codename__in=[cap.replace('.', '-') for cap in rule_capabilities]))
+            rules_backend, rules_raw = issue_workload_credential(installation, 'Live rules backend', environment, deployment)
+            rules_client = CoreClient(self.live_server_url + '/api/platform/v1', rules_raw, str(organization.pk), allow_local_http=True, environment='sandbox')
+            rules_patch = patch.object(server.CoreClient, 'from_environment', return_value=rules_client)
+            rules_patch.start()
+            self.addCleanup(rules_patch.stop)
             self.assertEqual(request('POST', {'title': 'Live item', 'status': 'review'})['status'], 201)
             self.assertEqual(len(request()['body']['records']), 1)
             self.assertEqual(request(path='/api/documentation')['status'], 403)

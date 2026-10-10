@@ -16,6 +16,7 @@ GUIDES = [
     ('core-platform', 'application-integrations', 'Shared and application-owned integrations', 'api', 'administrators', 'docs/application-integrations.md'),
     ('core-platform', 'local-testing', 'Local development and troubleshooting', 'troubleshooting', 'administrators', 'docs/local-testing.md'),
     ('core-platform', 'documentation', 'Documentation inheritance and AI consumption', 'administration', 'administrators', 'docs/organization-documentation.md'),
+    ('core-platform', 'ai-rules', 'Inherited AI rules, query budgets, and shared usage', 'administration', 'administrators', 'docs/ai-rules.md'),
     ('core-data', 'data-api', 'Core data ingestion and consumption', 'api', 'administrators', 'docs/platform.md'),
     ('core-agents', 'agent-accounts', 'Agent accounts, marketplace, and task permissions', 'administration', 'administrators', 'docs/agent-accounts.md'),
     ('core-workflows', 'workflows', 'Durable agent workflows', 'operations', 'administrators', 'docs/platform.md'),

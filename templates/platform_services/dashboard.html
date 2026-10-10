@@ -3,6 +3,7 @@
 <h1>{{ organization.name }} · Central admin</h1>
 <div class="actions">
 <a href="{% url 'marketplace' organization.slug %}">Marketplace</a>
+<a href="{% url 'ai_rules_admin' organization.slug %}">AI rules and shared usage</a>
 <a href="{% url 'documentation_admin' organization.slug %}">Organization and application documentation</a>
 <a href="{% url 'integration_settings' organization.slug %}">Applications and integrations</a>
 <a href="{% url 'organization' organization.slug %}">Users and permissions</a>

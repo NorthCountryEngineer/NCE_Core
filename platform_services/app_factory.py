@@ -156,6 +156,7 @@ def execute_step(organization, step, data, principal, event_id):
         files['integration_client.py'] = (ROOT / 'integration_client.py').read_text()
         files['core_client.py'] = (ROOT / 'core_client.py').read_text()
         files['documentation_client.py'] = (ROOT / 'documentation_client.py').read_text()
+        files['ai_rules_client.py'] = (ROOT / 'ai_rules_client.py').read_text()
     elif role == 'frontend':
         files['index.html'] = (TEMPLATES / 'index.html').read_text()
         files['ui.js'] = (TEMPLATES / 'ui.js').read_text()
@@ -164,6 +165,8 @@ def execute_step(organization, step, data, principal, event_id):
             'permissions': ['app-read', 'app-write'], 'resource_type': 'app_collection',
             'permission_tags': sorted(tag.slug for tag in effective_tags(project)),
             'fail_closed': True, 'audit': 'Core policy decisions plus local metadata-only operation accounting',
+            'ai_rules': 'Inherited Core constraints and shared native-user/agent reservations before reads/creates',
+            'rules_capabilities': ['rules.read', 'usage.reserve', 'usage.report'],
             'model_code_execution': False, 'production_requires_review': True}, indent=2) + '\n'
     elif role == 'test':
         files['test_server.py'] = (TEMPLATES / 'test_server.py').read_text()
@@ -243,7 +246,7 @@ def release(project, principal, image, source_hash, verification_reference):
         return project.package
     package = MarketplacePackage(organization=project.organization, slug=f'app-{project.pk.hex}', name=project.name,
         version='0.1.0', description=project.description,
-        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': ['docs.read'], 'dependencies': ['core-platform'],
+        kind='application', manifest={'image': image, 'port': 8080, 'capabilities': ['docs.read', 'rules.read', 'usage.reserve', 'usage.report'], 'dependencies': ['core-platform'],
                                     'callback_path': '/oauth/callback', 'health_path': '/health'})
     package.full_clean()
     package.save()

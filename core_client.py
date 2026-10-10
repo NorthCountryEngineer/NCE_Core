@@ -44,7 +44,23 @@ class CoreClient:
             result = requests.request(method, self.base_url + path, headers=headers,
                                       timeout=10, allow_redirects=False, **kwargs)
             if result.status_code not in {200, 201, 202}:
-                raise CoreServiceError(f"Core service rejected the request (HTTP {result.status_code}).")
+                error = CoreServiceError(f"Core service rejected the request (HTTP {result.status_code}).")
+                error.status = result.status_code
+                error.code = 'service_rejected'
+                error.metric = None
+                error.reset_at = None
+                try:
+                    detail = result.json()
+                    if isinstance(detail, dict):
+                        if isinstance(detail.get('error'), str) and len(detail['error']) <= 100:
+                            error.code = detail['error']
+                        if detail.get('metric') in {'requests', 'tokens', 'cost_micros', 'query_rows'}:
+                            error.metric = detail['metric']
+                        if isinstance(detail.get('reset_at'), str) and len(detail['reset_at']) <= 40:
+                            error.reset_at = detail['reset_at']
+                except ValueError:
+                    pass
+                raise error
             value = result.json()
             if not isinstance(value, dict):
                 raise ValueError

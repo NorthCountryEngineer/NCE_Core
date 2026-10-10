@@ -21,15 +21,21 @@ class SecurityTests(unittest.TestCase):
         self.auth = patch.object(server, 'identity', return_value=self.client)
         self.auth.start()
         self.addCleanup(self.auth.stop)
+        self.rules = Mock()
+        self.rules.read.return_value = {'rules': {'query': {'max_rows': 100, 'timeout_ms': 10000}}}
+        self.rules.execute.side_effect = lambda key, operation, estimate, callback, **kwargs: callback(estimate, kwargs.get('query'))[0]
+        self.rules_patch = patch.object(server, 'inherited_rules', return_value=self.rules)
+        self.rules_patch.start()
+        self.addCleanup(self.rules_patch.stop)
         server.SESSIONS.clear()
         server.STATES.clear()
         self.collection = next(iter(server.COLLECTIONS))
         self.data = {key: {'string': 'Example', 'integer': 7, 'boolean': True}[kind]
             for key, kind in server.COLLECTIONS[self.collection]['fields'].items()}
 
-    def request(self, method='GET', data=None, token=True, cookie=None, csrf=None, path=None):
+    def request(self, method='GET', data=None, token=True, cookie=None, csrf=None, path=None, query=''):
         raw = json.dumps(data).encode() if data is not None else b''
-        environ = {'REQUEST_METHOD': method, 'PATH_INFO': path or '/api/records/' + self.collection,
+        environ = {'REQUEST_METHOD': method, 'PATH_INFO': path or '/api/records/' + self.collection, 'QUERY_STRING': query,
             'wsgi.input': io.BytesIO(raw), 'CONTENT_LENGTH': str(len(raw)), 'CONTENT_TYPE': 'application/json'}
         if token:
             environ['HTTP_AUTHORIZATION'] = 'Bearer ' + secrets.token_urlsafe(32)
@@ -75,6 +81,25 @@ class SecurityTests(unittest.TestCase):
         args = self.client.require.call_args.args
         self.assertEqual(args[1:], ('app-read', '', 'app_collection', self.collection))
         self.assertEqual(result['headers']['Cache-Control'], 'no-store')
+
+    def test_shared_quota_denial_prevents_read_and_write(self):
+        error = server.CoreServiceError('Central quota denied')
+        error.code, error.metric = 'quota_exceeded', 'requests'
+        self.rules.execute.side_effect = error
+        self.assertEqual(self.request('POST', self.data)['status'], 429)
+        self.assertEqual(self.request()['data'], {'error': 'quota_exceeded', 'metric': 'requests', 'reset_at': None})
+        with server.connection() as database:
+            self.assertEqual(database.execute('SELECT COUNT(*) FROM records').fetchone()[0], 0)
+
+    def test_inherited_query_cap_and_cursor(self):
+        for _ in range(3):
+            self.assertEqual(self.request('POST', self.data)['status'], 201)
+        self.rules.read.return_value['rules']['query']['max_rows'] = 1
+        first = self.request()['data']
+        second = self.request(query='after=' + str(first['next_cursor']))['data']
+        self.assertEqual(len(first['records']), 1)
+        self.assertNotEqual(first['records'][0]['id'], second['records'][0]['id'])
+        self.assertEqual(self.rules.execute.call_args.kwargs['query']['rows'], 1)
 
     def test_revocation_and_core_outage_never_expose_records(self):
         self.request('POST', self.data)

@@ -5,7 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from jsonschema import Draft202012Validator, SchemaError
 
-CAPABILITIES = {"docs.read", "docs.admin", "docs.manage", "appfactory.create", "appfactory.read", "appfactory.build", "appfactory.release", "data.read", "data.write", "agents.run", "workflows.run", "workflows.read",
+CAPABILITIES = {"rules.read", "rules.manage", "usage.reserve", "usage.report", "usage.read", "docs.read", "docs.admin", "docs.manage", "appfactory.create", "appfactory.read", "appfactory.build", "appfactory.release", "data.read", "data.write", "agents.run", "workflows.run", "workflows.read",
                 "chat.read", "chat.send", "chat.manage", "chat.ai", "chat.federate",
                 'training.run', 'training.read', 'training.manage', 'training.evaluate',
                 'fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer'}

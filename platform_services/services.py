@@ -13,6 +13,7 @@ from .secrets import encrypt_bundle
 from .validation import CAPABILITIES, validate_manifest
 
 CAPABILITY_PACKAGE = {"data.read": "core-data", "data.write": "core-data", "agents.run": "core-agents",
+                      **{c: 'core-platform' for c in ['rules.read', 'rules.manage', 'usage.reserve', 'usage.report', 'usage.read']},
                       **{c: 'core-platform' for c in ['docs.read', 'docs.admin', 'docs.manage']},
                       **{c: 'core-app-factory' for c in ['appfactory.create', 'appfactory.read', 'appfactory.build', 'appfactory.release']},
                       **{c: 'core-fabric' for c in ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']},
@@ -167,6 +168,7 @@ def integration_document(installation):
         'training_url': origin + '/api/platform/v1/training',
         'app_factory_url': origin + '/api/platform/v1/app-factory',
         'documentation_url': origin + '/api/platform/v1/documentation',
+        'ai_rules_url': origin + '/api/platform/v1/ai-rules/',
         'fabric_url': origin + '/api/platform/v1/fabric',
         'agent_credentials_url': origin + '/api/platform/v1/agent-credentials/exchange/',
         'agent_introspection_url': origin + '/api/platform/v1/agent-credentials/introspect/',

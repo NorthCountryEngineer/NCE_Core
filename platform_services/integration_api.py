@@ -45,6 +45,7 @@ def integration_api(methods=('GET',), *, namespace='integration'):
                 return response({'error': 'version_conflict'}, 409)
             except ValidationError:
                 detail = ('Review the documentation query, format, and approved scope.' if namespace == 'documentation'
+                    else 'Review the AI rule schema, query plan, reservation state, and integer usage bounds.' if namespace == 'ai_rules'
                     else 'Review the integration schema, revision, and credential replacement controls.')
                 return response({'error': 'invalid_request', 'detail': detail}, 400)
             except PermissionDenied as error:

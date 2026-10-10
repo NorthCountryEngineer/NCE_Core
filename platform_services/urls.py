@@ -3,8 +3,14 @@ from . import agent_api, agent_portal, api, onboarding, portal, training_api, tr
 from . import integration_api, integration_portal
 from . import app_factory_api, app_factory_portal
 from . import documentation_api, documentation_portal
+from . import rules_api, rules_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/ai-rules/', rules_portal.administration, name='ai_rules_admin'),
+    path('organizations/<slug:slug>/platform/ai-rules/<uuid:pk>/acknowledge/', rules_portal.reconcile, name='ai_rules_reconcile'),
+    path('api/platform/v1/ai-rules/', rules_api.rules),
+    path('api/platform/v1/ai-rules/reservations/', rules_api.reservations),
+    path('api/platform/v1/ai-rules/reservations/<uuid:pk>/', rules_api.update),
     path('organizations/<slug:slug>/documentation/', documentation_portal.index, name='documentation'),
     path('organizations/<slug:slug>/documentation/pages/<uuid:pk>/', documentation_portal.detail, name='documentation_page'),
     path('organizations/<slug:slug>/platform/documentation/', documentation_portal.administration, name='documentation_admin'),

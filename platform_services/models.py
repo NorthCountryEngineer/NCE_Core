@@ -272,6 +272,7 @@ class DataRecord(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["dataset", "event_id"], name="unique_data_event")]
+        indexes = [models.Index(fields=['dataset', 'id'], name='core_data_cursor_idx')]
         ordering = ["pk"]
 
 
@@ -613,3 +614,4 @@ class TrainingFeedback(TaggedResource):
 from .integration_models import ApplicationIntegration, IntegrationConnection, IntegrationDefinition  # noqa: E402,F401
 from .app_factory_models import AppProject  # noqa: E402,F401
 from .documentation_models import DocumentationPage, DocumentationRevision, DocumentationSource  # noqa: E402,F401
+from .rule_models import AIRulePolicy, AIRuleRevision, AIUsageMeter, AIUsageReservation  # noqa: E402,F401

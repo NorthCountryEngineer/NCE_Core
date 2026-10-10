@@ -216,8 +216,10 @@ def process_one():
                     chosen = choose_tool(step, output)
                     from .agent_identity import step_principal
                     principal = step_principal(run, step)
-                    output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal, agent_name=step['slug'],
-                        training_run_id=run.training_run_id)
+                    from .ai_rules import core_step
+                    output = core_step(run.organization, principal, f"run:{run.pk}:step:{index}",
+                        lambda: execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal,
+                            agent_name=step['slug'], training_run_id=run.training_run_id))
                     RunStep.objects.create(run=run, index=index, agent_slug=step["slug"], tool=chosen["kind"], output=output,
                         agent_account_id=principal.agent_binding.account_id)
                     from identity.access import record_decision
@@ -228,7 +230,9 @@ def process_one():
             status="succeeded", output=output, completed=timezone.now(), lease_until=None)
     except Exception as error:
         # Never put submitted records, credentials, or tool exception contents in logs.
-        message = "Authorization revoked." if isinstance(error, PermissionDenied) else "Tool execution failed; check agent and dataset configuration."
+        from .ai_rules import RuleDenied
+        message = ("Central AI rule denied this step: " + error.reason + "." if isinstance(error, RuleDenied) else
+            "Authorization revoked." if isinstance(error, PermissionDenied) else "Tool execution failed; check agent and dataset configuration.")
         if isinstance(error, PermissionDenied):
             from identity.access import record_decision
             principal = Principal(user=run.actor, evidence=run.authentication_evidence, credential=run.credential,

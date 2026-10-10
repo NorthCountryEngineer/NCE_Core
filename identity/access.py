@@ -95,7 +95,7 @@ def resource_chain(resource):
         seen.add(key)
         result.append(item)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
-                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider']:
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy']:
             if field == 'connection' and item._meta.label_lower == 'platform_services.applicationintegration' and item.mode != 'platform':
                 continue
             parent = getattr(item, field, None)

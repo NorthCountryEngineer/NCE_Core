@@ -1,0 +1,16 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.brand }} · AI rules and shared usage</h1>
+<p><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a> · <a href="{% url 'resource_tags' organization.slug 'airulepolicy' policy.pk %}">Permission and classification tags</a></p>
+<p>Revision {{ policy.revision }}. Every application inherits the organization baseline. Application and environment overrides intersect allowed operations and tighten caps. Quotas follow each user or agent across applications; workload-only calls share an application quota.</p>
+<p>Costs use integer millionths of USD. Paid calls start disabled. Configuring a budget does not initiate a paid operation or grant financial approval.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Publish rules revision</button></form>
+<p>Override example: {"installation_id":"your installation UUID", "environment":"development", "rules":{"user_daily":{"tokens":10000},"query":{"max_rows":50}}}. Empty installation_id or environment means all within that scope. Environment names: sandbox, development, staging, uat, production.</p>
+<h2>Central usage · {{ day }} UTC</h2>
+<p>Used totals come from Core operations and consumer reports. Held totals reserve capacity for in-flight or uncertain operations. Consumer reports are not verified provider invoices. A stalled operation retains its capacity until its outcome is reported.</p>
+<table><thead><tr><th>Metric</th><th>Used</th><th>Reserved</th></tr></thead><tbody>{% for item in totals %}<tr><td>{{ item.metric }}</td><td>{{ item.used }}</td><td>{{ item.held }}</td></tr>{% endfor %}</tbody></table>
+<h2>Latest 100 operations</h2>
+<table><thead><tr><th>Application</th><th>Environment</th><th>Account</th><th>Operation</th><th>Status</th><th>Estimated</th><th>Actual</th><th>Review</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.installation.package.name|default:"Platform" }}</td><td>{{ row.environment.name|default:"Shared" }}</td><td>{{ row.subject }}</td><td>{{ row.operation }}</td><td>{{ row.state }}</td><td>{{ row.estimated }}</td><td>{{ row.actual|default:"Unknown" }}</td><td>{% if row.state == 'overrun' and not row.overrun_acknowledged %}<form method="post" action="{% url 'ai_rules_reconcile' organization.slug row.pk %}">{% csrf_token %}<button type="submit">Acknowledge overrun; preserve usage</button></form>{% endif %}</td></tr>{% empty %}<tr><td colspan="8">No operations yet.</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

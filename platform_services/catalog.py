@@ -3,7 +3,7 @@ CORE_CATALOG = [
      ['core-agents', 'core-workflows'], ['appfactory.create', 'appfactory.read', 'appfactory.build', 'appfactory.release']),
     ('core-fabric', 'Core Data Fabric', 'Bilateral administrator-approved data federation between Core deployments.',
      ['core-data'], ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']),
-    ("core-platform", "Core Platform", "Identity, organization administration, marketplace, documentation, and instance management.", [], ['docs.read', 'docs.admin', 'docs.manage']),
+    ("core-platform", "Core Platform", "Identity, organization administration, marketplace, documentation, AI rules, shared usage budgets, and instance management.", [], ['docs.read', 'docs.admin', 'docs.manage', 'rules.read', 'rules.manage', 'usage.reserve', 'usage.report', 'usage.read']),
     ("core-data", "Core Data", "Schema-validated, idempotent ingestion and cursor-based data consumption.", [], ["data.read", "data.write"]),
     ("core-agents", "Core Agents", "Managed agents with an explicit, bounded tool registry.", ["core-data"], ["agents.run", "data.read", "data.write"]),
     ("core-workflows", "Core Workflows", "Durable agent workflows with resumable steps and centralized policy checks.", ["core-agents", "core-data"], ["workflows.run", "workflows.read", "data.read", "data.write"]),

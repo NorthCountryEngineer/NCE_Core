@@ -16,6 +16,7 @@ import requests
 from identity_client import ResourceClient, Unauthenticated, Forbidden, IdentityUnavailable
 from core_client import CoreClient, CoreServiceError
 from documentation_client import OrganizationDocumentation
+from ai_rules_client import AIRules
 
 ROOT = Path(__file__).resolve().parent
 SPEC = json.loads((ROOT / 'app-spec.json').read_text())
@@ -39,6 +40,7 @@ def identity():
 def connection():
     database = sqlite3.connect(DATABASE)
     database.execute('CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, collection TEXT NOT NULL, data TEXT NOT NULL)')
+    database.execute('CREATE INDEX IF NOT EXISTS records_collection_cursor ON records(collection)')
     database.execute('CREATE TABLE IF NOT EXISTS accounting (id TEXT PRIMARY KEY, subject TEXT, collection TEXT, operation TEXT, outcome TEXT, created INTEGER)')
     try:
         with database:
@@ -52,6 +54,14 @@ def account(subject, collection, operation, outcome):
     with connection() as database:
         database.execute('INSERT INTO accounting VALUES (?, ?, ?, ?, ?, ?)',
             (str(uuid.uuid4()), subject, collection, operation, outcome, int(time.time())))
+
+
+def inherited_rules(token, purpose):
+    core = CoreClient.from_environment()
+    core.purpose_code = purpose
+    if token.startswith('ca_'):
+        core.token = token
+    return AIRules(core, user_access_token=None if token.startswith('ca_') else token)
 
 
 def valid_record(collection, data):
@@ -193,11 +203,30 @@ def application(environ, start_response):
             account(None, collection, method, 'denied')
             raise
         if method == 'GET':
-            with connection() as database:
-                rows = database.execute('SELECT id, data FROM records WHERE collection=? ORDER BY rowid DESC LIMIT 100', (collection,)).fetchall()
-                database.execute('INSERT INTO accounting VALUES (?, ?, ?, ?, ?, ?)',
-                    (str(uuid.uuid4()), claims['sub'], collection, method, 'allowed', int(time.time())))
-            return reply('200 OK', {'records': [{'id': row[0], 'data': json.loads(row[1])} for row in rows]})
+            parameters = parse_qs(environ.get('QUERY_STRING', ''), keep_blank_values=True)
+            if set(parameters) - {'after', 'limit'} or any(len(values) != 1 for values in parameters.values()):
+                raise ValueError('Use cursor and limit parameters.')
+            after = int(parameters.get('after', [str(2 ** 63 - 1)])[0])
+            requested = int(parameters.get('limit', ['100'])[0])
+            if not 0 <= after <= 2 ** 63 - 1 or not 1 <= requested <= 100:
+                raise ValueError('Invalid query bounds.')
+            rules = inherited_rules(token, purpose)
+            policy = rules.read()['rules']['query']
+            limit = min(requested, policy['max_rows'])
+            def read_records(bounds, plan):
+                with connection() as database:
+                    deadline = time.monotonic() + plan['timeout_ms'] / 1000
+                    database.set_progress_handler(lambda: int(time.monotonic() > deadline), 100)
+                    rows = database.execute('SELECT rowid, id, data FROM records WHERE collection=? AND rowid<? ORDER BY rowid DESC LIMIT ?',
+                        (collection, after, plan['rows'])).fetchall()
+                    database.set_progress_handler(None, 0)
+                    database.execute('INSERT INTO accounting VALUES (?, ?, ?, ?, ?, ?)',
+                        (str(uuid.uuid4()), claims['sub'], collection, method, 'allowed', int(time.time())))
+                return {'records': [{'id': row[1], 'data': json.loads(row[2])} for row in rows],
+                    'next_cursor': rows[-1][0] if rows else after, 'effective_limit': limit}, {'requests': 1, 'query_rows': len(rows)}
+            value = rules.execute(uuid.uuid4().hex, 'query', {'requests': 1, 'query_rows': limit}, read_records,
+                query={'rows': limit, 'timeout_ms': policy['timeout_ms'], 'paginated': True, 'indexed_filters': True})
+            return reply('200 OK', value)
         length = int(environ.get('CONTENT_LENGTH') or 0)
         if length <= 0 or length > 32768 or environ.get('CONTENT_TYPE', '').split(';')[0] != 'application/json':
             return reply('400 Bad Request', {'error': 'bounded_json_required'})
@@ -205,19 +234,31 @@ def application(environ, start_response):
         if not valid_record(collection, data):
             return reply('400 Bad Request', {'error': 'invalid_record'})
         record_id = str(uuid.uuid4())
-        with connection() as database:
-            database.execute('BEGIN IMMEDIATE')
-            if database.execute('SELECT COUNT(*) FROM records WHERE collection=?', (collection,)).fetchone()[0] >= 10000:
-                return reply('409 Conflict', {'error': 'collection_capacity_reached'})
-            database.execute('INSERT INTO records VALUES (?, ?, ?)', (record_id, collection, json.dumps(data, allow_nan=False)))
-            database.execute('INSERT INTO accounting VALUES (?, ?, ?, ?, ?, ?)',
-                (str(uuid.uuid4()), claims['sub'], collection, method, 'allowed', int(time.time())))
-        return reply('201 Created', {'id': record_id})
+        def create_record(bounds, plan):
+            with connection() as database:
+                database.execute('BEGIN IMMEDIATE')
+                if database.execute('SELECT COUNT(*) FROM records WHERE collection=?', (collection,)).fetchone()[0] >= 10000:
+                    return {'error': 'collection_capacity_reached'}, {'requests': 1}
+                database.execute('INSERT INTO records VALUES (?, ?, ?)', (record_id, collection, json.dumps(data, allow_nan=False)))
+                database.execute('INSERT INTO accounting VALUES (?, ?, ?, ?, ?, ?)',
+                    (str(uuid.uuid4()), claims['sub'], collection, method, 'allowed', int(time.time())))
+            return {'id': record_id}, {'requests': 1}
+        value = inherited_rules(token, purpose).execute(uuid.uuid4().hex, 'workflow', {'requests': 1}, create_record)
+        return reply('409 Conflict' if 'error' in value else '201 Created', value)
     except Unauthenticated:
         return reply('401 Unauthorized', {'error': 'invalid_token'})
     except Forbidden:
         return reply('403 Forbidden', {'error': 'permission_denied'})
-    except (IdentityUnavailable, CoreServiceError, requests.RequestException, KeyError, sqlite3.Error):
+    except CoreServiceError as error:
+        code = getattr(error, 'code', 'service_unavailable')
+        if code == 'quota_exceeded':
+            return reply('429 Too Many Requests', {'error': code, 'metric': getattr(error, 'metric', None), 'reset_at': getattr(error, 'reset_at', None)})
+        if code == 'insufficient_permission':
+            return reply('403 Forbidden', {'error': 'permission_denied'})
+        if code in {'operation_disabled', 'paid_calls_disabled', 'usage_overrun_requires_review', 'query_plan_rejected'}:
+            return reply('409 Conflict', {'error': code})
+        return reply('503 Service Unavailable', {'error': 'service_unavailable'})
+    except (IdentityUnavailable, requests.RequestException, KeyError, sqlite3.Error):
         return reply('503 Service Unavailable', {'error': 'service_unavailable'})
     except (ValueError, TypeError, UnicodeDecodeError):
         return reply('400 Bad Request', {'error': 'invalid_request'})

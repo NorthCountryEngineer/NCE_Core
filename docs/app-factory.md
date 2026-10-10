@@ -64,6 +64,11 @@ execution need a separately configured model and isolated runner; no host shell 
    the intended users and agents, then select its environment, runtime, and endpoint through
    existing deployment controls. Core injects identity and integration configuration.
    Deployment is a separate reviewable action and may use paid infrastructure.
+   New generated services also inherit [Core AI rules](ai-rules.md): explicitly approve
+   `rules.read`, `usage.reserve`, `usage.report` on the installation and assign intended
+   users/agents Core Platform `rules-read`, `usage-reserve`, `usage-report`. Configure
+   the injected backend workload token/services URL. Missing rules connectivity or
+   grants denies reads/creates; shared quotas follow the native user across apps.
 
 Builds inherit their development environment tags. Initial releases retain these tags on
 the installation and registered collection resources, so cross-environment use is denied.

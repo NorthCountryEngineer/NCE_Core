@@ -22,6 +22,18 @@ Sign in through the generated UI. Browser authentication uses OAuth authorizatio
 server-side short sessions, HTTP-only cookies, and CSRF protection. Backend clients can send
 service-bound bearer tokens to `/api/records/<collection>`.
 
+Record operations also inherit Core AI rules and share quotas with other applications.
+Approve `rules.read`, `usage.reserve`, and `usage.report` on the installed application;
+assign intended users/agents Core Platform `rules-read`, `usage-reserve`, `usage-report`.
+Configure the injected Core workload token file and services URL on the backend. The
+host delegates the native user's service-bound OAuth token, or uses the agent's own
+credential. The bundled `ai_rules_client.py` reserves before each read/create and
+reports measured usage. Reads use indexed keyset pagination with `after`/`limit`,
+inherited row limits/timeouts, and a `next_cursor`. Shared quotas deny with HTTP 429
+and the same UTC reset time across apps. Core outages fail closed. Financial approval
+remains separate; this starter calls no paid provider. If settlement is uncertain,
+recover the existing operation before retrying a write; held usage is not refunded.
+
 The application's guide search uses `/api/documentation` and the included portable documentation
 adapter. Approve the installed application's `docs.read` capability, assign Core Platform `docs-read`
 and this application's `docs-read` service permissions to intended readers, and grant required tags.

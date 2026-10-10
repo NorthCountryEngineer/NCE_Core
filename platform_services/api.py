@@ -2,6 +2,7 @@ import json
 from functools import wraps
 
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import OperationalError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -12,6 +13,7 @@ from .data import IdempotencyConflict, publish, transform
 from .models import AgentDefinition, Dataset, Deployment, Pipeline, RuntimeNode, Workflow, WorkflowRun, WorkloadCredential
 from .services import credential_allows, feature_enabled, integration_document
 from .workflows import enqueue, snapshot_agents
+from .ai_rules import RuleDenied
 from identity.access import Principal, require_access
 
 
@@ -74,10 +76,27 @@ def workload_api(capabilities=(), methods=("GET",)):
                 return response({"error": "invalid_request", "detail": error.messages[0]}, 400)
             except IdempotencyConflict:
                 return response({"error": "idempotency_conflict"}, 409)
+            except RuleDenied as error:
+                from identity.access import record_decision
+                record_decision(request.access_principal, request.organization, 'ai_rules.operation_denied', False, error.reason, [])
+                return rule_denial(error)
+            except OperationalError:
+                return response({'error': 'accounting_temporarily_unavailable'}, 503)
             except PermissionDenied:
                 return response({"error": "insufficient_permission"}, 403)
         return wrapped
     return decorator
+
+
+def rule_denial(error):
+    from datetime import timedelta, datetime, timezone as utc
+    from .ai_rules import today
+    reset = datetime.combine(today() + timedelta(days=1), datetime.min.time(), utc.utc)
+    result = response({'error': error.reason, 'metric': error.metric, 'reset_at': reset.isoformat()},
+        429 if error.reason == 'quota_exceeded' else 409)
+    if error.reason == 'quota_exceeded':
+        result['Retry-After'] = str(max(1, int((reset - datetime.now(utc.utc)).total_seconds())))
+    return result
 
 
 @workload_api()
@@ -123,10 +142,12 @@ def records(request, slug):
             raise ValueError
     except ValueError:
         raise ValidationError("Use a nonnegative cursor and a limit from 1 to 200.")
-    rows = list(dataset.records.filter(pk__gt=after)[:limit])
+    from .ai_rules import core_query
+    rows, limit = core_query(request.organization, request.access_principal, limit,
+        lambda bounded: list(dataset.records.filter(pk__gt=after)[:bounded]))
     return response({"records": [{"id": r.pk, "event_id": r.event_id, "data": r.data, "created": r.created.isoformat(),
         'synthetic': r.synthetic, 'training_run_id': str(r.training_run_id) if r.training_run_id else None, 'federation': r.federation} for r in rows],
-                     "next_cursor": rows[-1].pk if rows else after})
+                     "next_cursor": rows[-1].pk if rows else after, 'effective_limit': limit})
 
 
 @workload_api(["agents.run"], methods=("POST",))
