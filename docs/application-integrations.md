@@ -26,6 +26,8 @@ For Core-managed bindings, **Inherit platform connection** uses the current shar
 connection; changes apply to the next authorized operation. **Application
 configuration** uses this consumer's own settings and encrypted credential in Core.
 An unused shared connection's policy does not restrict the app-specific connection.
+Its availability and credential status are hidden unless both the app and current
+administrator can access that shared connection.
 **Disabled** denies consumption. No configuration dictionaries are implicitly
 merged, and no credential is copied between sources when changing modes.
 

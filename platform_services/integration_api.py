@@ -108,8 +108,16 @@ def configure(request, slug):
     if not binding.allow_application_configuration:
         raise PermissionDenied('Application administration is managed centrally.')
     if request.method == 'POST':
-        return response(configure_application(binding, request.access_principal, body(request)))
-    return response(settings_document(binding))
+        value = configure_application(binding, request.access_principal, body(request))
+    else:
+        value = settings_document(binding)
+    if binding.connection_id and not all(decision(principal, binding.connection)[0]
+            for principal in [request.integration_source, request.access_principal]):
+        # An unused shared connection can have stricter policy than this app's
+        # own settings. Do not disclose even its credential status without access.
+        value['platform_connection_available'] = False
+        value['platform_credential_configured'] = False
+    return response(value)
 
 
 @integration_api(('POST',))

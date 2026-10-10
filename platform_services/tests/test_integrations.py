@@ -108,6 +108,20 @@ class IntegrationTests(TestCase):
         self.assertEqual(result.json()['configuration']['base_url'], 'https://app-owned.example.test')
         self.assertFalse(result.json()['credential_configured'])
 
+    def test_app_specific_settings_do_not_disclose_protected_shared_connection_status(self):
+        self.update_binding(mode='application', configuration={'base_url': 'https://app-owned.example.test'})
+        tag = PermissionTag.objects.create(organization=self.org, slug='private-shared-connection', name='Private', allow_workloads=True)
+        self.connection.permission_tags.add(tag)
+        raw, _ = self.oauth()
+        value = self.api('external-data/settings/', user_token=raw)
+        self.assertEqual(value.status_code, 200)
+        self.assertFalse(value.json()['platform_credential_configured'])
+        self.assertFalse(value.json()['platform_connection_available'])
+        self.installation.access_tags.add(tag)
+        self.org.memberships.get(user=self.admin).access_tags.add(tag)
+        value = self.api('external-data/settings/', user_token=raw)
+        self.assertTrue(value.json()['platform_credential_configured'])
+
     def test_disabled_binding_and_unapproved_workload_are_denied(self):
         self.update_binding(workload_access=False)
         self.assertEqual(self.api('external-data/').status_code, 403)
