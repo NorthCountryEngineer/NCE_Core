@@ -1,3 +1,4 @@
+from platform_services.tests.agent_helpers import approve_agent
 import base64
 import io
 import json
@@ -160,6 +161,7 @@ class PermissionTagTests(TestCase):
         self.tag.save()
         self.installation.access_tags.add(self.tag)
         agent = AgentDefinition.objects.create(organization=self.org, slug="health-publish", name="Publish", kind="publish", configuration={"dataset": "health"})
+        approve_agent(agent, [self.installation], [self.tag])
         response = self.api("/agents/health-publish/runs/", {"request_id": "secure-run", "input": {"private": "never-log-this"}})
         self.assertEqual(response.status_code, 202)
         from platform_services.models import WorkflowRun
@@ -263,7 +265,8 @@ class PermissionTagTests(TestCase):
 
     def test_completed_run_inherits_new_source_tags_and_cannot_leak_old_output(self):
         self.dataset.permission_tags.clear()
-        AgentDefinition.objects.create(organization=self.org, slug="publish-health", name="Publish", kind="publish", configuration={"dataset": "health"})
+        agent = AgentDefinition.objects.create(organization=self.org, slug="publish-health", name="Publish", kind="publish", configuration={"dataset": "health"})
+        approve_agent(agent, [self.installation], [self.tag])
         response = self.api("/agents/publish-health/runs/", {"request_id": "before-classification", "input": {"private": "health-data"}})
         self.assertEqual(response.status_code, 202)
         run_id = response.json()["run_id"]

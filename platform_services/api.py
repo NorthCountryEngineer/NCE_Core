@@ -51,17 +51,25 @@ def workload_api(capabilities=(), methods=("GET",)):
             raw = bearer(request)
             credential = WorkloadCredential.objects.select_related("installation__organization", "installation__service", "installation__package").filter(
                 token_hash=WorkloadCredential.digest(raw), active=True).first() if raw else None
-            if not credential or not credential_allows(credential, []):
+            from .agent_identity import principal_for, require_capabilities
+            agent = principal_for(raw, request.headers.get('X-Core-Purpose', ''), getattr(request, 'security_request_id', None)) if raw and raw.startswith('ca_') else None
+            if not agent and (not credential or not credential_allows(credential, [])):
                 return response({"error": "invalid_credential"}, 401)
-            if not credential_allows(credential, capabilities):
+            if credential and not credential_allows(credential, capabilities):
                 return response({"error": "insufficient_permission"}, 403)
             request.credential = credential
-            request.organization = credential.installation.organization
-            request.access_principal = Principal(credential=credential, purpose=request.headers.get("X-Core-Purpose", ""),
+            request.organization = agent.agent_binding.organization if agent else credential.installation.organization
+            request.access_principal = agent or Principal(credential=credential, purpose=request.headers.get("X-Core-Purpose", ""),
                                                  request_id=getattr(request, "security_request_id", None))
             try:
-                require_access(request.access_principal, credential, "core.api_access")
-                return view(request, *args, **kwargs)
+                if agent:
+                    require_capabilities(agent, capabilities)
+                require_access(request.access_principal, agent.agent_binding if agent else credential, "core.api_access")
+                result = view(request, *args, **kwargs)
+                if agent and result.status_code < 400:
+                    from identity.access import record_decision
+                    record_decision(agent, agent.agent_binding, 'agent.api_' + view.__name__, True, 'live_service_roles', [])
+                return result
             except ValidationError as error:
                 return response({"error": "invalid_request", "detail": error.messages[0]}, 400)
             except IdempotencyConflict:
@@ -74,7 +82,19 @@ def workload_api(capabilities=(), methods=("GET",)):
 
 @workload_api()
 def integration(request):
-    return response(integration_document(request.credential.installation))
+    return response(integration_document(request.access_principal.agent_binding.installation if request.access_principal.agent_binding else request.credential.installation))
+
+
+def task_context(request, values):
+    from .models import AgentTask
+    binding = request.access_principal.agent_binding
+    environment = values.get('environment', binding.environment if binding else 'development')
+    task_id = values.get('task_id', binding.task_id if binding else None)
+    try:
+        task = get_object_or_404(AgentTask, pk=task_id, organization=request.organization) if task_id else None
+    except (ValueError, ValidationError):
+        raise ValidationError('Use an approved task ID from this organization.')
+    return environment, task
 
 
 @workload_api(["data.write"], methods=("POST",))
@@ -107,8 +127,10 @@ def run_agent(request, slug):
     agent = get_object_or_404(AgentDefinition, organization=request.organization, slug=slug, active=True)
     values = body(request)
     require_access(request.access_principal, agent, "agent.submit")
+    environment, task = task_context(request, values)
     run, created = enqueue(request.organization, values.get("request_id"), agent.name, "agent",
-        snapshot_agents(request.organization, [slug]), values.get("input"), credential=request.credential, principal=request.access_principal)
+        snapshot_agents(request.organization, [slug]), values.get("input"), credential=request.credential, principal=request.access_principal,
+        environment=environment, task=task)
     return response({"run_id": str(run.pk), "status": run.status, "created": created}, 202 if created else 200)
 
 
@@ -118,20 +140,28 @@ def run_workflow(request, slug):
     workflow.full_clean()
     values = body(request)
     require_access(request.access_principal, workflow, "workflow.submit")
+    environment, task = task_context(request, values)
     run, created = enqueue(request.organization, values.get("request_id"), workflow.name, "workflow",
         snapshot_agents(request.organization, workflow.steps), values.get("input"), credential=request.credential,
-        principal=request.access_principal, resource=workflow)
+        principal=request.access_principal, resource=workflow, environment=environment, task=task)
     return response({"run_id": str(run.pk), "status": run.status, "created": created}, 202 if created else 200)
 
 
 @workload_api()
 def run_status(request, pk):
     run = get_object_or_404(WorkflowRun, pk=pk, organization=request.organization)
-    if run.credential_id != request.credential.pk and not credential_allows(request.credential, ["workflows.read"]):
+    if request.access_principal.agent_binding:
+        from .agent_identity import require_capabilities
+        binding = request.access_principal.agent_binding
+        if run.consumer_id != binding.installation_id or run.environment != binding.environment or run.task_id != binding.task_id:
+            raise PermissionDenied
+        if run.trigger_binding_id != binding.pk:
+            require_capabilities(request.access_principal, ['workflows.read'])
+    elif run.credential_id != request.credential.pk and not credential_allows(request.credential, ["workflows.read"]):
         raise PermissionDenied
     require_access(request.access_principal, run, "workflow.result_read")
     return response({"run_id": str(run.pk), "status": run.status, "output": run.output,
-        "error": run.error, "steps": list(run.step_results.values("index", "agent_slug", "tool", "output"))})
+        "error": run.error, "steps": list(run.step_results.values("index", "agent_slug", "agent_account_id", "tool", "output"))})
 
 
 @csrf_exempt

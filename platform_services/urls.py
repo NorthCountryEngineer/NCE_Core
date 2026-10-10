@@ -1,7 +1,18 @@
 from django.urls import path
-from . import api, onboarding, portal
+from . import agent_api, agent_portal, api, onboarding, portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/agent-accounts/', agent_portal.accounts, name='agent_accounts'),
+    path('organizations/<slug:slug>/platform/agent-accounts/<uuid:pk>/', agent_portal.account, name='agent_account'),
+    path('organizations/<slug:slug>/marketplace/agents/<slug:listing_slug>/install/', agent_portal.install, name='agent_listing_install'),
+    path('organizations/<slug:slug>/platform/agent-accounts/<uuid:account_pk>/approve/', agent_portal.binding, name='agent_binding_add'),
+    path('organizations/<slug:slug>/platform/agent-bindings/<uuid:pk>/', agent_portal.binding, name='agent_binding_edit'),
+    path('organizations/<slug:slug>/platform/agent-bindings/<uuid:pk>/key/', agent_portal.key, name='agent_issue_key'),
+    path('organizations/<slug:slug>/platform/agent-credentials/<uuid:pk>/revoke/', agent_portal.revoke, name='agent_revoke_key'),
+    path('organizations/<slug:slug>/platform/agent-tasks/new/', agent_portal.task, name='agent_task_add'),
+    path('organizations/<slug:slug>/platform/agent-tasks/<uuid:pk>/', agent_portal.task, name='agent_task_edit'),
+    path('api/platform/v1/agent-credentials/exchange/', agent_api.exchange),
+    path('api/platform/v1/agent-credentials/introspect/', agent_api.introspect),
     path("onboarding/", onboarding.onboarding, name="onboarding"),
     path("organizations/<slug:slug>/platform/", portal.dashboard, name="platform_dashboard"),
     path("organizations/<slug:slug>/marketplace/", portal.marketplace, name="marketplace"),

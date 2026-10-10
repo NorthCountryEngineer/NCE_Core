@@ -18,7 +18,12 @@ def capability(principal, organization, name):
         raise PermissionDenied('Core Chat is unavailable.')
     installation = Installation.objects.select_related('service').get(organization=organization, package__slug='core-chat')
     require_access(principal, installation, 'chat.service_access')
-    if principal.credential:
+    if principal.agent_binding:
+        from platform_services.agent_identity import require_permission
+        if principal.agent_binding.organization_id != organization.pk:
+            raise PermissionDenied('The agent belongs to another organization.')
+        require_permission(principal, installation.service, name.replace('.', '-'))
+    elif principal.credential:
         # Reload on every operation, including queued agent execution.
         from platform_services.models import WorkloadCredential
         credential = WorkloadCredential.objects.select_related('installation__organization', 'installation__service', 'installation__package').get(pk=principal.credential.pk)
@@ -36,7 +41,7 @@ def authorize(principal, conversation, operation='read', ai=False):
     require_access(principal, conversation, 'chat.' + operation)
     if not conversation.active:
         raise PermissionDenied('Conversation is disabled.')
-    identity = {'installation': principal.credential.installation} if principal.credential else {'user': principal.user}
+    identity = participant_identity(principal)
     participant = conversation.participants.filter(active=True, **identity).first()
     if not participant or operation == 'send' and participant.role == 'reader':
         record_decision(principal, conversation, 'chat.' + operation, False, 'conversation_membership', [])
@@ -73,7 +78,7 @@ def create_conversation(principal, organization, title, ai_enabled=False, connec
                                 connection=connection, remote_conversation_id=remote_id)
     conversation.full_clean()
     conversation.save()
-    identity = {'installation': principal.credential.installation} if principal.credential else {'user': principal.user}
+    identity = participant_identity(principal)
     participant = Participant(conversation=conversation, role='owner', **identity)
     participant.full_clean()
     participant.save()
@@ -86,6 +91,12 @@ def serialize(message):
             'actor_kind': message.actor_kind, 'actor_id': message.actor_id, 'origin_issuer': message.origin_issuer,
             'via_installation_id': str(message.via_installation_id) if message.via_installation_id else None,
             'agent_name': message.agent_name, 'created': message.created.isoformat()}
+
+
+def participant_identity(principal):
+    if principal.agent_binding:
+        return {'agent_id': principal.agent_binding.account_id}
+    return {'installation': principal.credential.installation} if principal.credential else {'user': principal.user}
 
 
 def message_page(principal, conversation, after=0, limit=100, federation_issuer=''):
@@ -124,11 +135,13 @@ def send_message(principal, conversation, request_id, text, *, ai=False, agent_n
         raise ValidationError('Use a request ID, nonempty text up to 16 KiB, and an agent name for AI messages.')
     participant = authorize(principal, conversation, 'send', ai=ai)
     user = principal.user
-    actor_id = str(user.pk if user else principal.credential.installation_id)
+    actor_id = str(principal.agent_binding.account_id if principal.agent_binding else user.pk if user else principal.credential.installation_id)
     kind = 'ai' if ai else 'user' if user else 'application'
     origin_issuer = settings.ISSUER
-    sender_key = ('user:' if user else 'installation:') + actor_id
-    via = principal.credential.installation_id if principal.credential else via_installation_id
+    sender_key = ('agent:' if principal.agent_binding else 'user:' if user else 'installation:') + actor_id
+    via = principal.agent_binding.installation_id if principal.agent_binding else principal.credential.installation_id if principal.credential else via_installation_id
+    if principal.agent_binding and not ai:
+        raise PermissionDenied('Agent messages must be identified as AI messages.')
     if origin is not None:
         if (not isinstance(origin, dict) or set(origin) != {'issuer', 'actor_id', 'actor_kind'} or
                 not isinstance(origin['actor_id'], str) or not re.fullmatch(r'[-a-zA-Z0-9_:./]{1,160}', origin['actor_id']) or

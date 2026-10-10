@@ -12,7 +12,7 @@ from identity.access import request_principal, require_access, visible_resources
 from identity.models import Membership, Organization, User
 from identity.views import organization_admin
 from platform_services.data import IdempotencyConflict
-from platform_services.models import Installation
+from platform_services.models import AgentAccount, Installation
 from .federation import FederationUnavailable
 from .models import Conversation, FederationConnection, Participant
 from .services import authorize, can_manage, capability, create_conversation, message_page, send_message
@@ -123,11 +123,12 @@ def feed(request, organization, pk):
 class ParticipantForm(forms.ModelForm):
     class Meta:
         model = Participant
-        fields = ['user', 'installation', 'role', 'allow_ai', 'federated_issuer', 'active']
+        fields = ['user', 'installation', 'agent', 'role', 'allow_ai', 'federated_issuer', 'active']
 
     def __init__(self, *args, organization, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['user'].queryset = User.objects.filter(memberships__organization=organization, memberships__active=True, is_active=True)
+        self.fields['agent'].queryset = AgentAccount.objects.filter(organization=organization, active=True)
         self.fields['installation'].queryset = Installation.objects.filter(organization=organization, enabled=True)
 
 

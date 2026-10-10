@@ -1,6 +1,6 @@
 import secrets
 from django.contrib import messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
@@ -13,7 +13,7 @@ from .forms import (
     AdoptControllerForm, AgentForm, DatasetForm, DeploymentConfigurationForm, DeploymentForm,
     InstallationForm, InstallationSettingsForm, NodeForm, PipelineForm, RunForm, WorkflowForm,
 )
-from .models import AgentDefinition, Dataset, Deployment, DeploymentConfiguration, Installation, MarketplacePackage, Pipeline, RuntimeNode, Workflow
+from .models import AgentDefinition, AgentListing, Dataset, Deployment, DeploymentConfiguration, Installation, MarketplacePackage, Pipeline, RuntimeNode, Workflow
 from .services import create_deployment, install_package, issue_workload_credential, upgrade_installation
 from .workflows import enqueue, snapshot_agents
 from identity.access import request_principal, visible_resources
@@ -39,6 +39,7 @@ def dashboard(request, organization):
 @organization_admin
 def marketplace(request, organization):
     return render(request, "platform_services/marketplace.html", {"packages": MarketplacePackage.objects.filter(active=True),
+        'agent_listings': AgentListing.objects.filter(active=True),
         "organization": organization, "installed_slugs": list(organization.installations.values_list("package__slug", flat=True))})
 
 
@@ -263,16 +264,23 @@ def workflow_edit(request, organization, pk=None):
 @organization_admin
 def run_workflow(request, organization, pk):
     workflow = get_object_or_404(organization.workflows, pk=pk, active=True)
-    form = RunForm(request.POST or None)
+    form = RunForm(request.POST or None, organization=organization, principal=request_principal(request))
     if request.method == "POST" and form.is_valid():
         from .services import feature_enabled
         if not feature_enabled(organization, "core-workflows"):
             form.add_error(None, "Install and enable Core Workflows first.")
         else:
-            enqueue(organization, secrets.token_hex(32), workflow.name, "workflow",
-                    snapshot_agents(organization, workflow.steps), form.cleaned_data["input"], actor=request.user,
-                    principal=request_principal(request), resource=workflow)
-            return redirect("platform_dashboard", slug=organization.slug)
+            try:
+                enqueue(organization, secrets.token_hex(32), workflow.name, "workflow",
+                        snapshot_agents(organization, workflow.steps), form.cleaned_data["input"], actor=request.user,
+                        principal=request_principal(request), resource=workflow,
+                        environment=form.cleaned_data.get('environment') or 'development', task=form.cleaned_data.get('task'))
+            except ValidationError as error:
+                form.add_error(None, error)
+            except PermissionDenied:
+                form.add_error(None, 'Approve every agent account for this application, environment, and task with the required service roles.')
+            else:
+                return redirect("platform_dashboard", slug=organization.slug)
     return render(request, "identity/form.html", {"form": form, "title": f"Run {workflow.name}"})
 
 

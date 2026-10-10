@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 
 from identity.models import Organization
 from .models import (
-    AgentDefinition, BillingProfile, Dataset, DeploymentConfiguration, Installation,
+    AgentDefinition, AgentTask, BillingProfile, Dataset, DeploymentConfiguration, Installation,
     OrganizationProfile, Pipeline, RuntimeNode, Workflow,
 )
 
@@ -126,6 +126,16 @@ class WorkflowForm(forms.ModelForm):
 
 class RunForm(forms.Form):
     input = forms.JSONField(initial={})
+    environment = forms.ChoiceField(choices=[(v, v.title()) for v in ('development', 'staging', 'uat', 'production')], required=False, initial='development')
+    task = forms.ModelChoiceField(queryset=AgentTask.objects.none(), required=False)
+
+    def __init__(self, *args, organization, principal=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['task'].queryset = organization.agent_tasks.filter(active=True)
+        if principal:
+            from identity.access import visible_resources
+            self.fields['task'].queryset = self.fields['task'].queryset.filter(
+                pk__in=[item.pk for item in visible_resources(principal, self.fields['task'].queryset)])
 
     def clean_input(self):
         value = self.cleaned_data["input"]

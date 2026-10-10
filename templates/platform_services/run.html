@@ -1,9 +1,10 @@
 {% extends "identity/base.html" %}
 {% block content %}
 <h1>{{ run.definition_name }}</h1><p>{{ run.status }} · {{ run.created }}</p>
+<p>{{ run.environment }}{% if run.task %} · {{ run.task.name }}{% endif %} · Consumed by {{ run.consumer.package.name }}</p>
 {% if run.error %}<p>{{ run.error }}</p>{% endif %}
 <section><h2>Input</h2><pre style="white-space:pre-wrap">{{ run.input }}</pre><h2>Output</h2><pre style="white-space:pre-wrap">{{ run.output }}</pre></section>
-<section><h2>Agent activity</h2><ul>{% for step in steps %}<li>{{ step.index }} · {{ step.agent_slug }} · {{ step.tool }} · {{ step.completed }}<pre style="white-space:pre-wrap">{{ step.output }}</pre></li>{% empty %}<li>No steps completed.</li>{% endfor %}</ul></section>
+<section><h2>Agent activity</h2><ul>{% for step in steps %}<li>{{ step.index }} · {{ step.agent_slug }} · Account {{ step.agent_account_id }} · {{ step.tool }} · {{ step.completed }}<pre style="white-space:pre-wrap">{{ step.output }}</pre></li>{% empty %}<li>No steps completed.</li>{% endfor %}</ul></section>
 {% if run.status == 'failed' %}<form method="post" action="{% url 'retry_run' brand_organization.slug run.pk %}">{% csrf_token %}<p>Retry uses the original agent snapshot, caller, and input. Restore that caller's permissions or the destination dataset before retrying. Start a new run to use edited agent definitions.</p><button type="submit">Retry run</button></form>{% endif %}
 <a href="{% url 'platform_dashboard' brand_organization.slug %}">Return to admin panel</a>
 {% endblock %}

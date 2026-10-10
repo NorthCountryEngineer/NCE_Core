@@ -1,3 +1,4 @@
+from platform_services.tests.agent_helpers import approve_agent
 import json
 import secrets
 from datetime import timedelta
@@ -49,6 +50,8 @@ class PlatformTests(TestCase):
             transforms=[{"operation": "rename", "fields": {"subject": "title"}}, {"operation": "select", "fields": ["title"]}])
         cls.selector = AgentDefinition.objects.create(organization=cls.organization, slug="select", name="Select", kind="select", configuration={"fields": ["title"]})
         cls.publisher = AgentDefinition.objects.create(organization=cls.organization, slug="publish", name="Publish", kind="publish", configuration={"dataset": "reports"})
+        approve_agent(cls.selector)
+        approve_agent(cls.publisher)
         cls.workflow = Workflow.objects.create(organization=cls.organization, slug="publish-report", name="Publish report", steps=["select", "publish"])
         cls.config = DeploymentConfiguration.objects.create(organization=cls.organization, environment="development", namespace="north",
             application_origin="https://reports.example.test", auto_deploy=True)
@@ -201,6 +204,7 @@ class PlatformTests(TestCase):
             "default": {"tool": "inspect"}})
         agent.full_clean()
         agent.save()
+        approve_agent(agent)
         response = self.api("/agents/router/runs/", "POST", {"request_id": "inspect", "input": {"title": "Draft"}})
         self.assertEqual(response.status_code, 202)
         process_one()

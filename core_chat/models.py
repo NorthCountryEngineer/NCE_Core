@@ -52,6 +52,7 @@ class Participant(TaggedResource):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='participants')
     user = models.ForeignKey('identity.User', on_delete=models.PROTECT, null=True, blank=True)
     installation = models.ForeignKey('platform_services.Installation', on_delete=models.PROTECT, null=True, blank=True)
+    agent = models.ForeignKey('platform_services.AgentAccount', on_delete=models.PROTECT, null=True, blank=True)
     role = models.CharField(max_length=10, choices=[('owner', 'Owner'), ('member', 'Member'), ('reader', 'Reader')], default='member')
     allow_ai = models.BooleanField(default=False)
     federated_issuer = models.URLField(blank=True, help_text='Exact issuer of an approved remote Core instance; services only.')
@@ -59,21 +60,27 @@ class Participant(TaggedResource):
 
     class Meta:
         constraints = [
-            models.CheckConstraint(condition=(Q(user__isnull=False, installation__isnull=True) |
-                Q(user__isnull=True, installation__isnull=False)), name='chat_one_participant_identity'),
+            models.CheckConstraint(condition=(Q(user__isnull=False, installation__isnull=True, agent__isnull=True) |
+                Q(user__isnull=True, installation__isnull=False, agent__isnull=True) |
+                Q(user__isnull=True, installation__isnull=True, agent__isnull=False)), name='chat_one_participant_identity'),
             models.UniqueConstraint(fields=['conversation', 'user'], condition=Q(user__isnull=False), name='chat_unique_user'),
             models.UniqueConstraint(fields=['conversation', 'installation'], condition=Q(installation__isnull=False), name='chat_unique_installation'),
+            models.UniqueConstraint(fields=['conversation', 'agent'], condition=Q(agent__isnull=False), name='chat_unique_agent'),
         ]
 
     def clean(self):
         from identity.models import Membership
-        if bool(self.user_id) == bool(self.installation_id):
-            raise ValidationError('Choose exactly one user or application installation.')
+        if sum(bool(value) for value in (self.user_id, self.installation_id, self.agent_id)) != 1:
+            raise ValidationError('Choose exactly one user, application installation, or agent account.')
         organization = self.conversation.organization
         if self.user_id and not Membership.objects.filter(organization=organization, user_id=self.user_id, active=True, user__is_active=True).exists():
             raise ValidationError('Choose an active member of this organization.')
         if self.installation_id and self.installation.organization_id != organization.pk:
             raise ValidationError('Choose an installation from this organization.')
+        if self.agent_id:
+            from platform_services.models import AgentAccount
+            if not AgentAccount.objects.filter(pk=self.agent_id, organization=organization, active=True).exists():
+                raise ValidationError('Choose an active agent account from this organization.')
         if self.federated_issuer:
             from .federation import validate_issuer
             validate_issuer(self.federated_issuer)

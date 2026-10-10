@@ -4,7 +4,7 @@
 <p><a href="{% url 'chat_room' organization.slug conversation.pk %}">Conversation</a> · <a href="{% url 'chat_edit' organization.slug conversation.pk %}">Conversation settings</a> · <a href="{% url 'resource_tags' organization.slug 'chatconversation' conversation.pk %}">Permission tags</a></p>
 <p>AI messaging requires approval for the conversation, the participant, and its service permissions. Remote senders are attributed to their trusted instance.</p>
 <ul>{% for participant in participants %}<li>
-<a href="?participant={{ participant.pk }}">{{ participant.user.email|default:participant.installation.package.name }}</a> · {{ participant.role }} · {% if participant.active %}active{% else %}disabled{% endif %}{% if participant.allow_ai %} · AI approved{% endif %}
+<a href="?participant={{ participant.pk }}">{% if participant.agent %}Agent {{ participant.agent.name }}{% elif participant.user %}{{ participant.user.email }}{% else %}{{ participant.installation.package.name }}{% endif %}</a> · {{ participant.role }} · {% if participant.active %}active{% else %}disabled{% endif %}{% if participant.allow_ai %} · AI approved{% endif %}
 {% if participant.federated_issuer %} · {{ participant.federated_issuer }}{% endif %}
  · <a href="{% url 'resource_tags' organization.slug 'chatparticipant' participant.pk %}">Tags</a>
 </li>{% endfor %}</ul>

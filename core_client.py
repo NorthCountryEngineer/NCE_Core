@@ -70,11 +70,57 @@ class CoreClient:
     def records(self, dataset, after=0, limit=100):
         return self.request("GET", f"/datasets/{self.slug(dataset)}/records/", params={"after": after, "limit": limit})
 
-    def run_workflow(self, workflow, request_id, data):
-        return self.request("POST", f"/workflows/{self.slug(workflow)}/runs/", json={"request_id": request_id, "input": data})
+    def run_workflow(self, workflow, request_id, data, *, environment='development', task_id=None):
+        return self.request("POST", f"/workflows/{self.slug(workflow)}/runs/", json={"request_id": request_id, "input": data,
+            'environment': environment, 'task_id': str(task_id) if task_id else None})
 
-    def run_agent(self, agent, request_id, data):
-        return self.request("POST", f"/agents/{self.slug(agent)}/runs/", json={"request_id": request_id, "input": data})
+    def run_agent(self, agent, request_id, data, *, environment='development', task_id=None):
+        return self.request("POST", f"/agents/{self.slug(agent)}/runs/", json={"request_id": request_id, "input": data,
+            'environment': environment, 'task_id': str(task_id) if task_id else None})
+
+    def agent_client(self, binding_id, *, environment, task_id=None):
+        from uuid import UUID
+        binding_id = str(UUID(str(binding_id)))
+        task_id = str(UUID(str(task_id))) if task_id else None
+        value = self.request('POST', '/agent-credentials/exchange/', json={'binding_id': binding_id})
+        if (value.get('binding_id') != binding_id or value.get('environment') != environment or value.get('task_id') != task_id or
+                value.get('token_type') != 'Bearer' or not isinstance(value.get('access_token'), str) or
+                not value['access_token'].startswith('ca_')):
+            raise CoreServiceError('Core returned an agent credential for a different approval or task.')
+        return AgentClient(self.base_url, value['access_token'], self.organization_id,
+            allow_local_http=self.base_url.startswith('http:'), purpose_code=self.purpose_code,
+            environment=environment, task_id=task_id)
+
+    def agent_authorization(self, token, *, audience, issuer, environment, task_id=None,
+            permission=None, resource_type=None, resource_id=None):
+        """Service-side live introspection. Fail closed; do not cache this result."""
+        import time
+        from uuid import UUID
+        task_id = str(UUID(str(task_id))) if task_id else None
+        body = {'token': token, 'environment': environment, 'task_id': task_id}
+        if permission is not None:
+            body['permission'] = permission
+        if resource_type is not None or resource_id is not None:
+            body.update(resource_type=resource_type, resource_id=resource_id)
+        value = self.request('POST', '/agent-credentials/introspect/', json=body)
+        if value.get('active') is False:
+            return {'active': False}
+        try:
+            agent_id = str(UUID(value['agent_id']))
+            UUID(value['binding_id'])
+            UUID(value['consumer_service_id'])
+            valid = (value.get('active') is True and value.get('principal_kind') == 'agent' and
+                value.get('iss') == issuer and value.get('aud') == audience and value.get('organization_id') == self.organization_id and
+                value.get('sub') == 'urn:core:agent:' + agent_id and value.get('environment') == environment and value.get('task_id') == task_id and
+                type(value.get('exp')) is int and time.time() < value['exp'] <= time.time() + 3600 and
+                all(isinstance(value.get(field), list) and all(isinstance(item, str) for item in value[field]) for field in ('roles', 'permissions')))
+            if permission is not None:
+                valid = valid and permission in value.get('permissions', [])
+        except (KeyError, ValueError, TypeError):
+            valid = False
+        if not valid:
+            raise CoreServiceError('Agent authorization response does not match this service, organization, or task.')
+        return value
 
     def run_status(self, run_id):
         from uuid import UUID
@@ -123,3 +169,27 @@ class CoreClient:
         if not isinstance(arguments, dict) or set(arguments) != {'text'} or not isinstance(arguments['text'], str):
             raise ValueError('The chat tool accepts exactly one text argument.')
         return self.chat_send(conversation_id, request_id, arguments['text'], ai=True, agent_name=agent_name)
+
+
+class AgentClient(CoreClient):
+    """An agent's own account client; credentials come from an admin-approved binding."""
+    def __init__(self, *args, environment, task_id=None, **kwargs):
+        from uuid import UUID
+        super().__init__(*args, **kwargs)
+        if environment not in {'development', 'staging', 'uat', 'production'} or environment == 'uat' and not task_id:
+            raise ValueError('Use an approved environment and a task ID for UAT.')
+        self.environment = environment
+        self.task_id = str(UUID(str(task_id))) if task_id else None
+
+    @classmethod
+    def from_environment(cls):
+        return cls(os.environ['CORE_SERVICES_URL'], Path(os.environ['CORE_AGENT_TOKEN_FILE']).read_text().strip(),
+            os.environ['CORE_ORGANIZATION_ID'], allow_local_http=os.environ.get('CORE_ALLOW_LOCAL_HTTP') == '1',
+            purpose_code=os.environ.get('CORE_PURPOSE_CODE', ''), environment=os.environ['CORE_AGENT_ENVIRONMENT'],
+            task_id=os.environ.get('CORE_AGENT_TASK_ID') or None)
+
+    def run_agent(self, agent, request_id, data):
+        return super().run_agent(agent, request_id, data, environment=self.environment, task_id=self.task_id)
+
+    def run_workflow(self, workflow, request_id, data):
+        return super().run_workflow(workflow, request_id, data, environment=self.environment, task_id=self.task_id)

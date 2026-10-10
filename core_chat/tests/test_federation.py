@@ -16,8 +16,10 @@ from django.core.exceptions import ValidationError
 from django.test import LiveServerTestCase, SimpleTestCase, override_settings
 
 from core_client import CoreClient, CoreServiceError
-from identity.models import Organization
-from platform_services.models import MarketplacePackage
+from identity.access import Principal
+from identity.models import Membership, Organization, Role, ServicePermission, User
+from platform_services.agent_identity import issue_credential
+from platform_services.models import AgentBinding, AgentDefinition, MarketplacePackage
 from platform_services.catalog import seed_catalog
 from platform_services.services import install_core, install_package, issue_workload_credential
 from core_chat.models import Conversation, FederationConnection, Message, Participant
@@ -106,10 +108,29 @@ class LiveFederationTests(LiveServerTestCase):
                         request_id='ai-handoff', agent_name='conversation-assistant')
                     self.assertEqual(ai['message']['actor_kind'], 'federated_ai')
                     self.assertEqual(ai['message']['agent_name'], 'conversation-assistant')
+                    admin = User.objects.create_user('federated-agent-admin@example.test')
+                    Membership.objects.create(organization=organization, user=admin, kind='administrator')
+                    agent = AgentDefinition.objects.create(organization=organization, slug='federated-assistant', name='Federated assistant', kind='inspect')
+                    role = Role.objects.create(organization=organization, slug='chat-agent', name='Chat agent')
+                    role.permissions.set(ServicePermission.objects.filter(service__installation__organization=organization,
+                        service__installation__package__slug='core-chat', codename__in=['chat-read', 'chat-send', 'chat-ai']))
+                    binding = AgentBinding.objects.create(account=agent.account, installation=installation, environment='development')
+                    binding.roles.add(role)
+                    Participant.objects.create(conversation=room, agent=agent.account, allow_ai=True)
+                    _, agent_raw = issue_credential(binding, Principal(user=admin))
+                    own = CoreClient(self.live_server_url + '/api/platform/v1', agent_raw, str(organization.pk), allow_local_http=True)
+                    message = own.invoke_chat_tool({'text': 'Handoff from my own account.'}, conversation_id=str(room.pk),
+                        request_id='own-agent-handoff', agent_name='Federated assistant')['message']
+                    self.assertEqual(message['actor_kind'], 'federated_ai')
+                    self.assertEqual(message['actor_id'], str(agent.account_id))
+                    binding.active = False
+                    binding.save()
+                    with self.assertRaises(CoreServiceError):
+                        own.chat_messages(str(room.pk))
                     authoritative = remote.chat_messages(state['conversation_id'])
                     shared = client.chat_messages(str(room.pk))
                     self.assertEqual([m['id'] for m in shared['messages']], [m['id'] for m in authoritative['messages']])
-                    self.assertEqual(len(shared['messages']), 2)
+                    self.assertEqual(len(shared['messages']), 3)
                     self.assertFalse(Message.objects.exists(), 'Shared history must remain authoritative, without local cached copies.')
                     # Expected remote organization is checked before any response is consumed.
                     from uuid import uuid4

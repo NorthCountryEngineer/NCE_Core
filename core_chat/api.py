@@ -28,7 +28,14 @@ def chat_api(operation, methods=('GET',)):
             credential = WorkloadCredential.objects.select_related('installation__organization', 'installation__service', 'installation__package').filter(
                 token_hash=WorkloadCredential.digest(raw), active=True).first() if raw else None
             purpose = request.headers.get('X-Core-Purpose', '')
-            if credential:
+            from platform_services.agent_identity import principal_for
+            agent = principal_for(raw, purpose) if raw and raw.startswith('ca_') else None
+            if agent:
+                if request.headers.get('X-Core-User-Token'):
+                    return response({'error': 'invalid_user_token'}, 401)
+                organization = agent.agent_binding.organization
+                principal = agent
+            elif credential:
                 if not credential_allows(credential, ['chat.' + operation]):
                     return response({'error': 'insufficient_permission'}, 403)
                 organization = credential.installation.organization
@@ -147,11 +154,12 @@ def participant(request, pk):
     conversation = room(request, pk, 'manage')
     can_manage(request.access_principal, conversation)
     values = body(request)
-    if set(values) - {'user_id', 'installation_id', 'role', 'allow_ai', 'active', 'federated_issuer'}:
+    if set(values) - {'user_id', 'installation_id', 'agent_id', 'role', 'allow_ai', 'active', 'federated_issuer'}:
         raise ValidationError('Unsupported participant fields.')
-    if bool(values.get('user_id')) == bool(values.get('installation_id')):
-        raise ValidationError('Choose exactly one user or installation.')
-    identity = {'user_id': values['user_id']} if values.get('user_id') else {'installation_id': values['installation_id']}
+    identities = [name for name in ('user_id', 'installation_id', 'agent_id') if values.get(name)]
+    if len(identities) != 1:
+        raise ValidationError('Choose exactly one user, installation, or agent.')
+    identity = {identities[0]: values[identities[0]]}
     try:
         existing = conversation.participants.filter(**identity).first()
         item = existing or Participant(conversation=conversation, **identity)

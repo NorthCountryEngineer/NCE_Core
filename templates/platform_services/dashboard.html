@@ -5,6 +5,7 @@
 <a href="{% url 'marketplace' organization.slug %}">Marketplace</a>
 <a href="{% url 'organization' organization.slug %}">Users and permissions</a>
 <a href="{% url 'security' organization.slug %}">Identity providers and permission tags</a>
+<a href="{% url 'agent_accounts' organization.slug %}">Agent accounts and task permissions</a>
 <a href="{% url 'deployment_configuration' organization.slug %}">Deployment configuration</a>
 <a href="{% url 'runtime_add' organization.slug %}">Connect Kubernetes</a>
 </div>
@@ -34,7 +35,7 @@
 <ul>{% for pipeline in pipelines %}<li><a href="{% url 'pipeline_edit' organization.slug pipeline.pk %}">{{ pipeline.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'pipeline' pipeline.pk %}">Tags</a> → {{ pipeline.dataset.name }}</li>{% endfor %}</ul></section>
 <section><h2>Core Chat</h2><p><a href="{% url 'chat' organization.slug %}">Open chat</a> · <a href="{% url 'chat_admin' organization.slug %}">Conversations, permissions, and federation</a></p></section>
 <section><h2>Core agents and workflows</h2><div class="actions"><a href="{% url 'agent_add' organization.slug %}">Create agent</a><a href="{% url 'workflow_add' organization.slug %}">Create workflow</a></div>
-<ul>{% for agent in agents %}<li><a href="{% url 'agent_edit' organization.slug agent.pk %}">{{ agent.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'agentdefinition' agent.pk %}">Tags</a> · {{ agent.get_kind_display }}</li>{% endfor %}</ul>
+<ul>{% for agent in agents %}<li><a href="{% url 'agent_edit' organization.slug agent.pk %}">{{ agent.name }}</a> · <a href="{% url 'agent_account' organization.slug agent.account_id %}">Account and service roles</a> · <a href="{% url 'resource_tags' organization.slug 'agentdefinition' agent.pk %}">Tags</a> · {{ agent.get_kind_display }}</li>{% endfor %}</ul>
 <ul>{% for workflow in workflows %}<li><a href="{% url 'workflow_edit' organization.slug workflow.pk %}">{{ workflow.name }}</a> · <a href="{% url 'resource_tags' organization.slug 'workflow' workflow.pk %}">Tags</a> · <a href="{% url 'workflow_run' organization.slug workflow.pk %}">Run workflow</a></li>{% endfor %}</ul>
 <h3>Recent runs</h3><ul>{% for run in runs %}<li><a href="{% url 'run_detail' organization.slug run.pk %}">{{ run.definition_name }}</a> · {{ run.status }} · {{ run.created }}{% if run.error %} · {{ run.error }}{% endif %}</li>{% empty %}<li>No runs yet.</li>{% endfor %}</ul>
 </section>

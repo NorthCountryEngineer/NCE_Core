@@ -1,3 +1,4 @@
+from platform_services.tests.agent_helpers import approve_agent
 from datetime import timedelta
 import json
 import secrets
@@ -264,6 +265,8 @@ class ChatTests(TestCase):
     def test_workflow_chat_tool_is_bounded_idempotent_and_attributed(self):
         agent = AgentDefinition.objects.create(organization=self.organization, slug='notify', name='Notify', kind='chat_send',
             configuration={'conversation_id': str(self.room.pk), 'text_field': 'reply'})
+        approve_agent(agent, [self.installation])
+        Participant.objects.create(conversation=self.room, agent=agent.account, role='member', allow_ai=True)
         run, _ = enqueue(self.organization, 'ai-notification', agent.name, 'agent', snapshot_agents(self.organization, [agent.slug]),
                          {'reply': 'Please review this conversation.'}, credential=self.credential)
         process_one()
@@ -272,6 +275,7 @@ class ChatTests(TestCase):
         message = Message.objects.get()
         self.assertEqual(message.actor_kind, 'ai')
         self.assertEqual(message.agent_name, 'notify')
+        self.assertEqual(message.actor_id, str(agent.account_id))
         self.assertEqual(run.output['chat_message_id'], str(message.public_id))
         run.status = 'queued'
         run.save()
@@ -281,6 +285,8 @@ class ChatTests(TestCase):
     def test_queued_agent_permission_revocation_prevents_sending(self):
         agent = AgentDefinition.objects.create(organization=self.organization, slug='notify', name='Notify', kind='chat_send',
             configuration={'conversation_id': str(self.room.pk), 'text_field': 'reply'})
+        approve_agent(agent, [self.installation])
+        Participant.objects.create(conversation=self.room, agent=agent.account, role='member', allow_ai=True)
         run, _ = enqueue(self.organization, 'revoked-notification', agent.name, 'agent', snapshot_agents(self.organization, [agent.slug]),
                          {'reply': 'Do not send after revocation.'}, credential=self.credential)
         self.service_participant.allow_ai = False

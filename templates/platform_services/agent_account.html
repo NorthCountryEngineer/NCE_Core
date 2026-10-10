@@ -1,0 +1,13 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ account.name }}</h1><p>Agent account {{ account.pk }}{% if account.listing %} · {{ account.listing.name }} {{ account.listing_version }}{% endif %}</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button>Save account</button></form>
+<p><a href="{% url 'resource_tags' organization.slug 'agentaccount' account.pk %}">Account permission tags</a> · <a href="{% url 'agent_binding_add' organization.slug account.pk %}">Approve application and service roles</a> · <a href="{% url 'agent_accounts' organization.slug %}">All agent accounts</a></p>
+<h2>Consumption approvals</h2>
+{% for binding in bindings %}<section><p><a href="{% url 'agent_binding_edit' organization.slug binding.pk %}">{{ binding.installation.package.name }} · {{ binding.environment }}</a> · {{ binding.active|yesno:'enabled,disabled' }}<br>Approval {{ binding.pk }}{% if binding.task %} · Task {{ binding.task.name }}{% endif %}</p>
+<p>Roles: {% for role in binding.roles.all %}{{ role.name }} {% empty %}none; service access is denied{% endfor %}</p>
+<a href="{% url 'resource_tags' organization.slug 'agentbinding' binding.pk %}">Approval tags and grants</a>
+<form method="post" action="{% url 'agent_issue_key' organization.slug binding.pk %}">{% csrf_token %}<button>Create 15-minute agent credential</button></form>
+{% for credential in binding.visible_credentials %}<form method="post" action="{% url 'agent_revoke_key' organization.slug credential.pk %}">{% csrf_token %}Expires {{ credential.expires_at }} <button>Revoke credential</button></form>{% endfor %}
+</section>{% empty %}<p>This account has no approved applications or permissions.</p>{% endfor %}
+{% endblock %}

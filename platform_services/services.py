@@ -141,6 +141,8 @@ def integration_document(installation):
         "discovery_url": origin + "/.well-known/openid-configuration",
         "core_services_url": origin + "/api/platform/v1",
         "chat_url": origin + "/api/platform/v1/chat",
+        'agent_credentials_url': origin + '/api/platform/v1/agent-credentials/exchange/',
+        'agent_introspection_url': origin + '/api/platform/v1/agent-credentials/introspect/',
         "capabilities": [c for c in installation.granted_capabilities if feature_enabled(installation.organization, CAPABILITY_PACKAGE[c])],
         "services": {i.package.slug: {"service_id": str(i.service_id), "version": i.version}
                      for i in Installation.objects.select_related("package").filter(organization=installation.organization, enabled=True,

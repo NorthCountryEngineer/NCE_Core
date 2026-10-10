@@ -1,3 +1,4 @@
+from platform_services.tests.agent_helpers import approve_agent
 import os
 import secrets
 import tempfile
@@ -28,7 +29,8 @@ class LivePlatformTests(LiveServerTestCase):
         credential, token = issue_workload_credential(installation, "Live consumer")
         dataset = Dataset.objects.create(organization=organization, slug="records", name="Records")
         Pipeline.objects.create(organization=organization, slug="ingest", name="Ingest", dataset=dataset)
-        AgentDefinition.objects.create(organization=organization, slug="inspect", name="Inspect", kind="inspect")
+        agent = AgentDefinition.objects.create(organization=organization, slug="inspect", name="Inspect", kind="inspect")
+        approve_agent(agent, [installation])
         DeploymentConfiguration.objects.create(organization=organization, environment="development", namespace="live-core",
             application_origin="https://app.example.test")
         node_token = "cr_" + secrets.token_urlsafe(48)

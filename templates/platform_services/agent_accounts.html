@@ -1,0 +1,9 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ organization.name }} · Agent accounts</h1>
+<p>Agents have their own identities. Approve each consuming application, environment, and service role before use.</p>
+<p><a href="{% url 'marketplace' organization.slug %}">Agent marketplace</a> · <a href="{% url 'agent_add' organization.slug %}">Create custom agent</a> · <a href="{% url 'agent_task_add' organization.slug %}">Approve a task</a></p>
+{% for account in accounts %}<p><a href="{% url 'agent_account' organization.slug account.pk %}">{{ account.name }}</a> · {{ account.active|yesno:'enabled,disabled' }} · {{ account.pk }}</p>{% empty %}<p>No agent accounts.</p>{% endfor %}
+<h2>Approved tasks</h2>
+{% for task in tasks %}<p><a href="{% url 'agent_task_edit' organization.slug task.pk %}">{{ task.name }}</a> · {{ task.environment }} · {{ task.installation.package.name }} · expires {{ task.expires_at }} · {{ task.active|yesno:'enabled,disabled' }} · <a href="{% url 'resource_tags' organization.slug 'agenttask' task.pk %}">Tags</a></p>{% empty %}<p>No tasks approved.</p>{% endfor %}
+{% endblock %}

@@ -17,6 +17,8 @@ class Principal:
     evidence: object = None
     credential: object = None
     runtime: object = None
+    agent_binding: object = None
+    agent_credential: object = None
     purpose: str = ""
     request_id: object = None
 
@@ -91,15 +93,17 @@ def resource_chain(resource):
             return
         seen.add(key)
         result.append(item)
-        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection"]:
+        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task"]:
             parent = getattr(item, field, None)
             if parent is not None:
                 visit(parent)
         if item._meta.label_lower == "platform_services.workflowrun":
-            from platform_services.models import AgentDefinition, Dataset
+            from platform_services.models import AgentBinding, AgentDefinition, Dataset
             if item.source_workflow_id:
                 visit(item.source_workflow)
             for step in item.snapshot:
+                for binding in AgentBinding.objects.filter(pk=step.get('binding_id')):
+                    visit(binding)
                 for agent in AgentDefinition.objects.filter(organization=item.organization, slug=step["slug"]):
                     visit(agent)
                 tools = [step] if step["kind"] != "rules" else [
@@ -135,7 +139,35 @@ def decision(principal, resource):
         return False, "organization_disabled", tags
     if any(tag.organization_id != organization.pk or (not tag.active and not (control_tag and tag.pk == resource.pk)) for tag in tags):
         return False, "invalid_resource_tag", tags
-    if principal.credential or principal.runtime:
+    if principal.agent_binding:
+        from platform_services.agent_identity import binding_valid, credential_valid
+        binding = principal.agent_binding
+        if not binding_valid(binding) or principal.agent_credential and not credential_valid(principal.agent_credential, binding):
+            return False, 'agent_revoked', tags
+        if binding.organization_id != organization.pk:
+            return False, 'wrong_organization', tags
+        if binding.task_id:
+            # Reload the task scope too: objects held by a worker cannot retain old approvals.
+            from platform_services.models import AgentTask
+            task = AgentTask.objects.get(pk=binding.task_id)
+            for item in resource_chain(resource):
+                scope = {'platform_services.dataset': 'datasets', 'core_chat.conversation': 'conversations',
+                    'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
+                if scope and str(item.pk) not in task.resources.get(scope, []):
+                    return False, 'agent_task_resource_scope', tags
+        # Include placement/account/application/task restrictions for every accessed resource.
+        context_tags = {tag.pk: tag for tag in effective_tags(binding)}
+        if principal.agent_credential:
+            context_tags.update({tag.pk: tag for tag in effective_tags(principal.agent_credential)})
+        tags = list({**context_tags, **{tag.pk: tag for tag in tags}}.values())
+        if any(tag.organization_id != organization.pk or not tag.active for tag in tags):
+            return False, 'invalid_resource_tag', tags
+        grants = set(binding.access_tags.filter(organization=organization, active=True).values_list('pk', flat=True))
+        grants.update(PermissionTag.objects.filter(organization=organization, active=True,
+            role_grants__in=binding.roles.filter(organization=organization)).values_list('pk', flat=True))
+        if any(not tag.allow_workloads or tag.requires_mfa or tag.max_auth_age for tag in tags):
+            return False, 'human_authentication_required', tags
+    elif principal.credential or principal.runtime:
         source = principal.credential.installation if principal.credential else principal.runtime
         if source.organization_id != organization.pk:
             return False, "wrong_organization", tags
@@ -168,8 +200,8 @@ def decision(principal, resource):
 
 def record_decision(principal, resource, action, allowed, reason, tags):
     AuditEvent.objects.create(organization=resource_organization(resource), actor=principal.user,
-        principal_id=principal.runtime.pk if principal.runtime else principal.credential.pk if principal.credential else principal.user.pk if principal.user else None,
-        principal_kind="runtime" if principal.runtime else "workload" if principal.credential else "user",
+        principal_id=principal.agent_binding.account_id if principal.agent_binding else principal.runtime.pk if principal.runtime else principal.credential.pk if principal.credential else principal.user.pk if principal.user else None,
+        principal_kind="agent" if principal.agent_binding else "runtime" if principal.runtime else "workload" if principal.credential else "user",
         request_id=principal.request_id or uuid.uuid4(), action=action[:80], target=str(resource.pk),
         outcome="allowed" if allowed else "denied", reason_code=reason,
         purpose_code=principal.purpose if re.fullmatch(r"[-a-zA-Z0-9_]{1,80}", principal.purpose or "") else "",

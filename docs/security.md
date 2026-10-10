@@ -1,5 +1,8 @@
 # Identity providers and permission tags
 
+Non-human agents use [separate accounts and service-role approvals](agent-accounts.md),
+including live tag enforcement, resource restrictions, and expiring UAT task scopes.
+
 Core Platform is both an OpenID Connect provider for applications and an OIDC
 broker for upstream sign-in. Local Core accounts are supported alongside
 Keycloak, cloud identity providers, another Core deployment, and other compliant

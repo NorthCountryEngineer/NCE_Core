@@ -1,0 +1,4 @@
+{% extends 'identity/base.html' %}
+{% block content %}<h1>Agent credential</h1>
+<p>Shown once. Store it in your application's secret store. Expires {{ credential.expires_at }}.</p>
+<pre>{{ raw }}</pre><p><a href="{% url 'agent_account' organization.slug credential.binding.account_id %}">Return to agent account</a></p>{% endblock %}

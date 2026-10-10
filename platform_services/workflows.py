@@ -10,7 +10,7 @@ from django.utils import timezone
 from identity.models import Membership
 from .data import publish
 from .agent_tools import choose_tool, possible_tools
-from .models import AgentDefinition, Dataset, RunStep, WorkflowRun, WorkloadCredential
+from .models import AgentDefinition, Dataset, Installation, RunStep, WorkflowRun, WorkloadCredential
 from .services import credential_allows, feature_enabled
 from identity.access import Principal, decision, effective_tags, require_access
 
@@ -51,13 +51,28 @@ def execution_resources(organization, snapshot):
     return resources
 
 
-def enqueue(organization, request_id, name, source, snapshot, data, credential=None, actor=None, principal=None, resource=None):
+def enqueue(organization, request_id, name, source, snapshot, data, credential=None, actor=None, principal=None, resource=None,
+            environment='development', task=None):
     if not isinstance(request_id, str) or not 1 <= len(request_id) <= 160 or not isinstance(data, dict):
         raise ValidationError("A request ID and JSON object input are required.")
     capabilities = required_capabilities(source, snapshot)
     if credential and not credential_allows(credential, capabilities):
         raise PermissionDenied("A required tool capability has not been granted.")
     principal = principal or Principal(user=actor, credential=credential)
+    if principal.agent_binding:
+        from .agent_identity import require_capabilities
+        require_capabilities(principal, capabilities)
+        consumer = principal.agent_binding.installation
+        if environment != principal.agent_binding.environment or (task.pk if task else None) != principal.agent_binding.task_id:
+            raise PermissionDenied('Agent task context cannot be changed by a caller.')
+    else:
+        consumer = credential.installation if credential else task.installation if task else Installation.objects.get(
+            organization=organization, package__slug='core-workflows' if source == 'workflow' else 'core-agents')
+    require_access(principal, consumer, 'workflow.consumer')
+    if task:
+        require_access(principal, task, 'workflow.task')
+    from .agent_identity import bind_snapshot
+    snapshot = bind_snapshot(organization, snapshot, consumer, environment, task, principal.purpose)
     resources = execution_resources(organization, snapshot) + ([resource] if resource else [])
     tags = {}
     for item in resources:
@@ -70,6 +85,8 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
             run, created = WorkflowRun.objects.get_or_create(organization=organization, request_id=request_id,
                 defaults={"definition_name": name, "source": source, "snapshot": snapshot, "input": data,
                           "credential": credential, "actor": actor, "required_capabilities": capabilities,
+                          'consumer': consumer, 'environment': environment, 'task': task,
+                          'trigger_binding': principal.agent_binding, 'trigger_credential': principal.agent_credential,
                           "source_workflow": resource if source == "workflow" else None})
             if created:
                 run.permission_tags.set(tags)
@@ -79,7 +96,10 @@ def enqueue(organization, request_id, name, source, snapshot, data, credential=N
     except IntegrityError:
         run, created = WorkflowRun.objects.get(organization=organization, request_id=request_id), False
     if (run.input != data or run.snapshot != snapshot or run.credential_id != (credential.pk if credential else None)
-            or run.actor_id != (actor.pk if actor else None) or run.source != source or run.purpose_code != principal.purpose):
+            or run.actor_id != (actor.pk if actor else None) or run.source != source or run.purpose_code != principal.purpose
+            or run.environment != environment or run.task_id != (task.pk if task else None)
+            or run.trigger_binding_id != (principal.agent_binding.pk if principal.agent_binding else None)
+            or run.trigger_credential_id != (principal.agent_credential.pk if principal.agent_credential else None)):
         from .data import IdempotencyConflict
         raise IdempotencyConflict("The request ID has already been used for another run.")
     return run, created
@@ -91,7 +111,15 @@ def run_allowed(run):
         return False
     if run.source == "workflow" and not feature_enabled(organization, "core-workflows"):
         return False
-    if run.credential_id:
+    if run.trigger_binding_id:
+        from .agent_identity import require_capabilities
+        principal = Principal(agent_binding=run.trigger_binding, agent_credential=run.trigger_credential, purpose=run.purpose_code)
+        try:
+            require_capabilities(principal, run.required_capabilities)
+        except PermissionDenied:
+            return False
+        allowed = True
+    elif run.credential_id:
         credential = WorkloadCredential.objects.select_related("installation__organization", "installation__service", "installation__package").get(pk=run.credential_id)
         principal = Principal(credential=credential, purpose=run.purpose_code)
         allowed = credential_allows(credential, run.required_capabilities)
@@ -104,6 +132,9 @@ def run_allowed(run):
     if not allowed:
         return False
     try:
+        from .agent_identity import step_principal
+        for step in run.snapshot:
+            step_principal(run, step)
         for resource in [run, *execution_resources(organization, run.snapshot)]:
             require_access(principal, resource, "workflow.execute")
             if resource._meta.label_lower == 'core_chat.conversation':
@@ -165,9 +196,13 @@ def process_one():
                     output = previous.output
                 else:
                     chosen = choose_tool(step, output)
-                    principal = Principal(user=run.actor, credential=run.credential, evidence=run.authentication_evidence, purpose=run.purpose_code)
+                    from .agent_identity import step_principal
+                    principal = step_principal(run, step)
                     output = execute_tool(run.organization, chosen, output, f"run:{run.pk}:step:{index}", principal=principal, agent_name=step['slug'])
-                    RunStep.objects.create(run=run, index=index, agent_slug=step["slug"], tool=chosen["kind"], output=output)
+                    RunStep.objects.create(run=run, index=index, agent_slug=step["slug"], tool=chosen["kind"], output=output,
+                        agent_account_id=principal.agent_binding.account_id)
+                    from identity.access import record_decision
+                    record_decision(principal, run, 'agent.step_completed', True, 'task_role_authorized', [])
                 locked.lease_until = timezone.now() + timedelta(seconds=60)
                 locked.save(update_fields=["lease_until"])
         WorkflowRun.objects.filter(pk=run.pk, lease_owner=owner).update(

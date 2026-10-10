@@ -60,7 +60,7 @@ def relay(principal, conversation, method, participant, **values):
         if principal.purpose:
             headers['X-Core-Purpose'] = principal.purpose
         if method == 'POST':
-            actor_id = str(principal.user.pk if principal.user else principal.credential.installation_id)
+            actor_id = str(principal.agent_binding.account_id if principal.agent_binding else principal.user.pk if principal.user else principal.credential.installation_id)
             kind = 'ai' if values['ai'] else 'user' if principal.user else 'application'
             values['origin'] = {'issuer': settings.ISSUER, 'actor_id': actor_id, 'actor_kind': kind}
             values['request_id'] = hashlib.sha256(f"{conversation.pk}:{kind}:{actor_id}:{values['request_id']}".encode()).hexdigest()

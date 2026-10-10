@@ -195,6 +195,11 @@ cross-organization resources 404. Network errors and redirects grant no authorit
 
 ## Data, agents, and workflows
 
+Agents have distinct [accounts, marketplace consumption approvals, and service
+roles](agent-accounts.md). Installation grants no agent permissions. Approve the
+consuming application and environment for each account before submitting a run;
+UAT additionally requires an expiring task and explicit resource scope.
+
 Administrators create datasets with JSON Schema and pipelines referencing their
 own organization's active datasets. Schemas permit local references only. Pipeline
 transformations run in order; supported operations are `select` and `rename`:

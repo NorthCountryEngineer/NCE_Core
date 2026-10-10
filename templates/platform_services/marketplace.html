@@ -1,9 +1,11 @@
 {% extends "identity/base.html" %}
 {% block content %}
-<h1>Application marketplace</h1><p>Core services and applications are installed and managed in the same place.</p>
+<h1>Platform marketplace</h1><p>Core services, applications, and agents are installed and managed in the same place.</p>
 <a href="{% url 'platform_dashboard' organization.slug %}">Admin panel</a>
 {% for package in packages %}<section><h2>{{ package.name }}</h2><p>{{ package.description }}</p>
 <p>{{ package.get_kind_display }} · {{ package.version }}</p>
 {% if package.slug in installed_slugs %}<p>Installed</p>{% else %}<a href="{% url 'package_install' organization.slug package.slug %}">Install and set access</a>{% endif %}
 </section>{% endfor %}
+<h2>Agents</h2><p>Installing an agent creates its own account. Choose approved applications, environments, and service roles separately.</p>
+{% for listing in agent_listings %}<section><h3>{{ listing.name }}</h3><p>{{ listing.description }} · {{ listing.version }}</p><a href="{% url 'agent_listing_install' organization.slug listing.slug %}">Install agent and review access</a></section>{% endfor %}
 {% endblock %}

@@ -28,8 +28,9 @@ datasets, pipelines, agent definitions, and workflow runs.
 Core Data validates JSON records, applies select/rename transformations, accepts
 idempotent events, and exposes cursor-based consumption. Core Agents includes
 inspect, select, publish, and bounded rule-based tool selection. Core Workflows
-persists agent snapshots, execution leases, step traces, and retries. Workers
-recheck the original caller's current permissions before executing each step.
+persists agent snapshots, execution leases, step traces, and retries. Each agent
+has its own [account and marketplace approvals](docs/agent-accounts.md). Workers
+recheck both the submitter's and the agent's current permissions before every step.
 These initial agents use deterministic rules; no paid model provider is enabled.
 
 The outbound Kubernetes connector reconciles approved, digest-pinned application

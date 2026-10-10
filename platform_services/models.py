@@ -207,10 +207,21 @@ class AgentDefinition(TaggedResource):
     kind = models.CharField(max_length=20, choices=KINDS)
     configuration = models.JSONField(default=dict, blank=True)
     active = models.BooleanField(default=True)
+    account = models.OneToOneField('AgentAccount', on_delete=models.PROTECT, related_name='definition', blank=True)
+
+    def save(self, *args, **kwargs):
+        # A tool definition never borrows its submitter's account.
+        from django.db import transaction
+        with transaction.atomic():
+            if not self.account_id:
+                self.account = AgentAccount.objects.create(organization=self.organization, name=self.name)
+            return super().save(*args, **kwargs)
 
     def clean(self):
         from .agent_tools import validate_configuration
         validate_configuration(self.organization_id, self.kind, self.configuration)
+        if self.account_id and self.account.organization_id != self.organization_id:
+            raise ValidationError('The agent account must belong to this organization.')
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["organization", "slug"], name="unique_agent")]
@@ -238,6 +249,11 @@ class WorkflowRun(TaggedResource):
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="workflow_runs")
     credential = models.ForeignKey(WorkloadCredential, on_delete=models.SET_NULL, null=True, blank=True)
     actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    trigger_binding = models.ForeignKey('AgentBinding', on_delete=models.PROTECT, null=True, blank=True)
+    trigger_credential = models.ForeignKey('AgentCredential', on_delete=models.PROTECT, null=True, blank=True)
+    consumer = models.ForeignKey(Installation, on_delete=models.PROTECT, null=True, blank=True)
+    environment = models.CharField(max_length=20, default='development')
+    task = models.ForeignKey('AgentTask', on_delete=models.PROTECT, null=True, blank=True)
     request_id = models.CharField(max_length=160)
     definition_name = models.CharField(max_length=160)
     source = models.CharField(max_length=20, choices=[("agent", "Agent"), ("workflow", "Workflow")])
@@ -265,9 +281,139 @@ class RunStep(models.Model):
     index = models.PositiveSmallIntegerField()
     agent_slug = models.SlugField()
     tool = models.CharField(max_length=20, blank=True)
+    agent_account_id = models.UUIDField(null=True, blank=True)
     output = models.JSONField()
     completed = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["run", "index"], name="unique_run_step")]
         ordering = ["index"]
+
+
+AGENT_ENVIRONMENTS = [(value, value.title()) for value in ('development', 'staging', 'uat', 'production')]
+
+
+class AgentListing(models.Model):
+    """Platform-curated, versioned agent templates; installation grants no permissions."""
+    slug = models.SlugField(unique=True)
+    name = models.CharField(max_length=160)
+    description = models.TextField()
+    version = models.CharField(max_length=40, default='0.1.0')
+    kind = models.CharField(max_length=20, choices=AgentDefinition.KINDS)
+    configuration = models.JSONField(default=dict, blank=True)
+    active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f'{self.name} {self.version}'
+
+
+class AgentAccount(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='agent_accounts')
+    name = models.CharField(max_length=160)
+    listing = models.ForeignKey(AgentListing, on_delete=models.PROTECT, null=True, blank=True)
+    listing_version = models.CharField(max_length=40, blank=True)
+    active = models.BooleanField(default=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class AgentTask(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='agent_tasks')
+    name = models.CharField(max_length=160)
+    description = models.TextField(help_text='Approved task scope and acceptance criteria.')
+    resources = models.JSONField(default=dict, blank=True,
+        help_text='Explicit resource scope: datasets, conversations, and service_resources contain approved UUID lists. Empty lists deny access.')
+    installation = models.ForeignKey(Installation, on_delete=models.PROTECT)
+    environment = models.CharField(max_length=20, choices=AGENT_ENVIRONMENTS, default='uat')
+    expires_at = models.DateTimeField()
+    approved_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    active = models.BooleanField(default=True)
+
+    def clean(self):
+        from django.apps import apps
+        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources'}:
+            raise ValidationError('Task resources must contain dataset, conversation, or registered service resource ID lists.')
+        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource')]:
+            ids = self.resources.get(key, [])
+            if not isinstance(ids, list) or len(ids) > 100 or any(not isinstance(value, str) for value in ids):
+                raise ValidationError('Task resource scopes use lists of at most 100 IDs.')
+            try:
+                filters = {'service__organization_id': self.organization_id} if key == 'service_resources' else {'organization_id': self.organization_id}
+                found = apps.get_model(label).objects.filter(**filters, pk__in=ids).count()
+            except (ValueError, ValidationError):
+                raise ValidationError('Use valid resource IDs from this organization.')
+            if found != len(set(ids)):
+                raise ValidationError('Every approved task resource must belong to this organization.')
+        if self.installation_id and self.installation.organization_id != self.organization_id:
+            raise ValidationError('The task application must belong to this organization.')
+        if self.active and self.expires_at and self.expires_at <= timezone.now():
+            raise ValidationError('The task expiration must be in the future.')
+        if self.approved_by_id and not self.approved_by.is_superuser and not self.organization.memberships.filter(
+                user=self.approved_by, user__is_active=True, active=True, kind='administrator').exists():
+            raise ValidationError('A current organization administrator must approve the task.')
+
+    def __str__(self):
+        return self.name
+
+
+class AgentBinding(TaggedResource):
+    """An administrator's approval for one agent in one consuming application and environment."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    account = models.ForeignKey(AgentAccount, on_delete=models.PROTECT, related_name='bindings')
+    installation = models.ForeignKey(Installation, on_delete=models.PROTECT, related_name='agent_bindings')
+    environment = models.CharField(max_length=20, choices=AGENT_ENVIRONMENTS)
+    task = models.ForeignKey(AgentTask, on_delete=models.PROTECT, null=True, blank=True)
+    roles = models.ManyToManyField('identity.Role', blank=True, related_name='agent_bindings')
+    access_tags = models.ManyToManyField('identity.PermissionTag', blank=True, related_name='agent_grants')
+    active = models.BooleanField(default=True)
+
+    @property
+    def organization(self):
+        return self.account.organization
+
+    @property
+    def organization_id(self):
+        return self.account.organization_id
+
+    def clean(self):
+        if self.account_id and self.installation_id and self.account.organization_id != self.installation.organization_id:
+            raise ValidationError('The account and consuming application must belong to one organization.')
+        if self.environment == 'uat' and not self.task_id:
+            raise ValidationError('UAT access requires an approved, expiring task.')
+        if self.task_id and (self.task.organization_id != self.organization_id or
+                self.task.installation_id != self.installation_id or self.task.environment != self.environment):
+            raise ValidationError('The task must match this application, organization, and environment.')
+        if self.pk:
+            old = type(self).objects.filter(pk=self.pk).first()
+            if old and any(getattr(old, f) != getattr(self, f) for f in ('account_id', 'installation_id', 'environment', 'task_id')):
+                raise ValidationError('Approval boundaries are immutable. Revoke this approval and create another.')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['account', 'installation', 'environment'], condition=models.Q(task__isnull=True), name='unique_agent_placement'),
+            models.UniqueConstraint(fields=['account', 'installation', 'environment', 'task'], condition=models.Q(task__isnull=False), name='unique_agent_task_placement'),
+        ]
+
+    def __str__(self):
+        return f'{self.account} · {self.installation.package.name} · {self.environment}'
+
+
+class AgentCredential(TaggedResource):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    binding = models.ForeignKey(AgentBinding, on_delete=models.PROTECT, related_name='credentials')
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    active = models.BooleanField(default=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def organization(self):
+        return self.binding.organization
+
+    @property
+    def organization_id(self):
+        return self.binding.organization_id
