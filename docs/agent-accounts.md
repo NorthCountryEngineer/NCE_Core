@@ -22,10 +22,14 @@ submitter's authority. Both identities must remain authorized for a queued job.
    and expiration. Set its explicit resource scope using UUIDs from tag pages:
 
    ```json
-   {"datasets": [], "conversations": [], "service_resources": []}
+   {"datasets": [], "conversations": [], "service_resources": [], "integrations": []}
    ```
 
-   Empty lists deny data/chat/registered-resource access. `service_resources`
+   Empty lists deny data/chat/registered-resource/integration access. `integrations`
+   contains approved application-integration binding UUIDs in the task's own
+   application and environment; agents also need the definition's live use role.
+   Agents cannot retrieve integration credentials or administer settings.
+   See [application integrations](application-integrations.md). `service_resources`
    refers to the existing registered application resources. Tasks must match their
    approvals' organization, application, and environment. Task revocation and
    expiration immediately block further agent actions.

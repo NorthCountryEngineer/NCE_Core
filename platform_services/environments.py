@@ -33,7 +33,8 @@ def default_environment(organization):
 
 SCOPED_RESOURCES = {'platform_services.dataset', 'platform_services.pipeline', 'platform_services.agentdefinition',
     'platform_services.workflow', 'platform_services.workflowrun', 'platform_services.trainingrun',
-    'platform_services.trainingscenario', 'core_chat.conversation', 'core_fabric.fabriccontract', 'identity.protectedresource'}
+    'platform_services.trainingscenario', 'core_chat.conversation', 'core_fabric.fabriccontract', 'identity.protectedresource',
+    'platform_services.applicationintegration', 'platform_services.integrationconnection'}
 
 
 def unassigned_resources(organization, chain):

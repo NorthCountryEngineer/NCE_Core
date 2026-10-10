@@ -1,0 +1,18 @@
+{% extends "identity/base.html" %}
+{% block content %}
+<h1>{{ organization.name }} · Applications and integrations</h1>
+<div class="actions"><a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a>
+<a href="{% url 'integration_definition_add' organization.slug %}">Publish integration</a>
+<a href="{% url 'integration_connection_add' organization.slug %}">Configure platform connection</a>
+<a href="{% url 'application_integration_add' organization.slug %}">Approve application consumption</a></div>
+<h2>Published integrations</h2>
+{% for item in definitions %}<p><a href="{% url 'integration_definition_edit' organization.slug item.pk %}">{{ item.name }}</a> · {{ item.get_kind_display }} · {{ item.active|yesno:"active,disabled" }}
+· Role permission: {{ item.service.name }} / {{ item.use_permission }} · <a href="{% url 'resource_tags' organization.slug 'integrationdefinition' item.pk %}">Permission tags</a></p>{% empty %}<p>No integrations published.</p>{% endfor %}
+<h2>Platform connections</h2>
+{% for item in connections %}<p><a href="{% url 'integration_connection_edit' organization.slug item.pk %}">{{ item }}</a> · {{ item.active|yesno:"active,disabled" }} · Revision {{ item.revision }}
+· Credential {{ item.encrypted_credential|yesno:"configured,not configured" }} · <a href="{% url 'resource_tags' organization.slug 'integrationconnection' item.pk %}">Permission tags</a></p>{% empty %}<p>No platform connections configured.</p>{% endfor %}
+<h2>Application consumption</h2>
+{% for item in bindings %}<p><a href="{% url 'application_integration_edit' organization.slug item.pk %}">{{ item }}</a> · {{ item.get_mode_display }} · Revision {{ item.revision }}
+· Backend use {{ item.workload_access|yesno:"approved,denied" }} · Backend credential retrieval {{ item.credential_access|yesno:"approved,denied" }}
+· App administration {{ item.allow_application_configuration|yesno:"delegated,central only" }} · <a href="{% url 'resource_tags' organization.slug 'applicationintegration' item.pk %}">Permission tags</a></p>{% empty %}<p>No application consumption approved.</p>{% endfor %}
+{% endblock %}

@@ -2,6 +2,11 @@ Applications adopted from Kubernetes receive environment-bound service and
 identity configuration automatically. See [modernization.md](modernization.md)
 for `CoreClient.from_environment()` and `ResourceClient.from_environment()`.
 
+[Shared application integrations](application-integrations.md) expose platform
+definitions and connections with explicit per-app approvals. Configure centrally
+or through an application's delegated admin settings; the portable adapter also
+supports standalone settings and explicitly selected hybrid inheritance.
+
 # Integrating a service
 
 [Core Data Fabric](data-fabric.md) lets applications and approved agents consume

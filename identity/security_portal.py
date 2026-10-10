@@ -46,7 +46,8 @@ def resource_types():
     result.update({name.lower(): getattr(core, name) for name in ["OrganizationProfile", "BillingProfile", "DeploymentConfiguration",
         "Installation", "RuntimeNode", "Deployment", "WorkloadCredential", "Dataset", "Pipeline", "AgentDefinition", "Workflow", "WorkflowRun",
         'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask',
-        'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback', 'DeploymentEnvironment']})
+        'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback', 'DeploymentEnvironment',
+        'IntegrationDefinition', 'IntegrationConnection', 'ApplicationIntegration']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     from core_fabric.models import FabricContract, FabricPeer

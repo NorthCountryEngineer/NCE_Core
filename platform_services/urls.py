@@ -1,7 +1,19 @@
 from django.urls import path
 from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal, environment_portal
+from . import integration_api, integration_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/integrations/', integration_portal.integration_settings, name='integration_settings'),
+    path('organizations/<slug:slug>/platform/integrations/definitions/new/', integration_portal.integration_definition, name='integration_definition_add'),
+    path('organizations/<slug:slug>/platform/integrations/definitions/<uuid:pk>/', integration_portal.integration_definition, name='integration_definition_edit'),
+    path('organizations/<slug:slug>/platform/integrations/connections/new/', integration_portal.integration_connection, name='integration_connection_add'),
+    path('organizations/<slug:slug>/platform/integrations/connections/<uuid:pk>/', integration_portal.integration_connection, name='integration_connection_edit'),
+    path('organizations/<slug:slug>/platform/integrations/applications/new/', integration_portal.application_integration, name='application_integration_add'),
+    path('organizations/<slug:slug>/platform/integrations/applications/<uuid:pk>/', integration_portal.application_integration, name='application_integration_edit'),
+    path('api/platform/v1/integrations/', integration_api.catalog),
+    path('api/platform/v1/integrations/<slug:slug>/', integration_api.resolve),
+    path('api/platform/v1/integrations/<slug:slug>/settings/', integration_api.configure),
+    path('api/platform/v1/integrations/<slug:slug>/credentials/', integration_api.credentials),
     path('organizations/<slug:slug>/platform/environments/', environment_portal.environments, name='platform_environments'),
     path('organizations/<slug:slug>/platform/environments/new/', environment_portal.environment_edit, name='environment_add'),
     path('organizations/<slug:slug>/platform/environments/<uuid:pk>/', environment_portal.environment_edit, name='environment_edit'),

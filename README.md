@@ -25,6 +25,11 @@ identity, permission settings, and monitored instance. The central panel manages
 members and roles, application grants, runtimes, deployment state and health,
 datasets, pipelines, agent definitions, and workflow runs.
 
+[Application integrations](docs/application-integrations.md) publish shared
+contracts and environment-scoped connections with explicit app inheritance and
+live RBAC. App admin panels can use delegated settings APIs; the portable adapter
+also supports independently configured standalone applications.
+
 Core Training supplies an [AI-first simulation and evaluation harness](docs/training.md),
 with synthetic pipeline data, agent workflows, seeded scenarios, and attributed reviews.
 

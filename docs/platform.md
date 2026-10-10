@@ -4,6 +4,10 @@ Core Platform is the default name. `CORE_PRODUCT_NAME` changes it for a deployme
 and Organization settings allow each customer to choose its own display name.
 Immutable organization and service UUIDs and the trusted issuer establish authority.
 
+[Applications and integrations](application-integrations.md) defines organization
+catalogs, environment-scoped connections, optional inheritance, delegated app
+settings, live RBAC, and standalone/hybrid application adapters.
+
 ## Application modernization and environments
 
 [Modernization](modernization.md) registers existing Kubernetes applications in

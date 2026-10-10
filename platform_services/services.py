@@ -156,6 +156,7 @@ def integration_document(installation):
         "service_id": str(installation.service_id), "audience": installation.service.audience,
         "discovery_url": origin + "/.well-known/openid-configuration",
         "core_services_url": origin + "/api/platform/v1",
+        'integrations_url': origin + '/api/platform/v1/integrations/',
         "chat_url": origin + "/api/platform/v1/chat",
         'training_url': origin + '/api/platform/v1/training',
         'fabric_url': origin + '/api/platform/v1/fabric',

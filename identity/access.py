@@ -95,13 +95,17 @@ def resource_chain(resource):
         seen.add(key)
         result.append(item)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
-                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment']:
+                'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider']:
+            if field == 'connection' and item._meta.label_lower == 'platform_services.applicationintegration' and item.mode != 'platform':
+                continue
             parent = getattr(item, field, None)
             if field == 'environment' and isinstance(parent, str):
                 from platform_services.models import DeploymentEnvironment
                 parent = DeploymentEnvironment.objects.filter(organization=resource_organization(item), name=parent).first()
             if parent is not None and hasattr(parent, '_meta'):
                 visit(parent)
+        if item._meta.label_lower in {'platform_services.applicationintegration', 'platform_services.integrationconnection'}:
+            visit(item.definition)
         if item._meta.label_lower in {'platform_services.workflowrun', 'platform_services.trainingrun'}:
             from platform_services.models import AgentBinding, AgentDefinition, Dataset
             if getattr(item, 'source_workflow_id', None):
@@ -180,6 +184,7 @@ def decision(principal, resource):
             for item in resource_chain(resource):
                 scope = {'platform_services.dataset': 'datasets', 'core_chat.conversation': 'conversations',
                     'core_fabric.fabriccontract': 'fabric_contracts',
+                    'platform_services.applicationintegration': 'integrations',
                     'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
                 if scope and str(item.pk) not in task.resources.get(scope, []):
                     return False, 'agent_task_resource_scope', tags

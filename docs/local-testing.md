@@ -6,6 +6,10 @@ processes in your own NCE_Core checkout. Use `uv` and Python 3.12 or 3.13;
 
 ## Start or update
 
+To test shared connections and application inheritance, follow
+[Applications and integrations](application-integrations.md#configure-centrally-and-test-it-yourself)
+after starting the platform and establishing your organization below.
+
 ```bash
 git pull origin main
 uv sync --frozen

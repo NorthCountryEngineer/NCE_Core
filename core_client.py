@@ -70,6 +70,44 @@ class CoreClient:
     def ingest(self, pipeline, event_id, data):
         return self.request("POST", f"/pipelines/{self.slug(pipeline)}/events/", json={"event_id": event_id, "data": data})
 
+    def integrations(self, *, user_access_token=None):
+        value = self.request('GET', '/integrations/', user_access_token=user_access_token)
+        rows = value.get('integrations')
+        if (value.get('organization_id') != self.organization_id or not isinstance(rows, list) or len(rows) > 100 or
+                any(not isinstance(row, dict) or row.get('organization_id') != self.organization_id or
+                    self.environment and row.get('environment') != self.environment for row in rows)):
+            raise CoreServiceError('Integration catalog belongs to a different organization.')
+        return rows
+
+    def resolve_integration(self, slug, *, user_access_token=None):
+        value = self.request('GET', f'/integrations/{self.slug(slug)}/', user_access_token=user_access_token)
+        if (value.get('organization_id') != self.organization_id or value.get('slug') != slug or
+                self.environment and value.get('environment') != self.environment):
+            raise CoreServiceError('Integration configuration does not match this application context.')
+        return value
+
+    def integration_settings(self, slug, *, user_access_token):
+        value = self.request('GET', f'/integrations/{self.slug(slug)}/settings/', user_access_token=user_access_token)
+        if (value.get('organization_id') != self.organization_id or value.get('slug') != slug or
+                self.environment and value.get('environment') != self.environment):
+            raise CoreServiceError('Integration settings do not match this application context.')
+        return value
+
+    def configure_integration(self, slug, values, *, user_access_token):
+        return self.request('POST', f'/integrations/{self.slug(slug)}/settings/', user_access_token=user_access_token, json=values)
+
+    def integration_credential(self, slug, *, integration, user_access_token=None):
+        # Trusted backends only: never forward this response to a browser or a model.
+        if (integration.get('organization_id') != self.organization_id or integration.get('slug') != slug or
+                self.environment and integration.get('environment') != self.environment):
+            raise CoreServiceError('Pin a resolved configuration from this application context.')
+        revisions = {key: integration[key] for key in ['revision', 'connection_revision']}
+        value = self.request('POST', f'/integrations/{self.slug(slug)}/credentials/', user_access_token=user_access_token, json=revisions)
+        if (value.get('organization_id') != self.organization_id or value.get('integration_id') != integration['id'] or
+                any(value.get(key) != expected for key, expected in revisions.items())):
+            raise CoreServiceError('Integration credential belongs to a different consumer.')
+        return value['credential']
+
     def records(self, dataset, after=0, limit=100):
         return self.request("GET", f"/datasets/{self.slug(dataset)}/records/", params={"after": after, "limit": limit})
 
