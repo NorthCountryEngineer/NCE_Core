@@ -112,6 +112,10 @@ environment; it is not silently renamed to Sandbox.
 
 ## First training exercise
 
+For description-led application development, use the separate
+[App Factory walkthrough](app-factory.md#try-it-yourself) from the central panel's
+**AI application creation** link. Keep both the web process and Core worker running.
+
 1. Create dataset `sim-input` with **Synthetic / training** classification and:
 
    ```json

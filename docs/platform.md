@@ -32,7 +32,7 @@ grants it. A new developer's browser sign-in leads into `/onboarding/`:
    application origin, optional ingress class/TLS secret, and automatic deployment.
 4. Register a runtime connector and save its one-time key, or defer connection when
    automatic deployment is disabled.
-5. Review and activate the seven core marketplace services. Automatic deployment
+5. Review and activate the eight core marketplace services. Automatic deployment
    requires a connected runtime; no cluster or infrastructure purchase is made.
 
 The wizard persists progress and creates the first organization administrator.
@@ -51,11 +51,17 @@ model calls are created by this application.
 Core Data Fabric is a marketplace service for [administrator-approved federation](data-fabric.md)
 of selected data across independent deployments, with consumable application/agent APIs.
 
-Database migrations seed seven built-in packages: `core-platform`, `core-data`,
-`core-agents`, `core-workflows`, `core-chat`, `core-training`, and `core-fabric`. They use the same installation and service
+Database migrations seed eight built-in packages: `core-platform`, `core-data`,
+`core-agents`, `core-workflows`, `core-chat`, `core-training`, `core-fabric`, and `core-app-factory`. They use the same installation and service
 registry as applications. Core runtime code executes inside this deployment;
 installing a core package activates its organization workspace and creates its
 monitored instance. Installing it does not start a separate remote container.
+
+[Core App Factory](app-factory.md) coordinates scoped planning, backend, frontend, security,
+test, and packaging agents. Its generated data applications inherit Core AAA and registered
+collection policies. AI function tools create reviewable drafts; human administrators approve
+build scopes and private image releases. Arbitrary custom-code generation requires an additional
+model/sandbox integration, and no paid provider is enabled by default.
 
 Platform superusers publish application packages in `/platform-admin/`. Example
 manifest (replace the illustrative digest with the real registry manifest digest):

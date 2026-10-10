@@ -1,0 +1,7 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ organization.name }} · App Factory</h1>
+<p>Describe an application, review its specification, and approve a team of scoped development agents.</p>
+<a href="{% url 'app_factory_create' organization.slug %}">Create an application</a> · <a href="{% url 'platform_dashboard' organization.slug %}">Central admin</a>
+{% for project in projects %}<p><a href="{% url 'app_factory_project' organization.slug project.pk %}">{{ project.name }}</a> · {{ project.environment.name }} · {% if project.package_id %}Released{% elif project.build_id %}{{ project.build.status }}{% else %}Awaiting review{% endif %}</p>{% empty %}<p>No application requests.</p>{% endfor %}
+{% endblock %}

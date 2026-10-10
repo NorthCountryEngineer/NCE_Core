@@ -1,0 +1,16 @@
+{% extends 'identity/base.html' %}
+{% block content %}
+<h1>{{ project.name }}</h1><p>{{ project.description }}</p><p>Development environment: {{ project.environment.name }}</p>
+<h2>Reviewed specification</h2><pre>{{ specification }}</pre>
+<a href="{% url 'resource_tags' organization.slug 'appproject' project.pk %}">Classification and permission tags</a>
+<p>Six agents will plan, generate the backend and forms, add platform security controls, generate tests, and package the source. Their permissions expire after 24 hours and are limited to this project. No model provider, paid build, registry push, or deployment is started by source generation.</p>
+{% if not project.build_id %}<form method="post" action="{% url 'app_factory_approve' organization.slug project.pk %}">{% csrf_token %}<button>Approve specification and scoped development team</button></form>
+{% else %}<p>Build: {{ project.build.status }}{% if project.build.error %} · {{ project.build.error }}{% endif %}</p>
+<ul>{% for step in steps %}<li>{{ step.tool }} · Agent {{ step.agent_account_id }} · {{ step.completed }}</li>{% endfor %}</ul>
+{% endif %}
+{% if artifact_status %}<p>{{ artifact_status }}</p>{% endif %}
+{% if source_hash %}<p>Source digest: <code>{{ source_hash }}</code></p><a href="{% url 'app_factory_download' organization.slug project.pk %}">Download source and generated tests</a>
+<p>Execute the tests and review source/image provenance before release. A successful source-generation workflow does not establish that generated tests passed.</p>
+{% if not project.package_id %}<form method="post" action="{% url 'app_factory_release' organization.slug project.pk %}">{% csrf_token %}{{ release_form.as_p }}<button>Approve private marketplace release</button></form>{% endif %}{% endif %}
+{% if project.package_id %}<p>Private marketplace package: {{ project.package.name }}.</p><a href="{% url 'platform_dashboard' organization.slug %}">Set application permissions and deployment configuration</a>{% endif %}
+{% endblock %}

@@ -29,6 +29,8 @@ def snapshot_agents(organization, slugs):
 
 def required_capabilities(source, snapshot):
     capabilities = {"agents.run" if source == "agent" else "workflows.run"}
+    if any(any(tool.startswith('app_') for tool in possible_tools(step)) for step in snapshot):
+        capabilities.add('appfactory.build')
     if any("publish" in possible_tools(step) for step in snapshot):
         capabilities.add("data.write")
     if any('chat_send' in possible_tools(step) for step in snapshot):
@@ -48,6 +50,9 @@ def execution_resources(organization, snapshot):
             if tool['kind'] == 'chat_send':
                 from core_chat.models import Conversation
                 resources.append(Conversation.objects.get(organization=organization, pk=tool['configuration']['conversation_id'], active=True))
+            if tool['kind'].startswith('app_'):
+                from .models import AppProject
+                resources.append(AppProject.objects.get(organization=organization, pk=tool['configuration']['project_id'], active=True))
     return resources
 
 
@@ -159,6 +164,9 @@ def execute_tool(organization, step, data, event_id, principal=None, agent_name=
     if not isinstance(data, dict):
         raise ValidationError("Agents require a JSON object.")
     kind, configuration = step["kind"], step["configuration"]
+    if kind.startswith('app_'):
+        from .app_factory import execute_step
+        return execute_step(organization, step, data, principal, event_id)
     if kind == "inspect":
         return {"field_count": len(data), "fields": sorted(data), "types": {key: type(value).__name__ for key, value in data.items()}}
     if kind == "select":

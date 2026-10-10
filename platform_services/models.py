@@ -277,7 +277,8 @@ class DataRecord(models.Model):
 
 class AgentDefinition(TaggedResource):
     KINDS = [("inspect", "Inspect a JSON record"), ("select", "Select record fields"), ("publish", "Publish a data record"),
-             ("rules", "Choose a tool using record rules"), ("chat_send", "Send an AI chat message")]
+             ("rules", "Choose a tool using record rules"), ("chat_send", "Send an AI chat message"),
+             *[(f'app_{role}', f'Application development: {role}') for role in ['plan', 'backend', 'frontend', 'security', 'test', 'package']]]
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="agents")
     slug = models.SlugField()
     name = models.CharField(max_length=160)
@@ -413,9 +414,9 @@ class AgentTask(TaggedResource):
 
     def clean(self):
         from django.apps import apps
-        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources', 'fabric_contracts', 'integrations'}:
+        if not isinstance(self.resources, dict) or set(self.resources) - {'datasets', 'conversations', 'service_resources', 'fabric_contracts', 'integrations', 'app_projects'}:
             raise ValidationError('Task resources must contain dataset, conversation, fabric contract, integration, or registered service resource ID lists.')
-        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'), ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration')]:
+        for key, label in [('datasets', 'platform_services.Dataset'), ('conversations', 'core_chat.Conversation'), ('service_resources', 'identity.ProtectedResource'), ('fabric_contracts', 'core_fabric.FabricContract'), ('integrations', 'platform_services.ApplicationIntegration'), ('app_projects', 'platform_services.AppProject')]:
             ids = self.resources.get(key, [])
             if not isinstance(ids, list) or len(ids) > 100 or any(not isinstance(value, str) for value in ids):
                 raise ValidationError('Task resource scopes use lists of at most 100 IDs.')
@@ -429,6 +430,8 @@ class AgentTask(TaggedResource):
             if key == 'integrations' and apps.get_model(label).objects.filter(pk__in=ids).exclude(
                     installation_id=self.installation_id, environment__name=self.environment).exists():
                 raise ValidationError('Task integrations must match the consuming application and environment.')
+            if key == 'app_projects' and apps.get_model(label).objects.filter(pk__in=ids).exclude(environment__name=self.environment).exists():
+                raise ValidationError('Task projects must match the development environment.')
         if self.installation_id and self.installation.organization_id != self.organization_id:
             raise ValidationError('The task application must belong to this organization.')
         if self.active and self.expires_at and self.expires_at <= timezone.now():
@@ -601,3 +604,4 @@ class TrainingFeedback(TaggedResource):
 
 
 from .integration_models import ApplicationIntegration, IntegrationConnection, IntegrationDefinition  # noqa: E402,F401
+from .app_factory_models import AppProject  # noqa: E402,F401

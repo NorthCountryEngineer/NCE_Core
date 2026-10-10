@@ -19,7 +19,7 @@ OIDC registration, and workload credentials automatically.
 ## Core services and central administration
 
 The marketplace supplies **Core Platform**, **Core Data**, **Core Agents**,
-**Core Workflows**, **Core Chat**, **Core Training**, and **Core Data Fabric** alongside application packages.
+**Core Workflows**, **Core Chat**, **Core Training**, **Core Data Fabric**, and **Core App Factory** alongside application packages.
 Core packages currently execute inside the core runtime; each organization receives its own installation, service
 identity, permission settings, and monitored instance. The central panel manages
 members and roles, application grants, runtimes, deployment state and health,
@@ -29,6 +29,11 @@ datasets, pipelines, agent definitions, and workflow runs.
 contracts and environment-scoped connections with explicit app inheritance and
 live RBAC. App admin panels can use delegated settings APIs; the portable adapter
 also supports independently configured standalone applications.
+
+[AI application creation](docs/app-factory.md) turns reviewed descriptions/specifications
+into executable data applications through six scoped development-agent accounts. Generated
+services inherit Core login, live authorization, collection tags, and audit/accounting controls.
+Source review, test execution, and an approved image digest precede marketplace release.
 
 Core Training supplies an [AI-first simulation and evaluation harness](docs/training.md),
 with synthetic pipeline data, agent workflows, seeded scenarios, and attributed reviews.

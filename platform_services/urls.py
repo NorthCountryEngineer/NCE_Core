@@ -1,8 +1,18 @@
 from django.urls import path
 from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal, environment_portal
 from . import integration_api, integration_portal
+from . import app_factory_api, app_factory_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/app-factory/', app_factory_portal.index, name='app_factory'),
+    path('organizations/<slug:slug>/platform/app-factory/new/', app_factory_portal.create, name='app_factory_create'),
+    path('organizations/<slug:slug>/platform/app-factory/<uuid:pk>/', app_factory_portal.detail, name='app_factory_project'),
+    path('organizations/<slug:slug>/platform/app-factory/<uuid:pk>/approve/', app_factory_portal.approve, name='app_factory_approve'),
+    path('organizations/<slug:slug>/platform/app-factory/<uuid:pk>/source/', app_factory_portal.download, name='app_factory_download'),
+    path('organizations/<slug:slug>/platform/app-factory/<uuid:pk>/release/', app_factory_portal.publish, name='app_factory_release'),
+    path('api/platform/v1/app-factory/projects/', app_factory_api.create),
+    path('api/platform/v1/app-factory/projects/<uuid:pk>/', app_factory_api.detail),
+    path('api/platform/v1/app-factory/projects/<uuid:pk>/source/', app_factory_api.download),
     path('organizations/<slug:slug>/platform/integrations/', integration_portal.integration_settings, name='integration_settings'),
     path('organizations/<slug:slug>/platform/integrations/definitions/new/', integration_portal.integration_definition, name='integration_definition_add'),
     path('organizations/<slug:slug>/platform/integrations/definitions/<uuid:pk>/', integration_portal.integration_definition, name='integration_definition_edit'),

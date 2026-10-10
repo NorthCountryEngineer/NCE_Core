@@ -127,6 +127,10 @@ def resource_chain(resource):
                         from core_chat.models import Conversation
                         for conversation in Conversation.objects.filter(organization=item.organization, pk=tool['configuration']['conversation_id']):
                             visit(conversation)
+                    if tool['kind'].startswith('app_'):
+                        from platform_services.models import AppProject
+                        for project in AppProject.objects.filter(organization=item.organization, pk=tool['configuration'].get('project_id')):
+                            visit(project)
     visit(resource)
     return result
 
@@ -185,6 +189,7 @@ def decision(principal, resource):
                 scope = {'platform_services.dataset': 'datasets', 'core_chat.conversation': 'conversations',
                     'core_fabric.fabriccontract': 'fabric_contracts',
                     'platform_services.applicationintegration': 'integrations',
+                    'platform_services.appproject': 'app_projects',
                     'identity.protectedresource': 'service_resources'}.get(item._meta.label_lower)
                 if scope and str(item.pk) not in task.resources.get(scope, []):
                     return False, 'agent_task_resource_scope', tags

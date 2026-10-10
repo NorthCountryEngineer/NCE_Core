@@ -5,6 +5,18 @@ def validate_configuration(organization_id, kind, configuration):
     from .models import Dataset
     if not isinstance(configuration, dict):
         raise ValidationError("Agent configuration must be an object.")
+    if kind.startswith('app_'):
+        from .app_factory import ROLES
+        from .models import AppProject
+        if kind not in {f'app_{role}' for role in ROLES} or set(configuration) != {'project_id', 'spec_digest'}:
+            raise ValidationError('Application tools require a pinned project specification.')
+        try:
+            project = AppProject.objects.get(pk=configuration['project_id'], organization_id=organization_id, active=True)
+        except (AppProject.DoesNotExist, ValueError, ValidationError):
+            raise ValidationError('Choose an active project in this organization.')
+        from .app_factory import specification_digest
+        if specification_digest(project) != configuration['spec_digest']:
+            raise ValidationError('The project specification changed.')
     if kind == "select" and (not isinstance(configuration.get("fields"), list) or
         any(not isinstance(f, str) for f in configuration["fields"])):
         raise ValidationError("The select tool requires a list of fields.")

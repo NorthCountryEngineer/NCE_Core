@@ -1,4 +1,6 @@
 CORE_CATALOG = [
+    ('core-app-factory', 'Core App Factory', 'Description-led application development with scoped agent accounts and inherited platform security.',
+     ['core-agents', 'core-workflows'], ['appfactory.create', 'appfactory.read', 'appfactory.build', 'appfactory.release']),
     ('core-fabric', 'Core Data Fabric', 'Bilateral administrator-approved data federation between Core deployments.',
      ['core-data'], ['fabric.read', 'fabric.write', 'fabric.manage', 'fabric.peer']),
     ("core-platform", "Core Platform", "Identity, organization administration, marketplace, and instance management.", [], []),
