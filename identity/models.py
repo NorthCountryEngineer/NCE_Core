@@ -59,6 +59,7 @@ class Organization(TaggedResource):
     name = models.CharField(max_length=160)
     identity_name = models.CharField(max_length=160, blank=True, help_text="Custom name for Core Identity")
     unified_header_enabled = models.BooleanField(default=True, help_text="Default shared header for this organization's applications")
+    header_configuration = models.JSONField(default=dict, blank=True, help_text="Validated shared header appearance and widgets")
     active = models.BooleanField(default=True)
 
     @property

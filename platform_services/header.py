@@ -75,6 +75,9 @@ def state(principal, organization, source=None):
     if not result['enabled']:
         return result
     rows = applications(principal, organization, membership)
+    from .header_configuration import presentation
+    result['appearance'], result['shortcuts'], result['links'] = presentation(organization, principal, rows, source)
+    result['environment'] = source.credential.environment.name if source and source.credential.environment_id else 'Core'
     result['applications'] = rows
     visible = {r['id'] for r in rows}
     result['pins'] = [str(pk) for pk in membership.application_pins.values_list('deployment_id', flat=True) if str(pk) in visible]
@@ -91,6 +94,8 @@ def state(principal, organization, source=None):
     from core_chat.services import capability
     from core_chat.workspace import workspace_state
     try:
+        if 'chat' not in result['appearance']['widgets']:
+            return result
         capability(principal, organization, 'chat.read')
         if source:
             capability(source, organization, 'chat.read')

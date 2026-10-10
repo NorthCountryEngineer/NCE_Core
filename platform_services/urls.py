@@ -9,6 +9,7 @@ from . import header_views
 
 urlpatterns = [
     path('user-tools/header.js', header_views.component, name='header_component'),
+    path('user-tools/header-editor.js', header_views.editor_component, name='header_editor_component'),
     path('organizations/<slug:slug>/platform/header/', header_views.settings, name='header_settings'),
     path('organizations/<slug:slug>/tools/', header_views.state, name='header_state'),
     path('organizations/<slug:slug>/tools/pins/', header_views.pins, name='header_pins'),

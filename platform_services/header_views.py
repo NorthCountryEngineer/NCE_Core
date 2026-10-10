@@ -2,7 +2,7 @@
 from pathlib import Path
 from functools import wraps
 
-from django import forms
+from django.contrib import messages as notices
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import FileResponse
 from django.shortcuts import redirect, render
@@ -12,7 +12,6 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from core_chat.federation import FederationUnavailable
 from core_chat.portal import member
 from identity.access import request_principal
-from identity.models import Organization
 from identity.views import audit, organization_admin
 from . import header
 from .api import body, response
@@ -28,6 +27,10 @@ def dispatch(request, operation, pk=None, *, source=None):
         return response(header.state(principal, organization, source))
     if not header.enabled(organization, installation):
         raise PermissionDenied('Shared header is disabled.')
+    if operation in {'messages', 'send', 'preferences'}:
+        from .header_configuration import configuration
+        if 'chat' not in configuration(organization)['widgets']:
+            raise PermissionDenied('Header Chat widget is disabled.')
     if operation == 'pins':
         header.pin(principal, organization, body(request))
         return response(header.state(principal, organization, source))
@@ -117,17 +120,50 @@ def component(request):
     return result
 
 
+@require_GET
+def editor_component(request):
+    result = FileResponse((Path(__file__).parent / 'assets' / 'header-editor.js').open('rb'), content_type='text/javascript; charset=utf-8')
+    result['Cache-Control'] = 'public, max-age=300'
+    result['X-Content-Type-Options'] = 'nosniff'
+    return result
+
+
 @organization_admin
+@require_http_methods(('GET', 'POST'))
 def settings(request, organization):
-    class HeaderForm(forms.ModelForm):
-        class Meta:
-            model = Organization
-            fields = ['unified_header_enabled']
-            labels = {'unified_header_enabled': 'Show the shared header by default'}
-            help_texts = {'unified_header_enabled': 'Includes app pins, account tools, Chat, and unread notifications. Each installed app can inherit this setting or override it in Set service access. Applications include the header component and backend adapter described in docs/unified-header.md.'}
-    form = HeaderForm(request.POST or None, instance=organization)
-    if request.method == 'POST' and form.is_valid():
-        form.save()
-        audit(request, 'header.configuration_updated', organization.pk)
-        return redirect('platform_dashboard', slug=organization.slug)
-    return render(request, 'identity/form.html', {'form': form, 'title': 'Shared application header'})
+    from .header_forms import HeaderForm, LinkFormSet
+    from .header_configuration import configuration, DEFAULT, PRESETS, WIDGETS
+    current = configuration(organization)
+    form = HeaderForm(request.POST if request.method == 'POST' else None, organization=organization)
+    links = LinkFormSet(request.POST if request.method == 'POST' else None, prefix='links', initial=current['links'], form_kwargs={'organization': organization})
+    if request.method == 'POST':
+        if request.POST.get('action') == 'reset':
+            organization.header_configuration = {}
+            organization.save(update_fields=['header_configuration'])
+            audit(request, 'header.configuration_reset', organization.pk)
+            notices.success(request, 'Header appearance, widgets, and shared links restored to defaults. Personal pins and access permissions are preserved.')
+            return redirect('header_settings', slug=organization.slug)
+        valid_form, valid_links = form.is_valid(), links.is_valid()
+        if valid_form and valid_links:
+            try:
+                config = form.configuration([{**{key: item.cleaned_data[key] for key in ('label', 'url', 'new_tab')},
+                    'permission_tags': [tag.pk for tag in item.cleaned_data['permission_tags']]} for item in links.ordered_forms if item.cleaned_data])
+            except ValidationError as exc:
+                form.add_error(None, exc)
+            else:
+                organization.unified_header_enabled = form.cleaned_data['unified_header_enabled']
+                organization.identity_name = form.cleaned_data['identity_name']
+                organization.header_configuration = config
+                organization.save(update_fields=['unified_header_enabled', 'identity_name', 'header_configuration'])
+                audit(request, 'header.configuration_updated', organization.pk)
+                notices.success(request, 'Shared header saved. Integrated applications receive it on their next refresh.')
+                return redirect('header_settings', slug=organization.slug)
+    try:
+        preview = header.state(request_principal(request), organization)
+    except PermissionDenied:
+        preview = {'version': 1, 'organization_id': str(organization.pk), 'enabled': True, 'brand': organization.brand,
+            'organization_name': organization.name, 'user': {'name': request.user.email}, 'applications': [], 'pins': [],
+            'tools': [], 'chat': {'enabled': False, 'rooms': [], 'unread': 0, 'notifications': 0}}
+    return render(request, 'platform_services/header_settings.html', {'form': form, 'links': links, 'organization': organization,
+        'widgets': [(key, form['widget_' + key], form['order_' + key]) for key in WIDGETS],
+        'preview_state': preview, 'header_presets': PRESETS, 'header_defaults': DEFAULT})

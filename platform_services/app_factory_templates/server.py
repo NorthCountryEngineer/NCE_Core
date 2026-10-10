@@ -112,8 +112,9 @@ def prune(store):
 def application(environ, start_response):
     def reply(status, value, headers=(), mime='application/json'):
         payload = value if isinstance(value, bytes) else json.dumps(value).encode()
+        local_images = ' http://localhost:* http://127.0.0.1:* http://[::1]:*' if os.environ.get('CORE_ALLOW_LOCAL_HTTP') == '1' else ''
         start_response(status, [('Content-Type', mime), ('Content-Length', str(len(payload))), ('Cache-Control', 'no-store'),
-            ('X-Content-Type-Options', 'nosniff'), ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+            ('X-Content-Type-Options', 'nosniff'), ('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https:" + local_images + "; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
             ('Referrer-Policy', 'no-referrer'), *headers])
         return [payload]
 

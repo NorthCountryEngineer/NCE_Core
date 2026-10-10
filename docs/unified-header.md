@@ -9,15 +9,40 @@ available for conversation creation, groups, search, sharing, and administration
 ## Configure it as an administrator
 
 1. Open your organization's **Central admin → Shared application header**.
-2. Select **Show the shared header by default**, then save. New and existing
+2. Set the platform name, a public HTTPS logo URL, a color scheme (Navy, Slate,
+   Forest, Light, or custom colors), comfortable/compact spacing, and whether to
+   show the organization name. Custom header text/background colors must meet
+   4.5:1 contrast. The editor previews unsaved changes without opening tools or
+   writing preferences. An unavailable logo falls back to the text brand.
+3. Choose and order the built-in widgets: application launcher, shared shortcuts
+   and personal pins, organization links, account tools, Chat/notifications, and
+   current deployment environment. Set positions from 1 to 6; catalog order
+   breaks ties. On phones, shortcuts and organization links wrap below the
+   primary tools. Brand and host-owned sign-out remain available. These are a
+   declarative widget catalog, not arbitrary JavaScript, CSS, HTML, or iframes.
+4. Select up to twelve **Shared application shortcuts**. Users see only deployed
+   instances they can access, checked live against service permissions,
+   classification tags, environment, and enabled/running state. Shared shortcuts
+   and personal pins are deduplicated. Shared links never create permission grants.
+5. Add up to eight organization links, set their order, choose whether they open
+   a new tab, and optionally require organization permission tags. All selected
+   tags apply live to the user and, in an integrated app, its backend identity.
+   MFA freshness and purpose requirements still apply; tagged URLs and labels
+   are omitted entirely when access is denied. The destination must enforce its
+   own authentication and authorization. New tabs use `noopener noreferrer`.
+6. Select **Show the shared header by default**, then **Save shared header**. New and existing
    organizations default to enabled. Disabling it restores Core's basic account
-   header and changes the default consumed by integrated apps.
-3. For an installed application, open **Set service access → Shared organization
+   header and changes the default consumed by integrated apps. Changes appear on
+   the next visible-page refresh (normally within five seconds); reload an app
+   that had the header disabled. **Reset header appearance** restores colors,
+   logo, spacing, widgets, shared shortcuts, and organization links. It preserves
+   the platform name, enable/override settings, personal pins, roles, and grants.
+7. For an installed application, open **Set service access → Shared organization
    header**. Choose **Organization default**, **Show shared header**, or **Use
    application header**. Overrides apply to that application's deployed instances.
-4. Assign users the application's actual service permissions and any deployment
+8. Assign users the application's actual service permissions and any deployment
    environment or classification tags. A bookmark never grants app access.
-5. For Chat in an external app, grant the app `chat.read` and, if appropriate,
+9. For Chat in an external app, grant the app `chat.read` and, if appropriate,
    `chat.send` in its declared marketplace capabilities. Add its installation as
    an approved participant in the relevant conversations. Users still require
    their own Chat permissions and conversation membership. A reader participant
@@ -108,6 +133,25 @@ host's OIDC session lifecycle; an expired/revoked token fails closed.
 The generated WSGI app supplies a working example in
 `platform_services/app_factory_templates/server.py`: `/core-header/` requires its
 native session and independently verifies its CSRF token and configured Origin.
+
+The header state also contains `appearance` (validated colors, logo URL, spacing,
+widget order, and organization-label preference), authorized `shortcuts`, filtered
+`links`, and the current deployment `environment`. The version-1 contract remains
+compatible with existing adapters. Use the current header component asset in
+existing applications to render the added settings; new generated apps include it.
+Organization branding applies even when an app explicitly overrides the header to
+enabled. The state is per user and must never be cached between users or tenants.
+
+Logos are browser-loaded images; Core never fetches an administrator's URL.
+They need a public HTTPS image endpoint without credentials, signed query strings,
+or fragments. A restrictive application CSP must permit the approved image origin
+in `img-src` (or `https:` for configurable public image hosts). The generated app
+uses `img-src 'self' https:`; local development additionally permits loopback HTTP
+images. Scripts and styles remain restricted to the application origin. Browser
+image loading uses `referrerpolicy="no-referrer"`, and failed/CSP-blocked images
+fall back to text. Custom links use HTTPS; DEBUG-only local HTTP links and images
+allow testing without provisioning external hosting. No image upload/storage or
+third-party widget provider is required.
 
 ## Backend contract and security
 

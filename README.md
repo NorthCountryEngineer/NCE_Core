@@ -39,8 +39,10 @@ also supports independently configured standalone applications.
 
 The optional [shared organization header](docs/unified-header.md) includes
 permission-checked app links, personal pins, account tools, and a Chat drawer
-with unread notifications. Administrators set an organization default and app
-overrides. Native Core and newly generated apps include it; existing apps use
+with unread notifications. Administrators customize logos, names, colors, widget
+order/visibility, shared app shortcuts, and permission-tagged organization links
+in a live preview editor, with organization defaults and app overrides.
+Native Core and newly generated apps include it; existing apps use
 the browser component and same-origin backend adapter.
 
 [Core AI rules](docs/ai-rules.md) compose inherited budgets and query constraints, enforce

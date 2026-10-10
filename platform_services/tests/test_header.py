@@ -15,7 +15,7 @@ from core_chat.tests import test_portal as portal
 from core_client import CoreClient, CoreServiceError
 from header_client import HeaderAdapter
 from identity.access import Principal
-from identity.models import Membership, Organization, PermissionTag, ServicePermission
+from identity.models import AuditEvent, Membership, Organization, PermissionTag, ServicePermission
 from platform_services.environments import create_environment
 from platform_services.models import ApplicationPin, Deployment, Installation, MarketplacePackage, RuntimeNode, WorkloadCredential
 from platform_services.services import create_deployment, install_package, issue_workload_credential
@@ -145,6 +145,166 @@ class HeaderTests(TestCase):
         self.assertEqual(self.get('header_settings').status_code, 403)
         self.browser.force_login(self.owner)
         self.assertEqual(self.get('header_settings').status_code, 200)
+
+    def header_data(self, **changes):
+        from platform_services.header_configuration import DEFAULT, WIDGETS
+        values = {**DEFAULT, 'unified_header_enabled': 'on', 'identity_name': 'Test Platform',
+            'show_organization': 'on', 'links-TOTAL_FORMS': '0', 'links-INITIAL_FORMS': '0',
+            'links-MIN_NUM_FORMS': '0', 'links-MAX_NUM_FORMS': '8'}
+        values.pop('links'); values.pop('widgets'); values.pop('shortcuts')
+        for index, key in enumerate(WIDGETS):
+            values['widget_' + key] = 'on' if key in DEFAULT['widgets'] else ''
+            values['order_' + key] = str(index + 1)
+        values.update(changes)
+        return values
+
+    def save_header(self, values, *, csrf=True, origin='http://localhost:8000'):
+        self.browser.get('/', HTTP_HOST='localhost:8000')
+        self.get('header_settings')
+        return self.browser.post(self.path('header_settings'), values, HTTP_HOST='localhost:8000', HTTP_ORIGIN=origin,
+            **({'HTTP_X_CSRFTOKEN': self.browser.cookies['csrftoken'].value} if csrf else {}))
+
+    def configure(self, **changes):
+        from copy import deepcopy
+        from platform_services.header_configuration import DEFAULT, validate
+        self.organization.header_configuration = validate({**deepcopy(DEFAULT), **changes}, self.organization)
+        self.organization.save(update_fields=['header_configuration'])
+
+    def test_administrator_editor_saves_brand_colors_widgets_links_and_shortcuts(self):
+        self.browser.force_login(self.owner)
+        values = self.header_data(preset='custom', background='#153c31', foreground='#ffffff', accent='#28775c',
+            logo_url='https://cdn.example.test/organization.png', shortcuts=[str(self.deployment.pk)],
+            widget_environment='on', order_environment='1', **{'links-TOTAL_FORMS': '1',
+            'links-0-label': 'Support', 'links-0-url': 'https://support.example.test/help', 'links-0-new_tab': 'on', 'links-0-ORDER': '1'})
+        self.assertEqual(self.save_header(values).status_code, 302)
+        self.browser.force_login(self.member)
+        state = self.get('header_state').json()
+        self.assertEqual(state['brand'], 'Test Platform')
+        self.assertEqual(state['appearance']['background'], '#153c31')
+        self.assertEqual(state['appearance']['logo_url'], 'https://cdn.example.test/organization.png')
+        self.assertEqual(state['appearance']['widgets'][1], 'environment')  # Catalog order breaks the position tie.
+        self.assertEqual(state['shortcuts'][0]['id'], str(self.deployment.pk))
+        self.assertEqual(state['links'], [{'label': 'Support', 'url': 'https://support.example.test/help', 'new_tab': True}])
+        external = self.api().json()
+        self.assertEqual(external['appearance'], state['appearance'])
+        self.assertEqual(external['environment'], 'sandbox')
+        self.assertEqual(external['shortcuts'], state['shortcuts'])
+        self.assertEqual(external['links'], state['links'])
+        self.assertTrue(AuditEvent.objects.filter(organization=self.organization, action='header.configuration_updated', actor=self.owner).exists())
+
+    def test_member_cannot_change_header_or_reset_it(self):
+        self.assertEqual(self.save_header(self.header_data()).status_code, 403)
+        self.assertEqual(self.save_header({'action': 'reset'}).status_code, 403)
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+
+    def test_editor_save_and_reset_require_csrf_and_trusted_origin(self):
+        self.browser.force_login(self.owner)
+        for values in (self.header_data(), {'action': 'reset'}):
+            for csrf, origin in ((False, 'http://localhost:8000'), (True, 'null'), (True, 'https://attacker.example.test')):
+                self.assertEqual(self.save_header(values, csrf=csrf, origin=origin).status_code, 403)
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+
+    def test_editor_rejects_executable_urls_css_and_poor_contrast(self):
+        self.browser.force_login(self.owner)
+        for changes in ({'logo_url': 'javascript:alert(1)'}, {'logo_url': 'data:image/svg+xml,<svg/>'},
+                {'logo_url': 'https://cdn.example.test/image?signature=opaque'},
+                {'background': 'red;position:fixed'}, {'preset': 'custom', 'foreground': '#24263e'}):
+            self.assertContains(self.save_header(self.header_data(**changes)), 'errorlist')
+        for url in ('javascript:alert(1)', 'data:text/html,<p>unsafe</p>', '//example.test/path', 'https://name@example.test/path'):
+            values = self.header_data(**{'links-TOTAL_FORMS': '1', 'links-0-label': 'Link', 'links-0-url': url})
+            self.assertContains(self.save_header(values), 'errorlist')
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+
+    def test_editor_rejects_foreign_apps_tags_and_excessive_links(self):
+        self.browser.force_login(self.owner)
+        foreign = Organization.objects.create(slug='other-header-brand', name='Other')
+        app = install_package(foreign, self.app.package)
+        deployment = Deployment.objects.create(installation=app, name='Foreign', endpoint='https://foreign.example.test', target='kubernetes')
+        tag = PermissionTag.objects.create(organization=foreign, name='Foreign', slug='foreign')
+        for changes in ({'shortcuts': [str(deployment.pk)]}, {'links-TOTAL_FORMS': '1', 'links-0-label': 'Private',
+                'links-0-url': 'https://private.example.test', 'links-0-permission_tags': [tag.pk]},
+                {'links-TOTAL_FORMS': '99'}):
+            self.assertContains(self.save_header(self.header_data(**changes)), 'errorlist')
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+
+    def test_shared_shortcuts_never_grant_access_or_expose_a_revoked_application(self):
+        self.configure(shortcuts=[str(self.deployment.pk)])
+        self.assertEqual(len(self.get('header_state').json()['shortcuts']), 1)
+        self.role.permissions.remove(self.app_permission)
+        state = self.get('header_state').json()
+        self.assertEqual(state['shortcuts'], [])
+        self.assertNotIn('app.example.test', json.dumps(state))
+        self.assertEqual(self.api().status_code, 403)
+
+    def test_custom_links_obey_live_user_and_application_tag_grants(self):
+        tag = PermissionTag.objects.create(organization=self.organization, name='Operations', slug='header-operations', allow_workloads=True)
+        self.configure(links=[{'label': 'Private operations', 'url': 'https://private.example.test', 'new_tab': False, 'permission_tags': [tag.pk]}])
+        self.assertEqual(self.get('header_state').json()['links'], [])
+        self.membership.access_tags.add(tag)
+        self.assertEqual(len(self.get('header_state').json()['links']), 1)
+        self.assertEqual(self.api().json()['links'], [])
+        self.app.access_tags.add(tag)
+        self.assertEqual(len(self.api().json()['links']), 1)
+        self.membership.access_tags.remove(tag)
+        self.assertEqual(self.api().json()['links'], [])
+        tag.active = False; tag.save()
+        self.assertEqual(self.get('header_state').json()['links'], [])
+
+    def test_header_configuration_inherits_organization_mfa_and_purpose_restrictions(self):
+        tag = PermissionTag.objects.create(organization=self.organization, name='Protected branding', slug='header-mfa', requires_mfa=True)
+        self.organization.permission_tags.add(tag)
+        self.owner.memberships.get(organization=self.organization).access_tags.add(tag)
+        self.browser.force_login(self.owner)
+        self.assertEqual(self.get('header_settings').status_code, 403)
+        self.assertEqual(self.save_header(self.header_data()).status_code, 403)
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+
+    def test_reset_preserves_private_pins_brand_and_permissions(self):
+        self.browser_json('header_pins', {'deployment_id': str(self.deployment.pk), 'pinned': True})
+        self.configure(preset='forest', shortcuts=[str(self.deployment.pk)], density='compact')
+        self.organization.identity_name = 'Retained brand'; self.organization.save(update_fields=['identity_name'])
+        self.browser.force_login(self.owner)
+        self.assertEqual(self.save_header({'action': 'reset'}).status_code, 302)
+        self.organization.refresh_from_db()
+        self.assertEqual(self.organization.header_configuration, {})
+        self.assertEqual(self.organization.identity_name, 'Retained brand')
+        self.assertTrue(self.role.permissions.filter(pk=self.app_permission.pk).exists())
+        self.assertEqual(self.membership.application_pins.count(), 1)
+
+    def test_disabling_chat_widget_hides_activity_and_blocks_drawer_routes(self):
+        self.configure(widgets=['apps', 'pins', 'account'])
+        self.assertFalse(self.get('header_state').json()['chat']['enabled'])
+        self.assertEqual(self.get('header_messages', self.room.pk).status_code, 403)
+        self.assertFalse(self.api().json()['chat']['enabled'])
+        self.assertEqual(self.api(f'chat/{self.room.pk}/messages/').status_code, 403)
+        self.assertEqual(self.get('chat').status_code, 200)
+
+    def test_configuration_validator_has_bounded_typed_catalog_and_safe_fallback(self):
+        from copy import deepcopy
+        from django.core.exceptions import ValidationError
+        from platform_services.header_configuration import DEFAULT, configuration, validate
+        for changes in ({'widgets': ['custom-script']}, {'widgets': ['chat', 'chat']}, {'show_organization': 'yes'},
+                {'links': [{'label': 'Hi', 'url': 'https://example.test', 'new_tab': 'yes', 'permission_tags': []}]},
+                {'links': [{'label': 'Hi', 'url': 'https://example.test', 'new_tab': True, 'permission_tags': [True]}]},
+                {'shortcuts': ['invalid']}, {'html': '<script>unsafe</script>'}):
+            with self.assertRaises(ValidationError):
+                validate({**deepcopy(DEFAULT), **changes}, self.organization)
+        self.organization.header_configuration = {'widgets': ['custom-script']}
+        self.assertEqual(configuration(self.organization), DEFAULT)
+
+    @override_settings(DEBUG=False)
+    def test_production_disallows_insecure_images_and_links(self):
+        from django.core.exceptions import ValidationError
+        from platform_services.header_configuration import safe_url
+        for url in ('http://localhost:8000/logo.png', 'http://example.test/logo.png'):
+            with self.assertRaises(ValidationError):
+                safe_url(url)
+        self.assertEqual(safe_url('https://cdn.example.test/logo.png', logo=True), 'https://cdn.example.test/logo.png')
 
     def test_native_header_posts_require_origin_and_csrf(self):
         for csrf, origin in [(False, 'http://localhost:8000'), (True, 'null'), (True, 'https://attacker.example.test')]:

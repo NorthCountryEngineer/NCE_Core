@@ -37,7 +37,7 @@ def header_application(instance, slug, email):
             self.send_header('Content-Type', mime)
             self.send_header('Cache-Control', 'no-store')
             self.send_header('Content-Length', str(len(data)))
-            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: http://localhost:* http://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             if cookie:
                 self.send_header('Set-Cookie', f'header_test_session={session}; HttpOnly; SameSite=Lax; Path=/')
             self.end_headers()
@@ -47,6 +47,8 @@ def header_application(instance, slug, email):
             parsed = urlparse(self.path)
             if self.command == 'GET' and parsed.path == '/header.js':
                 return self.reply(200, (Path(__file__).resolve().parents[1] / 'platform_services/assets/header.js').read_bytes(), 'text/javascript; charset=utf-8')
+            if self.command == 'GET' and parsed.path == '/logo.svg':
+                return self.reply(200, b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="12" fill="#e3a428"/><path d="M16 46V18h9l14 18V18h9v28h-9L25 28v18z" fill="#153c31"/></svg>', 'image/svg+xml')
             if self.command == 'GET' and parsed.path == '/':
                 markup = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
                     '<script src="/header.js" defer></script>'
