@@ -17,13 +17,27 @@ drawer. See [Shared organization header](unified-header.md) for per-app override
 and integration into externally deployed applications.
 
 ```bash
-git pull origin main
+git pull --ff-only origin main
 uv sync --frozen
-uv run python scripts/init_dev.py
-CORE_DEBUG=1 uv run python manage.py migrate --noinput
-CORE_DEBUG=1 uv run python manage.py sync_platform_docs
-CORE_DEBUG=1 uv run python manage.py check
+uv run python manage.py dev
 ```
+
+If your `(nce-core)` virtual environment is already active, use
+`python manage.py dev` instead. This command explicitly selects laptop development,
+creates missing unique keys, applies migrations, synchronizes bundled guides,
+checks configuration and starts the server at `http://localhost:8000`.
+It keeps existing `.local/` keys, accounts and data. It refuses a configured
+`DATABASE_URL` or production configuration rather than changing their meaning.
+No default account or password is installed. Leave this terminal running.
+Run the remaining checks and account-management commands from another terminal
+in the same checkout.
+
+For migrations or other local management commands separately, use
+`python manage.py --local migrate` or `python manage.py --local check`.
+Bare `python manage.py migrate` still requires your explicitly configured
+production settings; it does not infer development from your virtual environment.
+`python manage.py dev --port 8001` selects an alternate local port and matching
+issuer. Use the printed URL consistently for login and application registration.
 
 If needed, first clone `https://github.com/NorthCountryEngineer/NCE_Core.git` and
 `cd NCE_Core`. Preserve local changes if Git reports conflicts. Initialization
@@ -40,25 +54,25 @@ Expect `{"status":"ok"}`. After updating, restart your own web/worker terminals
 with Ctrl-C so they load new code. If port 8000 belongs to something else, inspect
 it with `lsof -nP -iTCP:8000 -sTCP:LISTEN`; don't kill an unfamiliar process.
 
-Create an operator account once, if you don't have one:
+In another terminal, create an operator account once if you don't have one:
 
 ```bash
-CORE_DEBUG=1 uv run python manage.py createsuperuser
+uv run python manage.py --local createsuperuser
 ```
 
 Enter your own email and unique password at the prompts. For an existing account,
-`CORE_DEBUG=1 uv run python manage.py changepassword YOUR_EMAIL` resets its password.
+`uv run python manage.py --local changepassword YOUR_EMAIL` resets its password.
 
 Terminal 1, from the checkout:
 
 ```bash
-CORE_DEBUG=1 uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py dev
 ```
 
 Terminal 2, from the same checkout:
 
 ```bash
-CORE_DEBUG=1 uv run python manage.py core_worker
+uv run python manage.py --local core_worker
 ```
 
 Keep both running. The worker handles simulations/workflows and service health;

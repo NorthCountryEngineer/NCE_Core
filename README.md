@@ -146,23 +146,29 @@ integrated with it.
 
 ## Run locally
 
-Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required. In this checkout:
+Use Python 3.12 or 3.13. With [uv](https://docs.astral.sh/uv/), in this checkout:
 
 ```sh
 uv sync --frozen
-uv run python scripts/init_dev.py
-export CORE_DEBUG=1
-uv run python manage.py migrate
-uv run python manage.py bootstrap_organization \
-  --slug example --name "Example Organization" --admin-email admin@example.com
-uv run python manage.py changepassword admin@example.com
-uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py dev
 ```
+
+With an already active virtual environment, run `python manage.py dev` directly.
+The explicit local launcher initializes missing private keys, applies migrations,
+synchronizes bundled documentation and starts the loopback server. Existing keys,
+accounts and `.local/db.sqlite3` are preserved; no default user/password is created.
+It refuses remote database or conflicting production settings. Bare management
+commands retain production configuration requirements; use
+`python manage.py --local migrate` for a separate laptop migration.
+
+Open `http://localhost:8000/accounts/login/`. If you need your first operator
+account, run `uv run python manage.py --local createsuperuser` in another terminal
+and supply your own credentials. Then follow [local onboarding](docs/local-testing.md).
 
 Run the durable workflow worker in a second terminal:
 
 ```sh
-CORE_DEBUG=1 uv run python manage.py core_worker
+uv run python manage.py --local core_worker
 ```
 
 Development uses SQLite and unique local secret files generated once under the

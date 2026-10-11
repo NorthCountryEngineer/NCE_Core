@@ -14,8 +14,16 @@ def read_secret(variable, development_filename):
     if not filename and DEBUG:
         filename = str(BASE_DIR / ".local" / development_filename)
     if not filename:
-        raise ImproperlyConfigured(f"Set {variable} to a mounted secret file.")
-    return Path(filename).read_text().strip()
+        raise ImproperlyConfigured(f"Set {variable} to a mounted secret file for production. "
+            "For laptop development, use python manage.py --local migrate or python manage.py dev.")
+    try:
+        value = Path(filename).read_text().strip()
+    except (OSError, UnicodeError) as error:
+        raise ImproperlyConfigured(f"{variable} must point to a readable secret file. "
+            "For laptop development, use python manage.py dev to initialize missing local keys.") from error
+    if not value:
+        raise ImproperlyConfigured(f"{variable} points to an empty secret file; supply a valid key.")
+    return value
 
 
 SECRET_KEY = read_secret("CORE_SECRET_KEY_FILE", "django.key")

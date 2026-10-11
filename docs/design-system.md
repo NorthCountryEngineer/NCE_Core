@@ -87,7 +87,7 @@ with Ctrl-C, and restart it from the checkout:
 
 ```sh
 git pull --ff-only origin main
-CORE_DEBUG=1 uv run python manage.py runserver 127.0.0.1:8000
+uv run python manage.py dev
 ```
 
 Use your existing local keys, account and database. See
