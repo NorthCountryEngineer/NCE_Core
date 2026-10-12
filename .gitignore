@@ -10,3 +10,7 @@ staticfiles/
 .ci-tools/
 artifacts/
 node_modules/
+
+.amplify-hosting/
+infra/aws/build/
+.env.*

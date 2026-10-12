@@ -45,6 +45,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "identity.browser_cors.OAuthBrowserCorsMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "identity.access.SecurityContextMiddleware",
@@ -146,3 +147,13 @@ CORE_CHAT_SECRET_ROOT = os.environ.get('CORE_CHAT_SECRET_ROOT', str(BASE_DIR / '
 CORE_CHAT_FEDERATION_ORIGINS = [value.strip() for value in os.environ.get('CORE_CHAT_FEDERATION_ORIGINS', '').split(',') if value.strip()]
 CORE_FABRIC_SECRET_ROOT = os.environ.get('CORE_FABRIC_SECRET_ROOT', str(BASE_DIR / '.local' / 'data-fabric') if DEBUG else '/run/secrets/data-fabric')
 CORE_FABRIC_ORIGINS = [value.strip() for value in os.environ.get('CORE_FABRIC_ORIGINS', '').split(',') if value.strip()]
+
+# Fargate receives secrets from ECS and the entrypoint writes private files.
+# Keep this opt-in so existing local/Kubernetes deployments keep their boundary.
+if os.environ.get("CORE_AWS_ORIGIN_BOUNDARY") == "1":
+    CORE_ORIGIN_SECRET = read_secret("CORE_ORIGIN_SECRET_FILE", "origin.key")
+    if len(CORE_ORIGIN_SECRET) < 32:
+        raise ImproperlyConfigured("CORE_ORIGIN_SECRET_FILE must contain at least 32 characters.")
+    if os.environ.get("CORE_TRUST_PROXY") != "1":
+        raise ImproperlyConfigured("The AWS origin boundary requires CORE_TRUST_PROXY=1.")
+    MIDDLEWARE.insert(0, "core.aws.AWSOriginMiddleware")

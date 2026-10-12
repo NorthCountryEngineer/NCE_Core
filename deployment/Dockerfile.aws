@@ -1,0 +1,18 @@
+# Future user-approved build only. This file does not deploy or call AWS APIs.
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
+WORKDIR /app
+RUN pip install --no-cache-dir uv==0.12.19
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --system-certs
+COPY . .
+# Official RDS CA bundle. libpq verifies both its chain and the DB endpoint name.
+# Downloaded only at a future image build, never by an application request.
+RUN python -c "from urllib.request import urlopen; from pathlib import Path; Path('/app/deployment/rds-global-bundle.pem').write_bytes(urlopen('https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem', timeout=30).read())"
+RUN chmod -R a+rX /app \
+    && groupadd --gid 10001 core && useradd --uid 10001 --gid core --no-create-home core \
+    && mkdir -p staticfiles && chown core:core staticfiles
+USER core
+EXPOSE 8000
+ENTRYPOINT [".venv/bin/python", "deployment/aws_entrypoint.py"]
+CMD ["web"]

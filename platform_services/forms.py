@@ -97,6 +97,17 @@ class DeploymentForm(forms.Form):
         self.fields["endpoint"].validators.append(validate_endpoint)
 
 
+class ExternalDeploymentForm(forms.Form):
+    environment = forms.ModelChoiceField(queryset=DeploymentEnvironment.objects.none())
+    endpoint = forms.URLField(label='Application origin', help_text='Existing AWS Amplify application origin. Registration does not provision or deploy hosting.')
+
+    def __init__(self, *args, organization, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['environment'].queryset = organization.environments.filter(active=True)
+        from .validation import validate_endpoint
+        self.fields['endpoint'].validators.append(validate_endpoint)
+
+
 class AdoptControllerForm(forms.Form):
     node = forms.ModelChoiceField(queryset=RuntimeNode.objects.none())
     resource_name = forms.RegexField(regex=r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$", max_length=63,

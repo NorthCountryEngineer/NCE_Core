@@ -143,7 +143,11 @@ class Application(AbstractApplication, TaggedResource):
     active = models.BooleanField(default=True)
 
     def is_usable(self, request):
-        return self.active and self.service.active and self.service.organization.active
+        if not (self.active and self.service.active and self.service.organization.active):
+            return False
+        from platform_services.external_apps import application_deployment, external_available
+        deployment = application_deployment(self)
+        return external_available(deployment) if deployment and deployment.target == 'external' else True
 
     def clean(self):
         super().clean()
@@ -160,6 +164,16 @@ class Application(AbstractApplication, TaggedResource):
                     settings.DEBUG and parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
                 ))):
                 raise ValidationError({"redirect_uris": "Use exact HTTPS URLs; HTTP loopback is allowed in development."})
+        from platform_services.external_apps import application_deployment
+        deployment = application_deployment(self)
+        if deployment and deployment.target == 'external':
+            browser = deployment.application_id == self.pk
+            expected_type = self.CLIENT_PUBLIC if browser else self.CLIENT_CONFIDENTIAL
+            callback = deployment.installation.manifest.get('callback_path', '/oauth/callback') if browser else '/oauth/resource-callback'
+            if (self.service_id != deployment.installation.service_id or self.client_type != expected_type or
+                    self.redirect_uris != deployment.endpoint + callback or
+                    self.allowed_origins != (deployment.endpoint if browser else '')):
+                raise ValidationError('An external application’s service, client type, callback, and origin are fixed by its registered deployment.')
 
 
 class Invitation(TaggedResource):

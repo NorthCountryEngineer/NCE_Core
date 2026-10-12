@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from identity.views import audit, edit_form, organization_admin
 from .forms import (
     AdoptControllerForm, AgentForm, DatasetForm, DeploymentConfigurationForm, DeploymentForm,
-    InstallationForm, InstallationSettingsForm, NodeForm, PipelineForm, RunForm, WorkflowForm,
+    InstallationForm, InstallationSettingsForm, NodeForm, PipelineForm, RunForm, WorkflowForm, ExternalDeploymentForm,
 )
 from .models import AgentDefinition, AgentListing, Dataset, Deployment, DeploymentConfiguration, Installation, MarketplacePackage, Pipeline, RuntimeNode, Workflow
 from .services import create_deployment, install_package, issue_workload_credential, upgrade_installation
@@ -193,6 +193,8 @@ def revoke_key(request, organization, pk):
 @organization_admin
 def deploy(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk, enabled=True)
+    if installation.manifest.get('external_runtime'):
+        return register_external(request, organization, installation)
     config = getattr(organization, "deployment_configuration", None)
     if config is None:
         return redirect("deployment_configuration", slug=organization.slug)
@@ -209,6 +211,27 @@ def deploy(request, organization, pk):
         else:
             return redirect("platform_dashboard", slug=organization.slug)
     return render(request, "identity/form.html", {"form": form, "title": "Register and configure deployment"})
+
+
+def register_external(request, organization, installation):
+    import json
+    from .external_apps import external_public_configuration, register_external_deployment
+    form = ExternalDeploymentForm(request.POST or None, organization=organization)
+    form.fields['environment'].queryset = form.fields['environment'].queryset.filter(pk__in=[
+        environment.pk for environment in visible_resources(request_principal(request), form.fields['environment'].queryset)])
+    if request.method == 'POST' and form.is_valid():
+        try:
+            require_access(request_principal(request), form.cleaned_data['environment'], 'deployment.external_environment')
+            deployment = register_external_deployment(installation, form.cleaned_data['environment'], form.cleaned_data['endpoint'], request.user)
+        except ValidationError as error:
+            form.add_error(None, error)
+        else:
+            response = render(request, 'platform_services/external_registration.html', {
+                'organization': organization, 'installation': installation,
+                'configuration': json.dumps(external_public_configuration(deployment), indent=2)})
+            response['Cache-Control'] = 'no-store'
+            return response
+    return render(request, 'identity/form.html', {'form': form, 'title': 'Register an external AWS application'})
 
 
 @organization_admin
@@ -240,7 +263,9 @@ def deployment_action(request, organization, pk):
     with transaction.atomic():
         deployment = get_object_or_404(Deployment.objects.select_for_update().select_related("installation__package"), pk=pk,
             installation__organization=organization)
-        if deployment.target == 'kubernetes-adopted' and action == 'restart':
+        if deployment.target == 'external' and action == 'restart':
+            messages.error(request, 'AWS releases and restarts are managed in Amplify. Core controls application access only.')
+        elif deployment.target == 'kubernetes-adopted' and action == 'restart':
             messages.error(request, 'Application releases and restarts remain managed by its Kubernetes owner.')
         elif deployment.target == "embedded" or (deployment.target == "kubernetes-controller" and action != "restart"):
             messages.error(request, "Embedded services follow their installation settings. A connected controller supports rolling restart only.")
@@ -252,6 +277,9 @@ def deployment_action(request, organization, pk):
             deployment.revision += 1
             deployment.healthy = False
             deployment.save(update_fields=["desired_state", "action", "revision", "healthy"])
+            if deployment.resource_application_id:
+                deployment.resource_application.active = action != 'stop'
+                deployment.resource_application.save(update_fields=['active'])
             if deployment.application_id:
                 deployment.application.active = action != "stop"
                 deployment.application.save(update_fields=["active"])
@@ -262,7 +290,7 @@ def deployment_action(request, organization, pk):
                         refresh.revoke()
                     get_grant_model().objects.filter(application=deployment.application).delete()
                     deployment.installation.credentials.filter(name=f"deployment:{deployment.pk}").update(active=False)
-                elif action == "start":
+                elif action == "start" and deployment.target != 'external':
                     from .secrets import decrypt_bundle, encrypt_bundle
                     bundle = decrypt_bundle(deployment.encrypted_bundle)
                     deployment.installation.credentials.filter(name=f"deployment:{deployment.pk}").update(active=False)

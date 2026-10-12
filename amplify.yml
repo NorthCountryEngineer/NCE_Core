@@ -1,0 +1,20 @@
+version: 1
+applications:
+  - appRoot: deployment/amplify-core
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - 'test "$CORE_ENABLE_AWS_DEPLOYMENT" = "true" || { echo "Set CORE_ENABLE_AWS_DEPLOYMENT=true only after reviewing AWS charges."; exit 1; }'
+            - npm ci --ignore-scripts --no-audit --no-fund
+        build:
+          commands:
+            - npm test
+            - npm run build
+      artifacts:
+        baseDirectory: .amplify-hosting
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
