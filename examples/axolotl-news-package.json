@@ -1,0 +1,25 @@
+{
+  "slug": "axolotl-news",
+  "name": "Axolotl News",
+  "version": "1.0.0",
+  "description": "An AWS-native family axolotl publication with a visual editor, image/video/PDF uploads, newsletters, invitation-only Core login, live editing and publishing permissions, and anonymous public reading. Hosting is managed in AWS Amplify; installing this package registers Core identity and does not deploy infrastructure.",
+  "kind": "application",
+  "manifest": {
+    "external_runtime": "aws-amplify",
+    "callback_path": "/oauth/callback",
+    "capabilities": [],
+    "dependencies": [
+      "core-platform"
+    ],
+    "permissions": [
+      {
+        "codename": "posts-write",
+        "name": "Create and edit posts"
+      },
+      {
+        "codename": "posts-publish",
+        "name": "Publish and unpublish posts"
+      }
+    ]
+  }
+}

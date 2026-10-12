@@ -11,3 +11,6 @@ artifacts
 ci
 .github
 .secrets.baseline
+**/node_modules/**
+**/.amplify-hosting/**
+infra/aws/build/

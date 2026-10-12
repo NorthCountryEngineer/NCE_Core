@@ -110,8 +110,8 @@ class MarketplacePackage(models.Model):
             raise ValidationError("Unknown built-in core package.")
         if self.kind == 'core' and self.organization_id:
             raise ValidationError('Built-in core packages use the shared marketplace catalog.')
-        if self.kind == "application" and (self.slug in CORE_PACKAGES or not (self.manifest.get("image") or self.manifest.get('existing_workload'))):
-            raise ValidationError("Applications require a digest-pinned image and a nonreserved slug.")
+        if self.kind == "application" and (self.slug in CORE_PACKAGES or not (self.manifest.get("image") or self.manifest.get('existing_workload') or self.manifest.get('external_runtime'))):
+            raise ValidationError("Applications require a digest-pinned image, existing workload, or explicit external runtime and a nonreserved slug.")
 
     def __str__(self):
         return f"{self.name} {self.version}"
@@ -180,7 +180,7 @@ class Deployment(TaggedResource):
     parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="children")
     node = models.ForeignKey(RuntimeNode, on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
     name = models.CharField(max_length=100)
-    target = models.CharField(max_length=30, choices=[("embedded", "In core runtime"), ("kubernetes", "Kubernetes"), ("kubernetes-controller", "Existing Kubernetes controller"), ('kubernetes-adopted', 'Modernized Kubernetes application')])
+    target = models.CharField(max_length=30, choices=[("embedded", "In core runtime"), ("kubernetes", "Kubernetes"), ("kubernetes-controller", "Existing Kubernetes controller"), ('kubernetes-adopted', 'Modernized Kubernetes application'), ('external', 'External AWS application')])
     environment = models.ForeignKey(DeploymentEnvironment, on_delete=models.PROTECT, null=True, blank=True, related_name='deployments')
     resource_uid = models.CharField(max_length=80, blank=True)
     container_name = models.CharField(max_length=63, blank=True)
@@ -200,9 +200,37 @@ class Deployment(TaggedResource):
     # Contains the integration bundle, encrypted with the deployment's secret key.
     encrypted_bundle = models.TextField(blank=True)
     application = models.OneToOneField("identity.Application", on_delete=models.SET_NULL, null=True, blank=True)
+    resource_application = models.OneToOneField("identity.Application", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='resource_deployment', help_text='Confidential introspection client for an externally hosted browser application.')
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['installation', 'environment'], condition=models.Q(target='external'),
+            name='unique_external_env_instance')]
+
+    def clean(self):
+        old = type(self).objects.filter(pk=self.pk).first()
+        if old and (old.target == 'external' or self.target == 'external') and any(
+                getattr(old, field) != getattr(self, field) for field in [
+                    'installation_id', 'environment_id', 'target', 'endpoint', 'application_id', 'resource_application_id']):
+            raise ValidationError('External application placement and client binding are immutable. Register another environment or installation.')
+        if self.target == 'external':
+            from .validation import validate_endpoint
+            validate_endpoint(self.endpoint)
+            if self.node_id or not self.environment_id or self.environment.organization_id != self.installation.organization_id:
+                raise ValidationError('External applications require this installation’s environment and no Kubernetes runtime.')
+            if self.application_id and (self.application.service_id != self.installation.service_id or self.application.client_type != 'public'):
+                raise ValidationError('External browser identity must be a public client of this installation’s service.')
+            if self.resource_application_id and (self.resource_application.service_id != self.installation.service_id or self.resource_application.client_type != 'confidential'):
+                raise ValidationError('External resource identity must be a confidential client of this installation’s service.')
+            if self.application_id == self.resource_application_id and self.application_id:
+                raise ValidationError('Browser and resource clients must be distinct.')
+        elif self.resource_application_id:
+            raise ValidationError('Separate resource clients are supported only for external applications.')
 
     @property
     def status(self):
+        if self.target == 'external':
+            return 'registered' if self.desired_state == 'running' else 'disabled'
         if self.last_seen and self.last_seen < timezone.now() - timedelta(seconds=90):
             return "stale"
         if self.observed_revision < self.revision:

@@ -40,8 +40,22 @@ def validate_endpoint(url):
 
 
 def validate_manifest(manifest):
-    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload'}:
+    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload', 'external_runtime', 'permissions'}:
         raise ValidationError("Unsupported manifest fields.")
+    if 'external_runtime' in manifest:
+        if manifest['external_runtime'] != 'aws-amplify' or any(field in manifest for field in ['image', 'existing_workload', 'port']):
+            raise ValidationError('External AWS Amplify packages cannot declare a Kubernetes image, workload, or port.')
+    permissions = manifest.get('permissions', [])
+    if not isinstance(permissions, list) or len(permissions) > 50:
+        raise ValidationError('Declare at most 50 application permissions.')
+    names = set()
+    for permission in permissions:
+        if (not isinstance(permission, dict) or set(permission) != {'codename', 'name'} or
+                not isinstance(permission['codename'], str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,50}', permission['codename']) or
+                permission['codename'] == 'admin' or permission['codename'] in names or
+                not isinstance(permission['name'], str) or not permission['name'].strip() or len(permission['name']) > 160):
+            raise ValidationError('Application permissions require unique nonreserved codenames and display names.')
+        names.add(permission['codename'])
     if 'existing_workload' in manifest and manifest['existing_workload'] is not True:
         raise ValidationError('Existing workloads must explicitly use adoption mode.')
     capabilities = manifest.get("capabilities", [])

@@ -60,6 +60,8 @@ def install_package(organization, package, grants=(), actor=None, _path=()):
     service, _ = Service.objects.get_or_create(organization=organization, slug=package.slug, defaults={"name": package.name})
     for capability in package.manifest.get("capabilities", []):
         ServicePermission.objects.get_or_create(service=service, codename=capability.replace(".", "-"), defaults={"name": capability})
+    for permission in package.manifest.get('permissions', []):
+        ServicePermission.objects.get_or_create(service=service, codename=permission['codename'], defaults={'name': permission['name']})
     installation = Installation.objects.create(organization=organization, package=package, service=service,
         version=package.version, manifest=deepcopy(package.manifest), granted_capabilities=sorted(set(grants)))
     if package.kind == "core":
@@ -105,11 +107,15 @@ def upgrade_installation(installation, grants, actor):
     installation.save(update_fields=["version", "manifest", "granted_capabilities"])
     for capability in installation.manifest.get("capabilities", []):
         ServicePermission.objects.get_or_create(service=installation.service, codename=capability.replace(".", "-"), defaults={"name": capability})
+    for permission in installation.manifest.get('permissions', []):
+        ServicePermission.objects.get_or_create(service=installation.service, codename=permission['codename'], defaults={'name': permission['name']})
     for deployment in installation.deployments.select_related("application"):
         if deployment.application_id:
             deployment.application.redirect_uris = deployment.endpoint + installation.manifest.get("callback_path", "/oauth/callback")
             deployment.application.full_clean()
             deployment.application.save(update_fields=["redirect_uris"])
+        if deployment.target == 'external':
+            continue
         deployment.revision += 1
         deployment.healthy = False
         deployment.save(update_fields=["revision", "healthy"])

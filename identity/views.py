@@ -355,9 +355,15 @@ def token_claims(raw, resource_client, purpose="", request_id=None):
     membership = membership_for(token.user, token.application.service)
     if membership is None:
         return None
-    from platform_services.models import Deployment
-    token_deployment = Deployment.objects.filter(application=token.application).first()
-    client_deployment = Deployment.objects.filter(application=resource_client).first()
+    from platform_services.external_apps import application_deployment, external_available
+    token_deployment = application_deployment(token.application)
+    client_deployment = application_deployment(resource_client)
+    if (token_deployment and token_deployment.target == 'external') or (client_deployment and client_deployment.target == 'external'):
+        if (not token_deployment or not client_deployment or token_deployment.pk != client_deployment.pk or
+                token_deployment.application_id != token.application_id or
+                (resource_client.pk != token.application_id and client_deployment.resource_application_id != resource_client.pk) or
+                not external_available(token_deployment)):
+            return None
     if (token_deployment.environment_id if token_deployment else None) != (client_deployment.environment_id if client_deployment else None):
         return None
     from .access import Principal, require_access, evidence_for

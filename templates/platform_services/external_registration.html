@@ -1,0 +1,11 @@
+{% extends "identity/base.html" %}
+{% block title %}External application registered · {{ product_name }}{% endblock %}
+{% block content %}
+<h1>{{ installation.package.name }} registered</h1>
+<p>Core created this application's environment-bound service and OAuth client pair. AWS hosting, billing, releases, and health remain managed in AWS.</p>
+<p>The browser configuration below contains no secret. The application's backend must introspect each protected request using its separate confidential resource client.</p>
+<pre class="mono">{{ configuration }}</pre>
+<p>Use the <code>register_external_application</code> management command with this package, organization, environment, and origin to write the browser configuration and private resource credential to separate files. Keep the private file under ignored <code>.local/</code>; load it into the backend's secret store, never the browser.</p>
+<p>Members receive no editing or publishing rights automatically. Assign application permissions and the environment access tag through <strong>Users and permissions</strong>.</p>
+<a class="button" href="{% url 'platform_dashboard' organization.slug %}">Back to central administration</a>
+{% endblock %}

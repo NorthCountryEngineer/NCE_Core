@@ -16,6 +16,14 @@ Applications consume the core services over authenticated HTTPS APIs, wherever
 they run. Marketplace deployments receive organization-bound configuration,
 OIDC registration, and workload credentials automatically.
 
+## AWS deployment with Amplify
+
+The [two-application AWS runbook](https://github.com/NorthCountryEngineer/Axolotl_News/blob/main/docs/AWS_DEPLOYMENT.md)
+configures Core and Axolotl News together. Core's frontend uses an Amplify SSR proxy;
+Django and its worker run on Fargate with private RDS PostgreSQL. Read the
+[Core deployment sources](infra/aws/README.md) and [external application contract](docs/external-applications.md).
+These are deployment definitions, not provisioned resources. Running them incurs AWS charges.
+
 ## Core services and central administration
 
 [Development operations](docs/development-objects.md) provides versioned, composable

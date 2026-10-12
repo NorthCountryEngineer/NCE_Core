@@ -1,0 +1,14 @@
+{
+  "name": "nce-core-amplify-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "build": "node build.mjs", "test": "node --test" },
+  "dependencies": {
+    "@aws-sdk/credential-provider-node": "3.699.0",
+    "@smithy/signature-v4": "4.2.3",
+    "@smithy/protocol-http": "4.1.7",
+    "@aws-crypto/sha256-js": "5.2.0"
+  }
+}
