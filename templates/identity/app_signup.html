@@ -1,0 +1,12 @@
+{% extends "identity/app_auth_base.html" %}
+{% block title %}Create an account · {{ app_auth.name }}{% endblock %}
+{% block content %}
+<section class="auth-window">
+  <span class="auth-eyebrow">YOU'RE INVITED</span>
+  <h1>Create your {{ app_auth.name }} account</h1>
+  <p>Paste the invitation link or code your app administrator gave you.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">{{ form.as_p }}<button type="submit">Continue</button></form>
+  <p class="auth-footer">Already have an account? <a href="{{ app_auth.login_url }}">Sign in</a></p>
+  <p class="auth-shared">One shared account across apps connected to NCE Core. Each app's access is granted separately.</p>
+</section>
+{% endblock %}

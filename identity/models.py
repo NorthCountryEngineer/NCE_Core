@@ -92,6 +92,10 @@ class Service(TaggedResource):
     slug = models.SlugField()
     name = models.CharField(max_length=160)
     active = models.BooleanField(default=True)
+    auth_name = models.CharField(max_length=160, blank=True, help_text="App name shown during sign-in; defaults to the service name")
+    auth_tagline = models.CharField(max_length=240, blank=True, help_text="Optional introduction on the app's sign-in page")
+    auth_theme = models.CharField(max_length=20, default="automatic", choices=[
+        ("automatic", "Automatic"), ("core", "Core"), ("axolotl", "Axolotl News")])
 
     @property
     def audience(self):

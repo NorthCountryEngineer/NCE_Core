@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from datetime import timedelta
 from functools import wraps
-from urllib.parse import unquote
+from urllib.parse import unquote, urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -143,6 +143,11 @@ def revoke_invitation(request, organization, pk):
 
 @never_cache
 def accept_invitation(request, token):
+    from .app_auth import authorization_context
+    continuation = request.POST.get("next", request.GET.get("next", ""))
+    app_context = authorization_context(request, continuation) if continuation else None
+    if continuation and not app_context:
+        return HttpResponse("Start account creation again from the application.", status=400)
     with transaction.atomic():
         invitation = get_object_or_404(
             Invitation.objects.select_for_update().select_related("organization"), token_hash=Invitation.digest(token),
@@ -150,10 +155,13 @@ def accept_invitation(request, token):
         if not invitation.usable:
             return HttpResponse("This invitation has expired or has already been used.", status=410)
         request.organization = invitation.organization
+        if app_context and app_context["application"].service.organization_id != invitation.organization_id:
+            from django.http import Http404
+            raise Http404("This invitation is unavailable for this application.")
         existing = User.objects.filter(email__iexact=invitation.email).first()
         if existing:
             if not request.user.is_authenticated:
-                return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+                return redirect(settings.LOGIN_URL + "?" + urlencode({"next": request.get_full_path()}))
             if request.user.pk != existing.pk or not existing.is_active:
                 raise PermissionDenied("Sign in with the invited account.")
             form = None
@@ -187,8 +195,13 @@ def accept_invitation(request, token):
                                           action="invitation.accepted", target=str(membership.pk))
                 if not existing:
                     login(request, user)
+                if app_context:
+                    from .access import decision, request_principal
+                    if decision(request_principal(request), app_context["application"])[0]:
+                        return redirect(app_context["next"])
+                    return redirect(app_context["home"] + "/?account=created")
                 return redirect("home")
-    response = render(request, "identity/accept_invitation.html", {"form": form, "invitation": invitation})
+        response = render(request, "identity/accept_invitation.html", {"form": form, "invitation": invitation, "next": continuation})
     response["Referrer-Policy"] = "same-origin"
     return response
 

@@ -1,10 +1,11 @@
-{% extends "identity/base.html" %}
-{% block title %}Sign in to {{ product_name }} · {{ product_name }}{% endblock %}
+{% extends auth_base_template|default:"identity/base.html" %}
+{% block title %}Sign in to {% if app_auth %}{{ app_auth.name }}{% else %}{{ product_name }}{% endif %}{% endblock %}
 {% block body_class %}auth-page{% endblock %}
 {% block content %}
 <section class="auth-window">
-  <div class="window-caption"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Account sign-in</span></div>
-  <h1>Sign in to {{ product_name }}</h1>
+  {% if app_auth %}<span class="auth-eyebrow">{% if app_auth.theme == 'axolotl' %}THE AXOLOTL NEWSROOM{% else %}ACCOUNT SIGN-IN{% endif %}</span>{% else %}<div class="window-caption"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Account sign-in</span></div>{% endif %}
+  <h1>Sign in to {% if app_auth %}{{ app_auth.name }}{% else %}{{ product_name }}{% endif %}</h1>
+  {% if app_auth %}<p>{{ app_auth.tagline }}</p>{% endif %}
   {% for provider in identity_providers %}<form class="provider-signin" method="get" action="{% url 'provider_begin' provider.pk %}">
     <input type="hidden" name="next" value="{{ next }}">
     <label>Access purpose (if required)<input name="purpose_code" maxlength="80" placeholder="Configured purpose code"></label>
@@ -14,5 +15,6 @@
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Sign in</button>
   </form>
+  {% if app_auth %}<p class="auth-footer">Have an invitation? <a href="{{ app_auth.signup_url }}">Create your account</a></p><p class="auth-shared">Your account works across apps connected to NCE Core. App access is managed separately.</p>{% endif %}
 </section>
 {% endblock %}

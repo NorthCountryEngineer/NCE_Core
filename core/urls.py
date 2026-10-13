@@ -4,6 +4,7 @@ from django.urls import include, path
 from oauth2_provider import views as oauth_views
 from identity import views
 from identity import federation
+from identity import app_auth
 
 oauth_patterns = [
     path("authorize/", views.TenantAuthorizationView.as_view(), name="authorize"),
@@ -16,6 +17,7 @@ oauth_patterns = [
 urlpatterns = [
     path("platform-admin/", admin.site.urls),
     path("accounts/login/", federation.ProviderLoginView.as_view(), name="login"),
+    path("accounts/app-signup/", app_auth.signup, name="app_signup"),
     path("accounts/providers/<uuid:pk>/begin/", federation.begin, name="provider_begin"),
     path("accounts/providers/<uuid:pk>/callback/", federation.callback, name="provider_callback"),
     path("accounts/logout/", auth_views.LogoutView.as_view(), name="logout"),

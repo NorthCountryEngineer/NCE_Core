@@ -16,6 +16,8 @@ Applications consume the core services over authenticated HTTPS APIs, wherever
 they run. Marketplace deployments receive organization-bound configuration,
 OIDC registration, and workload credentials automatically.
 
+[App-branded authentication](docs/app-authentication.md) gives each registered app a Core-hosted sign-in and invitation-only account-creation experience. People keep one Core account; application roles and environment access are granted independently.
+
 ## AWS deployment with Amplify
 
 The [two-application AWS runbook](https://github.com/NorthCountryEngineer/Axolotl_News/blob/main/docs/AWS_DEPLOYMENT.md)

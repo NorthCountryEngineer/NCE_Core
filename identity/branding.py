@@ -3,7 +3,11 @@ from .models import Application, Organization
 
 
 def context(request):
+    from .app_auth import request_auth_context
+    app_auth = request_auth_context(request)
     organization = getattr(request, "organization", None)
+    if organization is None and app_auth:
+        organization = app_auth["application"].service.organization
     header_organization = None
     if request.user.is_authenticated:
         from .models import Membership
@@ -27,6 +31,8 @@ def context(request):
             if client:
                 organization = client.service.organization
     return {"product_name": organization.brand if organization else settings.PRODUCT_NAME,
+            "app_auth": app_auth,
+            "auth_base_template": "identity/app_auth_base.html" if app_auth else "identity/base.html",
             'header_organization': header_organization if header_organization and header_organization.unified_header_enabled else None,
             "brand_organization": organization,
             "access_purpose": request.session.get("access_purposes", {}).get(str(organization.pk), "") if organization else ""}
