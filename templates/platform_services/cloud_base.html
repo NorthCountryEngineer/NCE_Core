@@ -1,0 +1,41 @@
+{% extends 'identity/base.html' %}
+{% block extra_head %}<style>
+.cloud-console { display:grid; grid-template-columns:220px minmax(0,1fr); gap:24px; }
+.cloud-nav { align-self:start; background:var(--core-chrome); border:1px solid var(--core-line); padding:14px; }
+.cloud-nav a { display:block; padding:9px 10px; margin-bottom:4px; text-decoration:none; }
+.cloud-nav a[aria-current=page] { background:var(--core-selection); font-weight:600; border-left:3px solid var(--core-action); }
+.cloud-intro { max-width:720px; }
+.cloud-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); gap:18px; }
+.cloud-card { margin:0; display:flex; flex-direction:column; gap:8px; }
+.cloud-card h2 { margin:0; padding:0; background:none; border:0; font-size:19px; }
+.cloud-card .actions { margin-top:auto; padding-top:12px; }
+.cloud-empty { padding:40px 24px; text-align:center; }
+.cloud-step-label { color:var(--core-muted); font-size:12px; letter-spacing:.045em; }
+.cloud-facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:12px; margin:0; }
+.cloud-facts dt { margin:0; }
+.cloud-facts dd { margin:3px 0 12px; }
+.cloud-plan { list-style:none; margin:0; padding:0; counter-reset:plan; }
+.cloud-plan li { counter-increment:plan; position:relative; padding:14px 12px 14px 46px; border-bottom:1px solid var(--core-line); }
+.cloud-plan li:last-child { border:0; }
+.cloud-plan li:before { content:counter(plan); display:flex; align-items:center; justify-content:center; position:absolute; top:14px; left:0; width:28px; height:28px; border:1px solid var(--core-line); background:var(--core-chrome); border-radius:50%; font-weight:600; }
+.cloud-plan strong { display:block; }
+.cloud-plan p { margin:4px 0 0; }
+.cloud-choice-help { min-height:20px; }
+.cloud-deployment-form fieldset { margin:0 0 20px; background:var(--core-surface); }
+.cloud-deployment-form input:not([type=checkbox]):not([type=hidden]), .cloud-deployment-form select,.cloud-deployment-form textarea { width:100%; max-width:600px; }
+.cloud-actions { display:flex; justify-content:flex-end; align-items:center; gap:16px; margin:24px 0; flex-wrap:wrap; }
+.cloud-approval { border-left:4px solid var(--core-action); }
+.cloud-disclosure { max-width:80ch; }
+.cloud-error { border-left-color:var(--core-danger); }
+.cloud-digest { overflow-wrap:anywhere; }
+@media(max-width:800px){ .cloud-console { display:block; } .cloud-nav { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:20px; } .cloud-nav a { margin:0; } .cloud-nav h2 { width:100%; } .cloud-actions { justify-content:flex-start; } }
+</style>{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">{{ organization.name }} · App deployment</span><h1>{{ title }}</h1><p>{% block cloud_subtitle %}Configure once. Review each release. Track its progress.{% endblock %}</p></div></div>
+<div class="cloud-console"><nav class="cloud-nav" aria-label="Deployment console"><h2>Deployment console</h2>
+<a href="{% url 'cloud_applications' organization.slug %}" {% block apps_current %}{% endblock %}>Applications</a>
+<a href="{% url 'cloud_platforms' organization.slug %}" {% block platforms_current %}{% endblock %}>Deployment platforms</a>
+<a href="{% url 'platform_environments' organization.slug %}">Environments</a>
+<a href="{% url 'platform_dashboard' organization.slug %}">Back to central admin</a></nav>
+<div class="cloud-content">{% block cloud_content %}{% endblock %}</div></div>
+{% endblock %}

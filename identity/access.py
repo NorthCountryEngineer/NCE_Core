@@ -94,6 +94,11 @@ def resource_chain(resource):
             return
         seen.add(key)
         result.append(item)
+        if item._meta.label_lower in {'platform_services.cloudapplication', 'platform_services.cloudrelease'}:
+            for field in ['platform', 'application']:
+                parent = getattr(item, field, None)
+                if parent is not None:
+                    visit(parent)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
                 'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy', 'development_object', 'object_revision']:
             if field == 'connection' and item._meta.label_lower == 'platform_services.applicationintegration' and item.mode != 'platform':

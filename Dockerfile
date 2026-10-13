@@ -20,6 +20,16 @@ RUN --mount=type=secret,id=build_ca,required=false \
     uv sync --frozen --no-dev --system-certs; \
     rm -f /tmp/build-ca.pem
 COPY . .
+# The laptop simulation has no SDK dependency. The deployed Core worker needs
+# this pinned SDK to assume its separately onboarded deployment role.
+RUN --mount=type=secret,id=build_ca,required=false \
+    set -eu; \
+    if [ -f /run/secrets/build_ca ]; then \
+      cat /etc/ssl/certs/ca-certificates.crt /run/secrets/build_ca > /tmp/build-ca.pem; \
+      export SSL_CERT_FILE=/tmp/build-ca.pem; \
+    fi; \
+    uv pip install --python .venv/bin/python --system-certs --requirements deployment/cloud-runner-requirements.txt; \
+    rm -f /tmp/build-ca.pem
 RUN chmod -R a+rX /app \
     && groupadd --gid 10001 core && useradd --uid 10001 --gid core --no-create-home core \
     && mkdir -p staticfiles && chown core:core staticfiles

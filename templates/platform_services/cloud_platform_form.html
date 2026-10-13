@@ -1,0 +1,12 @@
+{% extends 'platform_services/cloud_base.html' %}
+{% block platforms_current %}aria-current="page"{% endblock %}
+{% block cloud_subtitle %}Set up the permissions and approved sources for this platform once.{% endblock %}
+{% block cloud_content %}
+<p class="cloud-intro">Choose simulation to validate the workflow without AWS. For real deployments, first provision the AWS onboarding stack in the deployment guide and copy its outputs here.</p>
+<form method="post" class="cloud-deployment-form">{% csrf_token %}{{ form.non_field_errors }}
+<fieldset><legend>1 · Platform</legend>{% for field in form %}{% if field.name == 'name' or field.name == 'mode' or field.name == 'prefix' %}<p>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}</p>{% endif %}{% endfor %}</fieldset>
+<fieldset id="aws-settings"><legend>2 · AWS access and runners</legend><p class="helptext">Core assumes the deployment role. Do not paste AWS access keys or GitHub tokens.</p>{% for field in form %}{% if field.name != 'name' and field.name != 'mode' and field.name != 'prefix' and field.name != 'allowed_repositories' and field.name != 'environments' and field.name != 'archetypes' %}<p>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}</p>{% endif %}{% endfor %}</fieldset>
+<fieldset><legend>3 · Approved sources and destinations</legend>{% for field in form %}{% if field.name == 'allowed_repositories' or field.name == 'environments' or field.name == 'archetypes' %}<div>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}</div>{% endif %}{% endfor %}</fieldset>
+<p class="muted">Saving does not create cloud resources. The platform will remain unavailable until verification succeeds.</p><div class="cloud-actions"><a href="{% url 'cloud_platforms' organization.slug %}">Cancel</a><button type="submit">Save platform settings</button></div></form>
+<script>(function(){const mode=document.getElementById('id_mode'),aws=document.getElementById('aws-settings');function update(){aws.hidden=mode.value==='demo';}mode.addEventListener('change',update);update();})();</script>
+{% endblock %}

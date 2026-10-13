@@ -1,0 +1,10 @@
+{% extends 'platform_services/cloud_base.html' %}
+{% block apps_current %}aria-current="page"{% endblock %}
+{% block cloud_subtitle %}{{ application.repository }} · {{ application.branch }}{% endblock %}
+{% block cloud_content %}
+<section><h2>Application settings</h2><dl class="cloud-facts"><div><dt>Platform</dt><dd>{{ application.platform.name }}</dd></div><div><dt>Environment</dt><dd>{{ application.environment.get_name_display }}</dd></div><div><dt>Service approach</dt><dd>{{ application.get_archetype_display }}</dd></div><div><dt>Source revision</dt><dd class="mono">{{ application.commit }}</dd></div></dl>
+{% if application.public_origin %}<p><a href="{{ application.public_origin }}" rel="noopener noreferrer" target="_blank">Open application ↗</a></p>{% endif %}
+<p><a href="{% url 'cloud_application_edit' organization.slug application.pk %}">Edit application settings and source revision</a></p>
+<form method="post" action="{% url 'cloud_release_prepare' organization.slug application.pk %}">{% csrf_token %}<button type="submit">Prepare release</button><span class="helptext">Review the source, deployment steps, and cost implications before starting.</span></form></section>
+<section><h2>Release history</h2><div class="table-scroll"><table><caption class="sr-only">Releases for {{ application.name }}</caption><thead><tr><th scope="col">Release</th><th scope="col">Status</th><th scope="col">Requested</th></tr></thead><tbody>{% for release in releases %}<tr><td><a href="{% url 'cloud_release' organization.slug release.pk %}">Review {{ release.digest|slice:':12' }}</a></td><td><span class="status-label {% if release.status == 'succeeded' %}active{% endif %}">{{ release.get_status_display }}</span></td><td>{{ release.created }}</td></tr>{% empty %}<tr><td colspan="3">No releases yet. Prepare your first release to review its plan.</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

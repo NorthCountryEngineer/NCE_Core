@@ -6,8 +6,21 @@ from . import documentation_api, documentation_portal
 from . import rules_api, rules_portal
 from . import development_api, development_portal
 from . import header_views
+from . import cloud_portal
 
 urlpatterns = [
+    path('organizations/<slug:slug>/platform/cloud/platforms/', cloud_portal.platforms, name='cloud_platforms'),
+    path('organizations/<slug:slug>/platform/cloud/platforms/new/', cloud_portal.platform_add, name='cloud_platform_add'),
+    path('organizations/<slug:slug>/platform/cloud/platforms/<uuid:pk>/', cloud_portal.platform_add, name='cloud_platform_edit'),
+    path('organizations/<slug:slug>/platform/cloud/platforms/<uuid:pk>/verify/', cloud_portal.platform_verify, name='cloud_platform_verify'),
+    path('organizations/<slug:slug>/platform/cloud/apps/', cloud_portal.applications, name='cloud_applications'),
+    path('organizations/<slug:slug>/platform/cloud/apps/new/', cloud_portal.application_add, name='cloud_application_add'),
+    path('organizations/<slug:slug>/platform/cloud/apps/<uuid:pk>/', cloud_portal.application, name='cloud_application'),
+    path('organizations/<slug:slug>/platform/cloud/apps/<uuid:pk>/edit/', cloud_portal.application_add, name='cloud_application_edit'),
+    path('organizations/<slug:slug>/platform/cloud/apps/<uuid:pk>/prepare/', cloud_portal.release_prepare, name='cloud_release_prepare'),
+    path('organizations/<slug:slug>/platform/cloud/releases/<uuid:pk>/', cloud_portal.release, name='cloud_release'),
+    path('organizations/<slug:slug>/platform/cloud/releases/<uuid:pk>/approve/', cloud_portal.release_approve, name='cloud_release_approve'),
+    path('organizations/<slug:slug>/platform/cloud/releases/<uuid:pk>/cancel/', cloud_portal.release_cancel, name='cloud_release_cancel'),
     path('user-tools/header.js', header_views.component, name='header_component'),
     path('user-tools/header-editor.js', header_views.editor_component, name='header_editor_component'),
     path('organizations/<slug:slug>/platform/header/', header_views.settings, name='header_settings'),

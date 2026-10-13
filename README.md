@@ -302,3 +302,10 @@ Billing adapters for Stripe, Paddle, Adyen, and Braintree are inactive stand-ins
 Machine-to-core access currently uses scoped, revocable workload credentials.
 The current SSO model uses a fresh, service-specific code exchange for each
 application, rather than forwarding a token to unrelated services.
+
+## Deploy applications from Core
+
+The [deployment console walkthrough](docs/cloud-deployments.md) provides an isolated
+local simulation, AWS platform onboarding, and literal commands for upgrading an
+existing Core deployment. Supported recipes are Amplify static hosting and Amplify
+with a serverless Python API. Live deployment is disabled by default.

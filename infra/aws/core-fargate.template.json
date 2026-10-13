@@ -28,6 +28,15 @@
       "AllowedPattern": "arn:aws:secretsmanager:.*",
       "Description": "Existing JSON SecretString keys django_key, oidc_key (RSA PEM) and bootstrap_password; preserve signing keys"
     },
+    "EnableCloudDeployments": {
+      "Type": "String",
+      "Default": "0",
+      "AllowedValues": [
+        "0",
+        "1"
+      ],
+      "Description": "Allow reviewed billable cloud deployments after platform onboarding; disabled by default"
+    },
     "CoreResourceCredentialsParameter": {
       "Type": "String",
       "Default": "/axolotl-news/core-resource-client",
@@ -524,6 +533,12 @@
                 "Value": "1"
               },
               {
+                "Name": "CORE_ENABLE_CLOUD_DEPLOYMENTS",
+                "Value": {
+                  "Ref": "EnableCloudDeployments"
+                }
+              },
+              {
                 "Name": "CORE_DB_HOST",
                 "Value": {
                   "Fn::GetAtt": [
@@ -610,6 +625,12 @@
               {
                 "Name": "CORE_AWS_ORIGIN_BOUNDARY",
                 "Value": "1"
+              },
+              {
+                "Name": "CORE_ENABLE_CLOUD_DEPLOYMENTS",
+                "Value": {
+                  "Ref": "EnableCloudDeployments"
+                }
               },
               {
                 "Name": "CORE_DB_HOST",
@@ -721,6 +742,12 @@
               {
                 "Name": "CORE_AWS_ORIGIN_BOUNDARY",
                 "Value": "1"
+              },
+              {
+                "Name": "CORE_ENABLE_CLOUD_DEPLOYMENTS",
+                "Value": {
+                  "Ref": "EnableCloudDeployments"
+                }
               },
               {
                 "Name": "CORE_DB_HOST",
@@ -896,6 +923,12 @@
               {
                 "Name": "CORE_AWS_ORIGIN_BOUNDARY",
                 "Value": "1"
+              },
+              {
+                "Name": "CORE_ENABLE_CLOUD_DEPLOYMENTS",
+                "Value": {
+                  "Ref": "EnableCloudDeployments"
+                }
               },
               {
                 "Name": "CORE_DB_HOST",

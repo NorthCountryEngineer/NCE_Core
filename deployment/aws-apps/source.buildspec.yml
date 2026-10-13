@@ -1,0 +1,14 @@
+# Embedded in the source project at onboarding with the trusted Core SHA check.
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+      python: 3.12
+  build:
+    commands:
+      - python deployment/aws-apps/build_source.py
+artifacts:
+  base-directory: nce-frontend
+  files:
+    - '**/*'
