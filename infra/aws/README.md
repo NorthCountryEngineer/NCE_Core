@@ -2,6 +2,8 @@ AWS deployment sources only; nothing in this directory provisions infrastructure
 when imported or rendered. The detailed two-site runbook is in the Axolotl News
 project's [AWS runbook](https://github.com/NorthCountryEngineer/Axolotl_News/blob/main/docs/AWS_DEPLOYMENT.md).
 
+For an existing installation, the [app-branded authentication upgrade](https://github.com/NorthCountryEngineer/Axolotl_News/blob/main/docs/APP_AUTH_DEPLOYMENT.md) preserves the stack parameters and keys, publishes a new image, runs the additive branding migration with the service stopped, then restarts it before releasing Axolotl's frontend. The Core Amplify proxy needs no rebuild for this feature.
+
 `core-registry.template.json` creates an ECR repository. `core-fargate.template.json`
 creates an HTTPS ALB, one ARM64 Fargate service containing Django and its persisted
 worker, and private PostgreSQL RDS. The initial service count is zero so migrations

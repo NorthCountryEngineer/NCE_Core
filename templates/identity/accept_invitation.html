@@ -1,8 +1,9 @@
-{% extends "identity/base.html" %}
-{% block title %}Join {{ invitation.organization.name }} · {{ product_name }}{% endblock %}
+{% extends auth_base_template|default:"identity/base.html" %}
+{% block title %}Join {% if app_auth %}{{ app_auth.name }}{% else %}{{ invitation.organization.name }} · {{ product_name }}{% endif %}{% endblock %}
 {% block content %}
-<section><h1>Join {{ invitation.organization.name }}</h1>
+<section class="auth-window"><h1>{% if app_auth %}{% if form %}Create your {{ app_auth.name }} account{% else %}Join {{ app_auth.name }}{% endif %}{% else %}Join {{ invitation.organization.name }}{% endif %}</h1>
 <p>Invited account: {{ invitation.email }}</p>
-<form method="post">{% csrf_token %}{% if form %}{{ form.as_p }}{% endif %}<button type="submit">Accept invitation</button></form>
+{% if app_auth %}<p>Your shared account can be used in other connected apps when you are granted access.</p>{% endif %}
+<form method="post">{% csrf_token %}<input type="hidden" name="next" value="{{ next }}">{% if form %}{{ form.as_p }}{% endif %}<button type="submit">{% if app_auth and form %}Create account{% else %}Accept invitation{% endif %}</button></form>
 </section>
 {% endblock %}
