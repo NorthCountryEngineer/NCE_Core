@@ -663,3 +663,4 @@ from .app_factory_models import AppProject  # noqa: E402,F401
 from .documentation_models import DocumentationPage, DocumentationRevision, DocumentationSource  # noqa: E402,F401
 from .rule_models import AIRulePolicy, AIRuleRevision, AIUsageMeter, AIUsageReservation  # noqa: E402,F401
 from .development_models import DevelopmentObject, DevelopmentRevision, DevelopmentRun  # noqa: E402,F401
+from .cloud_models import CloudPlatform, CloudApplication, CloudRelease  # noqa: E402,F401

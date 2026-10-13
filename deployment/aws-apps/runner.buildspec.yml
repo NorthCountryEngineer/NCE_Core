@@ -1,0 +1,10 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - python -m pip install --disable-pip-version-check -r deployment/cloud-runner-requirements.txt
+  build:
+    commands:
+      - python deployment/aws-apps/runner.py

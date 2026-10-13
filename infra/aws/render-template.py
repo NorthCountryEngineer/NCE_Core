@@ -68,6 +68,7 @@ resource("AmplifyComputeRole", "AWS::IAM::Role", AssumeRolePolicyDocument={"Vers
          Policies=[{"PolicyName": "ReadOriginHeaderOnly", "PolicyDocument": {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Action": "secretsmanager:GetSecretValue", "Resource": ref("OriginSecret")}]}}])
 environment = [{"Name": key, "Value": value} for key, value in {
     "CORE_ISSUER": ref("CorePublicOrigin"), "CORE_TRUST_PROXY": "1", "CORE_AWS_ORIGIN_BOUNDARY": "1",
+    "CORE_ENABLE_CLOUD_DEPLOYMENTS": ref("EnableCloudDeployments"),
     "CORE_DB_HOST": get("Database", "Endpoint.Address"), "CORE_DB_NAME": "ncecore", "CORE_DB_USER": "ncecore",
 }.items()]
 secrets = [{"Name": key, "ValueFrom": value} for key, value in {
@@ -134,6 +135,7 @@ template = {
         "CoreOriginHost": {"Type": "String", "Default": "core-origin.axolotl.news", "AllowedPattern": "[A-Za-z0-9.-]+", "Description": "Cloudflare DNS-only CNAME host; covered by the ACM certificate"},
         "CertificateArn": {"Type": "String", "AllowedPattern": "arn:aws:acm:.*", "Description": "Validated ACM certificate in THIS region for CoreOriginHost"},
         "CoreRuntimeSecretArn": {"Type": "String", "AllowedPattern": "arn:aws:secretsmanager:.*", "Description": "Existing JSON SecretString keys django_key, oidc_key (RSA PEM) and bootstrap_password; preserve signing keys"},
+        "EnableCloudDeployments": {"Type": "String", "Default": "0", "AllowedValues": ["0", "1"], "Description": "Allow reviewed billable cloud deployments after platform onboarding; disabled by default"},
         "CoreResourceCredentialsParameter": {"Type": "String", "Default": "/axolotl-news/core-resource-client", "AllowedPattern": "/[A-Za-z0-9_./-]+", "Description": "Exactly one standard SecureString parameter writable by the dedicated app-registration task"},
         "DesiredCount": {"Type": "Number", "Default": 0, "AllowedValues": [0, 1], "Description": "Keep zero until one-off migrations and first administrator bootstrap succeed"},
     },

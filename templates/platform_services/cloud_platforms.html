@@ -1,0 +1,13 @@
+{% extends 'platform_services/cloud_base.html' %}
+{% block platforms_current %}aria-current="page"{% endblock %}
+{% block cloud_subtitle %}Onboard deployment access in settings. Only verified platforms appear when creating an app.{% endblock %}
+{% block cloud_content %}
+<div class="page-heading cloud-intro"><div><h2>Configured platforms</h2><p>Repositories, environments, and deployment permissions are approved here.</p></div><a class="button" href="{% url 'cloud_platform_add' organization.slug %}">Add platform</a></div>
+<div class="cloud-cards">{% for platform in platforms %}<section class="cloud-card"><span class="eyebrow">{% if platform.mode == 'demo' %}Simulation · no AWS calls{% else %}Amazon Web Services{% endif %}</span><h2>{{ platform.name }}</h2><p><span class="status-label {% if platform.active and platform.verified_at %}active{% endif %}">{% if platform.active and platform.verified_at %}Ready{% else %}Verification required{% endif %}</span></p>
+{% if platform.mode == 'aws' %}<p>{{ platform.account_id }} · {{ platform.region }}</p>{% else %}<p>Practice the complete release flow locally without creating cloud resources.</p>{% endif %}
+<p>{{ platform.allowed_repositories|length }} approved repositor{{ platform.allowed_repositories|length|pluralize:"y,ies" }} · {{ platform.config.environment_ids|length }} environment{{ platform.config.environment_ids|length|pluralize }}</p>
+{% if platform.verified_at %}<p class="muted">Verified {{ platform.verified_at }}</p>{% endif %}
+<div class="actions"><a href="{% url 'cloud_platform_edit' organization.slug platform.pk %}">Edit settings</a><form method="post" action="{% url 'cloud_platform_verify' organization.slug platform.pk %}">{% csrf_token %}<button class="secondary" type="submit">{% if platform.verified_at %}Verify again{% else %}Verify platform{% endif %}</button></form></div></section>
+{% empty %}<section class="cloud-empty"><h2>Start with a deployment platform</h2><p>A platform defines where Core can deploy, which repositories it can use, and the environments available to apps.</p><a class="button" href="{% url 'cloud_platform_add' organization.slug %}">Configure first platform</a></section>{% endfor %}</div>
+<section><h2>What verification checks</h2><p class="cloud-disclosure">AWS verification checks account identity, the approved role, the GitHub connection, and the isolated build and deployment runners. It does not launch a build or create application resources. Changing platform settings requires verification again.</p></section>
+{% endblock %}

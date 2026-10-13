@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "archetype": "amplify-serverless",
+  "frontend": {"directory": ".", "output": "dist"},
+  "backend": {"directory": "api", "handler": "handler.handler"}
+}

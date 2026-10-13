@@ -1,0 +1,771 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Core-managed AWS app archetypes: retained manual Amplify frontend and isolated optional serverless backend. Billable deployment requires explicit approval.",
+  "Parameters": {
+    "ResourceName": {
+      "Type": "String"
+    },
+    "StorageName": {
+      "Type": "String"
+    },
+    "Environment": {
+      "Type": "String"
+    },
+    "PlatformPrefix": {
+      "Type": "String"
+    },
+    "ApplicationIdentifier": {
+      "Type": "String"
+    },
+    "PermissionsBoundaryArn": {
+      "Type": "String"
+    },
+    "ApplicationOrigin": {
+      "Type": "String",
+      "Default": "https://pending.invalid"
+    },
+    "CoreIssuer": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreOrganizationId": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreServiceId": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreCredentialsParameter": {
+      "Type": "String"
+    },
+    "LambdaCodeBucket": {
+      "Type": "String"
+    },
+    "LambdaCodeKey": {
+      "Type": "String"
+    },
+    "LambdaHandler": {
+      "Type": "String"
+    },
+    "Archetype": {
+      "Type": "String",
+      "AllowedValues": [
+        "amplify-static",
+        "amplify-serverless"
+      ]
+    }
+  },
+  "Conditions": {
+    "Serverless": {
+      "Fn::Equals": [
+        {
+          "Ref": "Archetype"
+        },
+        "amplify-serverless"
+      ]
+    }
+  },
+  "Resources": {
+    "Frontend": {
+      "Type": "AWS::Amplify::App",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Name": {
+          "Ref": "ResourceName"
+        },
+        "Platform": "WEB",
+        "EnableBranchAutoDeletion": false,
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "CustomRules": [
+          {
+            "Source": "/<*>",
+            "Target": "/index.html",
+            "Status": "404-200"
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Frontend.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "FrontendBranch": {
+      "Type": "AWS::Amplify::Branch",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "AppId": {
+          "Fn::GetAtt": [
+            "Frontend",
+            "AppId"
+          ]
+        },
+        "BranchName": {
+          "Ref": "Environment"
+        },
+        "EnableAutoBuild": false,
+        "Stage": "PRODUCTION",
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application FrontendBranch.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "PrivateTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-private"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application PrivateTable.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "PublicTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-public"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application PublicTable.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Media": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {
+          "Ref": "StorageName"
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": [
+                {
+                  "Ref": "ApplicationOrigin"
+                }
+              ],
+              "AllowedHeaders": [
+                "*"
+              ],
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "POST"
+              ],
+              "ExposedHeaders": [
+                "ETag"
+              ],
+              "MaxAge": 300
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Media.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Logs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${ResourceName}-api"
+        },
+        "RetentionInDays": 14,
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Logs.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "RuntimeRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "RoleName": {
+          "Fn::Sub": "${ResourceName}-lambda"
+        },
+        "PermissionsBoundary": {
+          "Ref": "PermissionsBoundaryArn"
+        },
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "Policies": [
+          {
+            "PolicyName": "application-resources",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Logs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Scan",
+                    "dynamodb:Query"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "PrivateTable",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "PublicTable",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${Media.Arn}/*"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:ListBucket",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Media",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "ssm:GetParameter",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CoreCredentialsParameter}"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "kms:Decrypt",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "kms:ViaService": {
+                        "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
+                      },
+                      "kms:CallerAccount": {
+                        "Ref": "AWS::AccountId"
+                      },
+                      "kms:EncryptionContext:PARAMETER_ARN": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CoreCredentialsParameter}"
+                      }
+                    },
+                    "ForAnyValue:StringEquals": {
+                      "kms:ResourceAliases": [
+                        "alias/aws/ssm"
+                      ]
+                    },
+                    "Null": {
+                      "kms:ResourceAliases": "false"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application RuntimeRole.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Function": {
+      "Type": "AWS::Lambda::Function",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "DependsOn": [
+        "Logs"
+      ],
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${ResourceName}-api"
+        },
+        "Runtime": "python3.12",
+        "Architectures": [
+          "arm64"
+        ],
+        "Handler": {
+          "Ref": "LambdaHandler"
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "RuntimeRole",
+            "Arn"
+          ]
+        },
+        "MemorySize": 256,
+        "Timeout": 15,
+        "Code": {
+          "S3Bucket": {
+            "Ref": "LambdaCodeBucket"
+          },
+          "S3Key": {
+            "Ref": "LambdaCodeKey"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "CORE_ISSUER": {
+              "Ref": "CoreIssuer"
+            },
+            "CORE_ORGANIZATION_ID": {
+              "Ref": "CoreOrganizationId"
+            },
+            "CORE_SERVICE_ID": {
+              "Ref": "CoreServiceId"
+            },
+            "CORE_CREDENTIALS_PARAMETER": {
+              "Ref": "CoreCredentialsParameter"
+            },
+            "APPLICATION_ORIGIN": {
+              "Ref": "ApplicationOrigin"
+            },
+            "PRIVATE_TABLE": {
+              "Ref": "PrivateTable"
+            },
+            "PUBLIC_TABLE": {
+              "Ref": "PublicTable"
+            },
+            "MEDIA_BUCKET": {
+              "Ref": "Media"
+            },
+            "NCE_APP_ID": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Function.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Api": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${ResourceName}-api"
+        },
+        "ProtocolType": "HTTP",
+        "Target": {
+          "Fn::GetAtt": [
+            "Function",
+            "Arn"
+          ]
+        },
+        "RouteKey": "$default",
+        "CorsConfiguration": {
+          "AllowOrigins": [
+            {
+              "Ref": "ApplicationOrigin"
+            }
+          ],
+          "AllowMethods": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+          ],
+          "AllowHeaders": [
+            "authorization",
+            "content-type"
+          ],
+          "MaxAge": 300
+        },
+        "Tags": {
+          "nce:platform-prefix": {
+            "Ref": "PlatformPrefix"
+          },
+          "nce:application": {
+            "Ref": "ApplicationIdentifier"
+          }
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Api.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "ApiInvoke": {
+      "Type": "AWS::Lambda::Permission",
+      "Condition": "Serverless",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "Function"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/*/*"
+        },
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application ApiInvoke.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "MediaTLS": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Condition": "Serverless",
+      "Properties": {
+        "Bucket": {
+          "Ref": "Media"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Media",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Media.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Enforce TLS for each private media bucket.",
+          "must": [
+            "Keep deny scoped to app bucket and contents."
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "AmplifyAppId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Frontend",
+          "AppId"
+        ]
+      }
+    },
+    "Origin": {
+      "Value": {
+        "Fn::Sub": "https://${Environment}.${Frontend.DefaultDomain}"
+      }
+    },
+    "ApiUrl": {
+      "Condition": "Serverless",
+      "Value": {
+        "Fn::GetAtt": [
+          "Api",
+          "ApiEndpoint"
+        ]
+      }
+    }
+  },
+  "Metadata": {
+    "AWSToolsMetrics": {
+      "AWSAgentToolkit": "aws-cloudformation@3"
+    },
+    "com.aws.cloudformation.Context": {
+      "ref": [
+        {
+          "at": "deployment/aws-apps/README.md",
+          "has": "Archetype contract and immutable release phases"
+        }
+      ],
+      "must": [
+        "Retain existing state; reject changes that remove or replace resources.",
+        "Build source in isolated CodeBuild role; never execute application code in deployment runner."
+      ]
+    }
+  }
+}

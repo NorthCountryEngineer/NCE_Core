@@ -5,6 +5,7 @@ from django.utils import timezone
 from platform_services.models import Deployment
 from platform_services.workflows import process_one
 from platform_services.training import process_one as process_training
+from platform_services.cloud_deployments import process_one as process_cloud
 
 
 def heartbeat_embedded():
@@ -30,7 +31,8 @@ class Command(BaseCommand):
                 for _ in range(20):
                     workflow_work = process_one()
                     training_work = process_training()
-                    if not workflow_work and not training_work:
+                    cloud_work = process_cloud()
+                    if not workflow_work and not training_work and not cloud_work:
                         break
                 if options["once"]:
                     return

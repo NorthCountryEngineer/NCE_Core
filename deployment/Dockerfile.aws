@@ -6,6 +6,7 @@ RUN pip install --no-cache-dir uv==0.12.19
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --system-certs
 COPY . .
+RUN uv pip install --python .venv/bin/python --system-certs --requirements deployment/cloud-runner-requirements.txt
 # Official RDS CA bundle. libpq verifies both its chain and the DB endpoint name.
 # Downloaded only at a future image build, never by an application request.
 RUN python -c "from urllib.request import urlopen; from pathlib import Path; Path('/app/deployment/rds-global-bundle.pem').write_bytes(urlopen('https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem', timeout=30).read())"

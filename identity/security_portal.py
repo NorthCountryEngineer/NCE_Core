@@ -48,7 +48,7 @@ def resource_types():
         'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask',
         'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback', 'DeploymentEnvironment',
         'IntegrationDefinition', 'IntegrationConnection', 'ApplicationIntegration', 'AppProject', 'DocumentationPage', 'AIRulePolicy', 'AIUsageReservation',
-        'DevelopmentObject', 'DevelopmentRevision', 'DevelopmentRun']})
+        'DevelopmentObject', 'DevelopmentRevision', 'DevelopmentRun', 'CloudPlatform', 'CloudApplication']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     from core_fabric.models import FabricContract, FabricPeer

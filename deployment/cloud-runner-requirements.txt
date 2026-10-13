@@ -1,0 +1,2 @@
+# Optional AWS SDK; demo mode runs without installing this package.
+boto3==1.43.112

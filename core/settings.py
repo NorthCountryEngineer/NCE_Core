@@ -29,6 +29,9 @@ def read_secret(variable, development_filename):
 SECRET_KEY = read_secret("CORE_SECRET_KEY_FILE", "django.key")
 OIDC_PRIVATE_KEY = read_secret("CORE_OIDC_KEY_FILE", "oidc.key")
 ISSUER = os.environ.get("CORE_ISSUER", "http://localhost:8000" if DEBUG else "").rstrip("/")
+# A platform verification is read-only. Resource creation additionally requires
+# this operator switch and an explicit per-release approval of AWS charges.
+CORE_ENABLE_CLOUD_DEPLOYMENTS = os.environ.get('CORE_ENABLE_CLOUD_DEPLOYMENTS') == '1'
 issuer_url = urlparse(ISSUER)
 if not issuer_url.netloc or issuer_url.path or issuer_url.query or issuer_url.fragment or issuer_url.username:
     raise ImproperlyConfigured("CORE_ISSUER must be an absolute origin URL, without a path or credentials.")
