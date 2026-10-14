@@ -6,13 +6,16 @@ only that destination's approved repository, service approach, and environment
 when creating an app. A release records the exact Git commit and a reviewed plan;
 its progress and errors remain visible in Core.
 
-The first AWS recipes are **Website · Amplify Hosting** and **Website and
-serverless API · Amplify + Lambda**. They provision manual Amplify Hosting and,
+The AWS recipes include **Website · Amplify Hosting**, **Website and
+serverless API · Amplify + Lambda**, and the fixed **Website, API and workers ·
+Amplify + Fargate** recipe described in [Container application releases](cloud-fargate.md).
+The first two provision manual Amplify Hosting and,
 for the second recipe, a Python Lambda HTTP API, two on-demand DynamoDB tables,
 and a private media bucket. Core connects the app's central identity and injects
-public browser configuration. Existing users and RBAC remain in Core. Container
-apps, database migrations inside application containers, importing the existing
-Axolotl stack, and automated Cloudflare DNS changes are outside these recipes.
+public browser configuration. Existing users and RBAC remain in Core. The Fargate
+recipe keeps frontend source builds isolated and uses approved image digests and
+secret/certificate references. Importing the existing Axolotl stack and automated
+Cloudflare DNS changes are outside these recipes.
 The existing production Axolotl site is not changed by this local exercise.
 
 ## First validate locally without AWS calls or charges

@@ -88,6 +88,15 @@
    "Default": "NorthCountryEngineer/Axolotl_News",
    "AllowedPattern": "[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",
    "Description": "Default secondary source; must be in the approved repository list."
+  },
+  "EnableFargateRecipe": {
+   "Type": "String",
+   "Default": "false",
+   "AllowedValues": [
+    "true",
+    "false"
+   ],
+   "Description": "Provision the separately scoped fixed container recipe execution role."
   }
  },
  "Conditions": {
@@ -95,6 +104,14 @@
    "Fn::Equals": [
     {
      "Ref": "AttachCoreRuntimePermission"
+    },
+    "true"
+   ]
+  },
+  "EnableFargate": {
+   "Fn::Equals": [
+    {
+     "Ref": "EnableFargateRecipe"
     },
     "true"
    ]
@@ -196,28 +213,7 @@
     "PolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Sid": "DenyInsecureTransport",
-       "Effect": "Deny",
-       "Principal": "*",
-       "Action": "s3:*",
-       "Resource": [
-        {
-         "Fn::GetAtt": [
-          "Artifacts",
-          "Arn"
-         ]
-        },
-        {
-         "Fn::Sub": "${Artifacts.Arn}/*"
-        }
-       ],
-       "Condition": {
-        "Bool": {
-         "aws:SecureTransport": "false"
-        }
-       }
-      }
+      {"Sid":"DenyInsecureTransport","Effect":"Deny","Principal":"*","Action":"s3:*","Resource":[{"Fn::GetAtt":["Artifacts","Arn"]},{"Fn::Sub":"${Artifacts.Arn}/*"}],"Condition":{"Bool":{"aws:SecureTransport":"false"}}}
      ]
     }
    }
@@ -263,7 +259,8 @@
      "why": "Maximum permissions for per-application Lambda roles; runtime policies narrow each app to its own resources.",
      "must": [
       "CloudFormation must require this boundary on every new app role.",
-      "No IAM, STS, deployments, or account administration."
+      "No IAM, STS, deployments, or account administration.",
+      "Container execution permissions stay inside named platform image, secret and log namespaces; runtime inline policies select exact app resources."
      ]
     }
    },
@@ -272,104 +269,17 @@
     "PolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Sid": "AppLogs",
-       "Effect": "Allow",
-       "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-       ],
-       "Resource": {
-        "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*:*"
-       }
-      },
-      {
-       "Sid": "AppTables",
-       "Effect": "Allow",
-       "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query",
-        "dynamodb:Scan",
-        "dynamodb:DescribeTable"
-       ],
-       "Resource": [
-        {
-         "Fn::Sub": "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*"
-        },
-        {
-         "Fn::Sub": "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*/index/*"
-        }
-       ]
-      },
-      {
-       "Sid": "AppBucketMetadata",
-       "Effect": "Allow",
-       "Action": [
-        "s3:ListBucket",
-        "s3:GetBucketLocation"
-       ],
-       "Resource": {
-        "Fn::Sub": "arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"
-       }
-      },
-      {
-       "Sid": "AppObjects",
-       "Effect": "Allow",
-       "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject"
-       ],
-       "Resource": {
-        "Fn::Sub": "arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*/*"
-       }
-      },
-      {
-       "Sid": "OwnCoreCredential",
-       "Effect": "Allow",
-       "Action": [
-        "ssm:GetParameter"
-       ],
-       "Resource": {
-        "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"
-       }
-      },
-      {
-       "Sid": "DecryptDefaultSSMCredential",
-       "Effect": "Allow",
-       "Action": [
-        "kms:Decrypt"
-       ],
-       "Resource": {
-        "Fn::Sub": "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"
-       },
-       "Condition": {
-        "StringEquals": {
-         "kms:ViaService": {
-          "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
-         },
-         "kms:CallerAccount": {
-          "Ref": "AWS::AccountId"
-         }
-        },
-        "StringLike": {
-         "kms:EncryptionContext:PARAMETER_ARN": {
-          "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"
-         }
-        },
-        "ForAnyValue:StringEquals": {
-         "kms:ResourceAliases": [
-          "alias/aws/ssm"
-         ]
-        },
-        "Null": {
-         "kms:ResourceAliases": "false"
-        }
-       }
-      }
+      {"Sid":"AppLogs","Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*:*"}},
+      {"Sid":"AppTables","Effect":"Allow","Action":["dynamodb:GetItem","dynamodb:PutItem","dynamodb:UpdateItem","dynamodb:DeleteItem","dynamodb:Query","dynamodb:Scan","dynamodb:DescribeTable"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*/index/*"}]},
+      {"Sid":"AppBucketMetadata","Effect":"Allow","Action":["s3:ListBucket","s3:GetBucketLocation"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"}},
+      {"Sid":"AppObjects","Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*/*"}},
+      {"Sid":"OwnCoreCredential","Effect":"Allow","Action":["ssm:GetParameter"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"}},
+      {"Sid":"DecryptDefaultSSMCredential","Effect":"Allow","Action":["kms:Decrypt"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"},"Condition":{"StringEquals":{"kms:ViaService":{"Fn::Sub":"ssm.${AWS::Region}.amazonaws.com"},"kms:CallerAccount":{"Ref":"AWS::AccountId"}},"StringLike":{"kms:EncryptionContext:PARAMETER_ARN":{"Fn::Sub":"arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"}},"ForAnyValue:StringEquals":{"kms:ResourceAliases":["alias/aws/ssm"]},"Null":{"kms:ResourceAliases":"false"}}},
+      {"Sid":"ContainerLogs","Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/nce/${Prefix}-*:*"}},
+      {"Sid":"ContainerECRAuthorization","Effect":"Allow","Action":["ecr:GetAuthorizationToken"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+      {"Sid":"ContainerImages","Effect":"Allow","Action":["ecr:BatchCheckLayerAvailability","ecr:GetDownloadUrlForLayer","ecr:BatchGetImage"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-*"}},
+      {"Sid":"ContainerRuntimeSecrets","Effect":"Allow","Action":["secretsmanager:GetSecretValue"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Prefix}-*"}},
+      {"Sid":"ContainerCoreCredential","Effect":"Allow","Action":["ssm:GetParameters"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"}}
      ]
     }
    }
@@ -389,13 +299,7 @@
     "AssumeRolePolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "cloudformation.amazonaws.com"
-       },
-       "Action": "sts:AssumeRole"
-      }
+      {"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}
      ]
     },
     "Policies": [
@@ -404,341 +308,22 @@
       "PolicyDocument": {
        "Version": "2012-10-17",
        "Statement": [
-        {
-         "Sid": "AppFunctions",
-         "Effect": "Allow",
-         "Action": [
-          "lambda:CreateFunction",
-          "lambda:GetFunction",
-          "lambda:GetFunctionConfiguration",
-          "lambda:UpdateFunctionCode",
-          "lambda:UpdateFunctionConfiguration",
-          "lambda:DeleteFunction",
-          "lambda:AddPermission",
-          "lambda:RemovePermission",
-          "lambda:GetPolicy",
-          "lambda:TagResource",
-          "lambda:UntagResource",
-          "lambda:ListTags",
-          "lambda:PutFunctionConcurrency",
-          "lambda:DeleteFunctionConcurrency",
-          "lambda:GetFunctionCodeSigningConfig",
-          "lambda:GetFunctionRecursionConfig",
-          "lambda:GetRuntimeManagementConfig",
-          "lambda:GetFunctionScalingConfig"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${Prefix}-*"
-         }
-        },
-        {
-         "Sid": "AppData",
-         "Effect": "Allow",
-         "Action": [
-          "dynamodb:CreateTable",
-          "dynamodb:DescribeTable",
-          "dynamodb:UpdateTable",
-          "dynamodb:DeleteTable",
-          "dynamodb:TagResource",
-          "dynamodb:UntagResource",
-          "dynamodb:ListTagsOfResource",
-          "dynamodb:DescribeContinuousBackups",
-          "dynamodb:UpdateContinuousBackups",
-          "dynamodb:DescribeTimeToLive",
-          "dynamodb:UpdateTimeToLive",
-          "dynamodb:DescribeContributorInsights",
-          "dynamodb:DescribeKinesisStreamingDestination",
-          "dynamodb:GetResourcePolicy"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*"
-         }
-        },
-        {
-         "Sid": "AppBuckets",
-         "Effect": "Allow",
-         "Action": [
-          "s3:CreateBucket",
-          "s3:DeleteBucket",
-          "s3:GetBucketLocation",
-          "s3:GetBucketPolicy",
-          "s3:PutBucketPolicy",
-          "s3:DeleteBucketPolicy",
-          "s3:GetBucketTagging",
-          "s3:PutBucketTagging",
-          "s3:GetBucketVersioning",
-          "s3:PutBucketVersioning",
-          "s3:GetBucketPublicAccessBlock",
-          "s3:PutBucketPublicAccessBlock",
-          "s3:GetEncryptionConfiguration",
-          "s3:PutEncryptionConfiguration",
-          "s3:GetBucketOwnershipControls",
-          "s3:PutBucketOwnershipControls",
-          "s3:GetBucketCORS",
-          "s3:PutBucketCORS",
-          "s3:GetLifecycleConfiguration",
-          "s3:PutLifecycleConfiguration",
-          "s3:GetAccelerateConfiguration",
-          "s3:GetAnalyticsConfiguration",
-          "s3:GetInventoryConfiguration",
-          "s3:GetBucketLogging",
-          "s3:GetMetricsConfiguration",
-          "s3:GetBucketNotification",
-          "s3:GetReplicationConfiguration",
-          "s3:GetBucketWebsite",
-          "s3:GetBucketObjectLockConfiguration",
-          "s3:ListTagsForResource",
-          "s3:GetBucketAbac",
-          "s3:GetIntelligentTieringConfiguration",
-          "s3:GetBucketMetadataTableConfiguration",
-          "s3:ListBucket",
-          "s3:GetBucketAcl",
-          "s3:TagResource",
-          "s3:UntagResource"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"
-         }
-        },
-        {
-         "Sid": "ReadBackendCode",
-         "Effect": "Allow",
-         "Action": [
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-         ],
-         "Resource": {
-          "Fn::Sub": "${Artifacts.Arn}/code/*"
-         }
-        },
-        {
-         "Sid": "AppLogGroups",
-         "Effect": "Allow",
-         "Action": [
-          "logs:CreateLogGroup",
-          "logs:DeleteLogGroup",
-          "logs:PutRetentionPolicy",
-          "logs:DeleteRetentionPolicy",
-          "logs:TagResource",
-          "logs:UntagResource",
-          "logs:ListTagsForResource",
-          "logs:GetDataProtectionPolicy",
-          "logs:DescribeIndexPolicies"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*"
-          },
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*:*"
-          }
-         ]
-        },
-        {
-         "Sid": "ReadLogGroups",
-         "Effect": "Allow",
-         "Action": [
-          "logs:DescribeLogGroups",
-          "logs:DescribeResourcePolicies"
-         ],
-         "Resource": "*",
-         "Condition": {
-          "StringEquals": {
-           "aws:RequestedRegion": {
-            "Ref": "AWS::Region"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "CreateBoundedRoles",
-         "Effect": "Allow",
-         "Action": [
-          "iam:CreateRole"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"
-         },
-         "Condition": {
-          "ArnEquals": {
-           "iam:PermissionsBoundary": {
-            "Ref": "AppBoundary"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ManageBoundedAppRole",
-         "Effect": "Allow",
-         "Action": [
-          "iam:GetRole",
-          "iam:UpdateAssumeRolePolicy",
-          "iam:DeleteRole",
-          "iam:PutRolePolicy",
-          "iam:GetRolePolicy",
-          "iam:DeleteRolePolicy",
-          "iam:ListRolePolicies",
-          "iam:TagRole",
-          "iam:UntagRole",
-          "iam:ListAttachedRolePolicies"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"
-         }
-        },
-        {
-         "Sid": "PassOnlyAppLambdaRole",
-         "Effect": "Allow",
-         "Action": [
-          "iam:PassRole"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"
-         },
-         "Condition": {
-          "StringEquals": {
-           "iam:PassedToService": "lambda.amazonaws.com"
-          }
-         }
-        },
-        {
-         "Sid": "CreateTaggedAmplify",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:CreateApp"
-         ],
-         "Resource": "*",
-         "Condition": {
-          "StringEquals": {
-           "aws:RequestTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "CreateTaggedBranch",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:CreateBranch"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"
-         },
-         "Condition": {
-          "StringEquals": {
-           "aws:RequestTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ManageTaggedAmplify",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:GetApp",
-          "amplify:UpdateApp",
-          "amplify:DeleteApp",
-          "amplify:ListTagsForResource",
-          "amplify:GetBranch",
-          "amplify:UpdateBranch",
-          "amplify:DeleteBranch"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"
-          },
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"
-          }
-         ],
-         "Condition": {
-          "StringEquals": {
-           "aws:ResourceTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "TagNewAmplify",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:TagResource"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"
-          },
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"
-          }
-         ],
-         "Condition": {
-          "StringEquals": {
-           "aws:RequestTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "CreateNamedHttpApi",
-         "Effect": "Allow",
-         "Action": [
-          "apigateway:POST"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis"
-         },
-         "Condition": {
-          "StringLike": {
-           "apigateway:Request/ApiName": {
-            "Fn::Sub": "${Prefix}-*"
-           }
-          },
-          "StringEquals": {
-           "aws:RequestTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ManageTaggedHttpApi",
-         "Effect": "Allow",
-         "Action": [
-          "apigateway:GET",
-          "apigateway:PATCH",
-          "apigateway:DELETE"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*"
-         },
-         "Condition": {
-          "StringEquals": {
-           "aws:ResourceTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ReadHttpApiTags",
-         "Effect": "Allow",
-         "Action": [
-          "apigateway:GET"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn%3A${AWS::Partition}%3Aapigateway%3A${AWS::Region}%3A%3A%2Fapis%2F*"
-          },
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*"
-          }
-         ]
-        }
+        {"Sid":"AppFunctions","Effect":"Allow","Action":["lambda:CreateFunction","lambda:GetFunction","lambda:GetFunctionConfiguration","lambda:UpdateFunctionCode","lambda:UpdateFunctionConfiguration","lambda:DeleteFunction","lambda:AddPermission","lambda:RemovePermission","lambda:GetPolicy","lambda:TagResource","lambda:UntagResource","lambda:ListTags","lambda:PutFunctionConcurrency","lambda:DeleteFunctionConcurrency","lambda:GetFunctionCodeSigningConfig","lambda:GetFunctionRecursionConfig","lambda:GetRuntimeManagementConfig","lambda:GetFunctionScalingConfig"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${Prefix}-*"}},
+        {"Sid":"AppData","Effect":"Allow","Action":["dynamodb:CreateTable","dynamodb:DescribeTable","dynamodb:UpdateTable","dynamodb:DeleteTable","dynamodb:TagResource","dynamodb:UntagResource","dynamodb:ListTagsOfResource","dynamodb:DescribeContinuousBackups","dynamodb:UpdateContinuousBackups","dynamodb:DescribeTimeToLive","dynamodb:UpdateTimeToLive","dynamodb:DescribeContributorInsights","dynamodb:DescribeKinesisStreamingDestination","dynamodb:GetResourcePolicy"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Prefix}-*"}},
+        {"Sid":"AppBuckets","Effect":"Allow","Action":["s3:CreateBucket","s3:DeleteBucket","s3:GetBucketLocation","s3:GetBucketPolicy","s3:PutBucketPolicy","s3:DeleteBucketPolicy","s3:GetBucketTagging","s3:PutBucketTagging","s3:GetBucketVersioning","s3:PutBucketVersioning","s3:GetBucketPublicAccessBlock","s3:PutBucketPublicAccessBlock","s3:GetEncryptionConfiguration","s3:PutEncryptionConfiguration","s3:GetBucketOwnershipControls","s3:PutBucketOwnershipControls","s3:GetBucketCORS","s3:PutBucketCORS","s3:GetLifecycleConfiguration","s3:PutLifecycleConfiguration","s3:GetAccelerateConfiguration","s3:GetAnalyticsConfiguration","s3:GetInventoryConfiguration","s3:GetBucketLogging","s3:GetMetricsConfiguration","s3:GetBucketNotification","s3:GetReplicationConfiguration","s3:GetBucketWebsite","s3:GetBucketObjectLockConfiguration","s3:ListTagsForResource","s3:GetBucketAbac","s3:GetIntelligentTieringConfiguration","s3:GetBucketMetadataTableConfiguration","s3:ListBucket","s3:GetBucketAcl","s3:TagResource","s3:UntagResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"}},
+        {"Sid":"ReadBackendCode","Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion"],"Resource":{"Fn::Sub":"${Artifacts.Arn}/code/*"}},
+        {"Sid":"AppLogGroups","Effect":"Allow","Action":["logs:CreateLogGroup","logs:DeleteLogGroup","logs:PutRetentionPolicy","logs:DeleteRetentionPolicy","logs:TagResource","logs:UntagResource","logs:ListTagsForResource","logs:GetDataProtectionPolicy","logs:DescribeIndexPolicies"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${Prefix}-*:*"}]},
+        {"Sid":"ReadLogGroups","Effect":"Allow","Action":["logs:DescribeLogGroups","logs:DescribeResourcePolicies"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Sid":"CreateBoundedRoles","Effect":"Allow","Action":["iam:CreateRole"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"},"Condition":{"ArnEquals":{"iam:PermissionsBoundary":{"Ref":"AppBoundary"}}}},
+        {"Sid":"ManageBoundedAppRole","Effect":"Allow","Action":["iam:GetRole","iam:UpdateAssumeRolePolicy","iam:DeleteRole","iam:PutRolePolicy","iam:GetRolePolicy","iam:DeleteRolePolicy","iam:ListRolePolicies","iam:TagRole","iam:UntagRole","iam:ListAttachedRolePolicies"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"}},
+        {"Sid":"PassOnlyAppLambdaRole","Effect":"Allow","Action":["iam:PassRole"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-lambda"},"Condition":{"StringEquals":{"iam:PassedToService":"lambda.amazonaws.com"}}},
+        {"Sid":"CreateTaggedAmplify","Effect":"Allow","Action":["amplify:CreateApp"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"CreateTaggedBranch","Effect":"Allow","Action":["amplify:CreateBranch"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"},"Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ManageTaggedAmplify","Effect":"Allow","Action":["amplify:GetApp","amplify:UpdateApp","amplify:DeleteApp","amplify:ListTagsForResource","amplify:GetBranch","amplify:UpdateBranch","amplify:DeleteBranch"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"TagNewAmplify","Effect":"Allow","Action":["amplify:TagResource"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"CreateNamedHttpApi","Effect":"Allow","Action":["apigateway:POST"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis"},"Condition":{"StringLike":{"apigateway:Request/ApiName":{"Fn::Sub":"${Prefix}-*"}},"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ManageTaggedHttpApi","Effect":"Allow","Action":["apigateway:GET","apigateway:PATCH","apigateway:DELETE"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*"},"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ReadHttpApiTags","Effect":"Allow","Action":["apigateway:GET"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn%3A${AWS::Partition}%3Aapigateway%3A${AWS::Region}%3A%3A%2Fapis%2F*"},{"Fn::Sub":"arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*"}]}
        ]
       }
      }
@@ -760,25 +345,7 @@
     "AssumeRolePolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "codebuild.amazonaws.com"
-       },
-       "Action": "sts:AssumeRole",
-       "Condition": {
-        "StringEquals": {
-         "aws:SourceAccount": {
-          "Ref": "AWS::AccountId"
-         }
-        },
-        "ArnLike": {
-         "aws:SourceArn": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"
-         }
-        }
-       }
-      }
+      {"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":{"Ref":"AWS::AccountId"}},"ArnLike":{"aws:SourceArn":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"}}}}
      ]
     },
     "Policies": [
@@ -787,112 +354,12 @@
       "PolicyDocument": {
        "Version": "2012-10-17",
        "Statement": [
-        {
-         "Sid": "ReadApprovedAppRepositories",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:UseConnection"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         },
-         "Condition": {
-          "StringEquals": {
-           "codeconnections:FullRepositoryId": {
-            "Ref": "ApplicationRepositories"
-           },
-           "codeconnections:ProviderAction": [
-            "GitPull",
-            "GetBranch",
-            "GetCommit",
-            "GetRepository"
-           ]
-          },
-          "StringEqualsIfExists": {
-           "codeconnections:BranchName": {
-            "Ref": "ApplicationBranches"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ReadTrustedCore",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:UseConnection"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         },
-         "Condition": {
-          "StringEquals": {
-           "codeconnections:FullRepositoryId": [
-            {
-             "Ref": "RunnerRepository"
-            }
-           ],
-           "codeconnections:ProviderAction": [
-            "GitPull",
-            "GetBranch",
-            "GetCommit",
-            "GetRepository"
-           ]
-          },
-          "StringEqualsIfExists": {
-           "codeconnections:BranchName": [
-            {
-             "Ref": "RunnerBranch"
-            }
-           ]
-          }
-         }
-        },
-        {
-         "Sid": "WriteOnlyBuildArchives",
-         "Effect": "Allow",
-         "Action": [
-          "s3:PutObject",
-          "s3:AbortMultipartUpload"
-         ],
-         "Resource": {
-          "Fn::Sub": "${Artifacts.Arn}/builds/*"
-         }
-        },
-        {
-         "Sid": "BuildBucketMetadata",
-         "Effect": "Allow",
-         "Action": [
-          "s3:GetBucketLocation"
-         ],
-         "Resource": {
-          "Fn::GetAtt": [
-           "Artifacts",
-           "Arn"
-          ]
-         }
-        },
-        {
-         "Sid": "SourceBuildLogs",
-         "Effect": "Allow",
-         "Action": [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-         ],
-         "Resource": {
-          "Fn::Sub": "${SourceLogs.Arn}:*"
-         }
-        },
-        {
-         "Sid": "SourceDownloadConnection",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:GetConnection",
-          "codeconnections:GetConnectionToken"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         }
-        }
+        {"Sid":"ReadApprovedAppRepositories","Effect":"Allow","Action":["codeconnections:UseConnection"],"Resource":{"Ref":"CodeConnectionArn"},"Condition":{"StringEquals":{"codeconnections:FullRepositoryId":{"Ref":"ApplicationRepositories"},"codeconnections:ProviderAction":["GitPull","GetBranch","GetCommit","GetRepository"]},"StringEqualsIfExists":{"codeconnections:BranchName":{"Ref":"ApplicationBranches"}}}},
+        {"Sid":"ReadTrustedCore","Effect":"Allow","Action":["codeconnections:UseConnection"],"Resource":{"Ref":"CodeConnectionArn"},"Condition":{"StringEquals":{"codeconnections:FullRepositoryId":[{"Ref":"RunnerRepository"}],"codeconnections:ProviderAction":["GitPull","GetBranch","GetCommit","GetRepository"]},"StringEqualsIfExists":{"codeconnections:BranchName":[{"Ref":"RunnerBranch"}]}}},
+        {"Sid":"WriteOnlyBuildArchives","Effect":"Allow","Action":["s3:PutObject","s3:AbortMultipartUpload"],"Resource":{"Fn::Sub":"${Artifacts.Arn}/builds/*"}},
+        {"Sid":"BuildBucketMetadata","Effect":"Allow","Action":["s3:GetBucketLocation"],"Resource":{"Fn::GetAtt":["Artifacts","Arn"]}},
+        {"Sid":"SourceBuildLogs","Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":{"Fn::Sub":"${SourceLogs.Arn}:*"}},
+        {"Sid":"SourceDownloadConnection","Effect":"Allow","Action":["codeconnections:GetConnection","codeconnections:GetConnectionToken"],"Resource":{"Ref":"CodeConnectionArn"}}
        ]
       }
      }
@@ -906,7 +373,8 @@
      "why": "Only pinned Core runner may provision and publish; never execute application code here.",
      "must": [
       "Fixed inline buildspec verifies Core Git commit before Python execution.",
-      "App source is data; builder executes it under a distinct role."
+      "App source is data; builder executes it under a distinct role.",
+      "Migration task definitions and roles stay in the platform namespace; migration command is fixed by the pinned recipe."
      ]
     }
    },
@@ -914,25 +382,7 @@
     "AssumeRolePolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Effect": "Allow",
-       "Principal": {
-        "Service": "codebuild.amazonaws.com"
-       },
-       "Action": "sts:AssumeRole",
-       "Condition": {
-        "StringEquals": {
-         "aws:SourceAccount": {
-          "Ref": "AWS::AccountId"
-         }
-        },
-        "ArnLike": {
-         "aws:SourceArn": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"
-         }
-        }
-       }
-      }
+      {"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"aws:SourceAccount":{"Ref":"AWS::AccountId"}},"ArnLike":{"aws:SourceArn":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"}}}}
      ]
     },
     "Policies": [
@@ -941,274 +391,25 @@
       "PolicyDocument": {
        "Version": "2012-10-17",
        "Statement": [
-        {
-         "Sid": "ReadTrustedCore",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:UseConnection"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         },
-         "Condition": {
-          "StringEquals": {
-           "codeconnections:FullRepositoryId": [
-            {
-             "Ref": "RunnerRepository"
-            }
-           ],
-           "codeconnections:ProviderAction": [
-            "GitPull",
-            "GetBranch",
-            "GetCommit",
-            "GetRepository"
-           ]
-          },
-          "StringEqualsIfExists": {
-           "codeconnections:BranchName": [
-            {
-             "Ref": "RunnerBranch"
-            }
-           ]
-          }
-         }
-        },
-        {
-         "Sid": "ReadApprovedAppRepositories",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:UseConnection"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         },
-         "Condition": {
-          "StringEquals": {
-           "codeconnections:FullRepositoryId": {
-            "Ref": "ApplicationRepositories"
-           },
-           "codeconnections:ProviderAction": [
-            "GitPull",
-            "GetBranch",
-            "GetCommit",
-            "GetRepository"
-           ]
-          },
-          "StringEqualsIfExists": {
-           "codeconnections:BranchName": {
-            "Ref": "ApplicationBranches"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "RunnerLogs",
-         "Effect": "Allow",
-         "Action": [
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-         ],
-         "Resource": {
-          "Fn::Sub": "${RunnerLogs.Arn}:*"
-         }
-        },
-        {
-         "Sid": "ReadExactBuildArchives",
-         "Effect": "Allow",
-         "Action": [
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-         ],
-         "Resource": {
-          "Fn::Sub": "${Artifacts.Arn}/builds/*"
-         }
-        },
-        {
-         "Sid": "WriteCodeAndReceipts",
-         "Effect": "Allow",
-         "Action": [
-          "s3:PutObject",
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "${Artifacts.Arn}/code/*"
-          },
-          {
-           "Fn::Sub": "${Artifacts.Arn}/runs/*"
-          }
-         ]
-        },
-        {
-         "Sid": "ArtifactBucketMetadata",
-         "Effect": "Allow",
-         "Action": [
-          "s3:GetBucketLocation"
-         ],
-         "Resource": {
-          "Fn::GetAtt": [
-           "Artifacts",
-           "Arn"
-          ]
-         }
-        },
-        {
-         "Sid": "RunIsolatedSourceBuild",
-         "Effect": "Allow",
-         "Action": [
-          "codebuild:BatchGetBuilds",
-          "codebuild:StopBuild"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"
-         }
-        },
-        {
-         "Sid": "ReadStacks",
-         "Effect": "Allow",
-         "Action": [
-          "cloudformation:DescribeStacks",
-          "cloudformation:DescribeStackEvents",
-          "cloudformation:DescribeStackResources",
-          "cloudformation:DescribeChangeSet",
-          "cloudformation:GetTemplate"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"
-         }
-        },
-        {
-         "Sid": "CreateRecipeChanges",
-         "Effect": "Allow",
-         "Action": [
-          "cloudformation:CreateChangeSet"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"
-         },
-         "Condition": {
-          "ArnEquals": {
-           "cloudformation:RoleArn": {
-            "Fn::GetAtt": [
-             "CloudFormationRole",
-             "Arn"
-            ]
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ApplyRecipeChanges",
-         "Effect": "Allow",
-         "Action": [
-          "cloudformation:ExecuteChangeSet",
-          "cloudformation:DeleteChangeSet"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"
-         }
-        },
-        {
-         "Sid": "PassExactlyCloudFormationRole",
-         "Effect": "Allow",
-         "Action": [
-          "iam:PassRole"
-         ],
-         "Resource": {
-          "Fn::GetAtt": [
-           "CloudFormationRole",
-           "Arn"
-          ]
-         },
-         "Condition": {
-          "StringEquals": {
-           "iam:PassedToService": "cloudformation.amazonaws.com"
-          }
-         }
-        },
-        {
-         "Sid": "PublishOnlyTaggedFrontends",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:CreateDeployment",
-          "amplify:StartDeployment",
-          "amplify:GetApp",
-          "amplify:GetBranch"
-         ],
-         "Resource": [
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"
-          },
-          {
-           "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"
-          }
-         ],
-         "Condition": {
-          "StringEquals": {
-           "aws:ResourceTag/nce:platform-prefix": {
-            "Ref": "Prefix"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "ReadAndStopFrontendJobs",
-         "Effect": "Allow",
-         "Action": [
-          "amplify:GetJob",
-          "amplify:StopJob"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*/jobs/*"
-         }
-        },
-        {
-         "Sid": "StartOnlyConfiguredBuild",
-         "Effect": "Allow",
-         "Action": [
-          "codebuild:StartBuild"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"
-         },
-         "Condition": {
-          "Null": {
-           "codebuild:source.buildspec": "true",
-           "codebuild:source.location": "true",
-           "codebuild:source.auth.resource": "true",
-           "codebuild:source.auth.type": "true",
-           "codebuild:source.insecureSsl": "true",
-           "codebuild:serviceRole": "true",
-           "codebuild:environment.image": "true",
-           "codebuild:environment.type": "true",
-           "codebuild:environment.computeType": "true",
-           "codebuild:environment.privilegedMode": "true",
-           "codebuild:environment.registryCredential": "true",
-           "codebuild:environment.fleet.fleetArn": "true",
-           "codebuild:artifacts": "true",
-           "codebuild:secondaryArtifacts": "true",
-           "codebuild:logsConfig": "true"
-          },
-          "ForAllValues:StringEquals": {
-           "codebuild:environment.environmentVariables.name": [
-            "NCE_BUILD_CONFIG",
-            "NCE_RUN_TOKEN"
-           ]
-          }
-         }
-        },
-        {
-         "Sid": "SourceDownloadConnection",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:GetConnection",
-          "codeconnections:GetConnectionToken"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         }
-        }
+        {"Sid":"ReadTrustedCore","Effect":"Allow","Action":["codeconnections:UseConnection"],"Resource":{"Ref":"CodeConnectionArn"},"Condition":{"StringEquals":{"codeconnections:FullRepositoryId":[{"Ref":"RunnerRepository"}],"codeconnections:ProviderAction":["GitPull","GetBranch","GetCommit","GetRepository"]},"StringEqualsIfExists":{"codeconnections:BranchName":[{"Ref":"RunnerBranch"}]}}},
+        {"Sid":"ReadApprovedAppRepositories","Effect":"Allow","Action":["codeconnections:UseConnection"],"Resource":{"Ref":"CodeConnectionArn"},"Condition":{"StringEquals":{"codeconnections:FullRepositoryId":{"Ref":"ApplicationRepositories"},"codeconnections:ProviderAction":["GitPull","GetBranch","GetCommit","GetRepository"]},"StringEqualsIfExists":{"codeconnections:BranchName":{"Ref":"ApplicationBranches"}}}},
+        {"Sid":"RunnerLogs","Effect":"Allow","Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":{"Fn::Sub":"${RunnerLogs.Arn}:*"}},
+        {"Sid":"ReadExactBuildArchives","Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion"],"Resource":{"Fn::Sub":"${Artifacts.Arn}/builds/*"}},
+        {"Sid":"WriteCodeAndReceipts","Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:GetObjectVersion"],"Resource":[{"Fn::Sub":"${Artifacts.Arn}/code/*"},{"Fn::Sub":"${Artifacts.Arn}/runs/*"}]},
+        {"Sid":"ArtifactBucketMetadata","Effect":"Allow","Action":["s3:GetBucketLocation"],"Resource":{"Fn::GetAtt":["Artifacts","Arn"]}},
+        {"Sid":"RunIsolatedSourceBuild","Effect":"Allow","Action":["codebuild:BatchGetBuilds","codebuild:StopBuild"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"}},
+        {"Sid":"ReadStacks","Effect":"Allow","Action":["cloudformation:DescribeStacks","cloudformation:DescribeStackEvents","cloudformation:DescribeStackResources","cloudformation:DescribeChangeSet","cloudformation:GetTemplate"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"}},
+        {"Sid":"CreateRecipeChanges","Effect":"Allow","Action":["cloudformation:CreateChangeSet"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"},"Condition":{"ArnEquals":{"cloudformation:RoleArn":[{"Fn::GetAtt":["CloudFormationRole","Arn"]},{"Fn::If":["EnableFargate",{"Fn::GetAtt":["FargateCloudFormationRole","Arn"]},{"Ref":"AWS::NoValue"}]}]}}},
+        {"Sid":"ApplyRecipeChanges","Effect":"Allow","Action":["cloudformation:ExecuteChangeSet","cloudformation:DeleteChangeSet"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${Prefix}-*/*"}},
+        {"Sid":"PassExactlyCloudFormationRole","Effect":"Allow","Action":["iam:PassRole"],"Resource":[{"Fn::GetAtt":["CloudFormationRole","Arn"]},{"Fn::If":["EnableFargate",{"Fn::GetAtt":["FargateCloudFormationRole","Arn"]},{"Ref":"AWS::NoValue"}]}],"Condition":{"StringEquals":{"iam:PassedToService":"cloudformation.amazonaws.com"}}},
+        {"Sid":"PublishOnlyTaggedFrontends","Effect":"Allow","Action":["amplify:CreateDeployment","amplify:StartDeployment","amplify:GetApp","amplify:GetBranch"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ReadAndStopFrontendJobs","Effect":"Allow","Action":["amplify:GetJob","amplify:StopJob"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*/jobs/*"}},
+        {"Sid":"StartOnlyConfiguredBuild","Effect":"Allow","Action":["codebuild:StartBuild"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"},"Condition":{"Null":{"codebuild:source.buildspec":"true","codebuild:source.location":"true","codebuild:source.auth.resource":"true","codebuild:source.auth.type":"true","codebuild:source.insecureSsl":"true","codebuild:serviceRole":"true","codebuild:environment.image":"true","codebuild:environment.type":"true","codebuild:environment.computeType":"true","codebuild:environment.privilegedMode":"true","codebuild:environment.registryCredential":"true","codebuild:environment.fleet.fleetArn":"true","codebuild:artifacts":"true","codebuild:secondaryArtifacts":"true","codebuild:logsConfig":"true"},"ForAllValues:StringEquals":{"codebuild:environment.environmentVariables.name":["NCE_BUILD_CONFIG","NCE_RUN_TOKEN"]}}},
+        {"Sid":"SourceDownloadConnection","Effect":"Allow","Action":["codeconnections:GetConnection","codeconnections:GetConnectionToken"],"Resource":{"Ref":"CodeConnectionArn"}},
+        {"Sid":"RunControlledMigrations","Effect":"Allow","Action":["ecs:RunTask"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*-migration:*"},"Condition":{"ArnLike":{"ecs:cluster":{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*"}}}},
+        {"Sid":"ReadControlledMigrationTasks","Effect":"Allow","Action":["ecs:DescribeTasks"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task/${Prefix}-*/*"}},
+        {"Sid":"ReadContainerServices","Effect":"Allow","Action":["ecs:DescribeServices"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*"}},
+        {"Sid":"PassOnlyMigrationRoles","Effect":"Allow","Action":["iam:PassRole"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}],"Condition":{"StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}}
        ]
       }
      }
@@ -1231,22 +432,7 @@
     "AssumeRolePolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Effect": "Allow",
-       "Principal": {
-        "AWS": {
-         "Ref": "CoreRuntimeRoleArn"
-        }
-       },
-       "Action": "sts:AssumeRole",
-       "Condition": {
-        "StringEquals": {
-         "sts:ExternalId": {
-          "Ref": "CoreExternalId"
-         }
-        }
-       }
-      }
+      {"Effect":"Allow","Principal":{"AWS":{"Ref":"CoreRuntimeRoleArn"}},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"sts:ExternalId":{"Ref":"CoreExternalId"}}}}
      ]
     },
     "Policies": [
@@ -1255,148 +441,14 @@
       "PolicyDocument": {
        "Version": "2012-10-17",
        "Statement": [
-        {
-         "Sid": "RunnerReadAndStart",
-         "Effect": "Allow",
-         "Action": [
-          "codebuild:BatchGetProjects",
-          "codebuild:BatchGetBuilds",
-          "codebuild:StopBuild",
-          "codebuild:ListBuildsForProject"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"
-         }
-        },
-        {
-         "Sid": "CheckConnection",
-         "Effect": "Allow",
-         "Action": [
-          "codeconnections:GetConnection"
-         ],
-         "Resource": {
-          "Ref": "CodeConnectionArn"
-         }
-        },
-        {
-         "Sid": "ReadRunReceipts",
-         "Effect": "Allow",
-         "Action": [
-          "s3:GetObject"
-         ],
-         "Resource": {
-          "Fn::Sub": "${Artifacts.Arn}/runs/*"
-         }
-        },
-        {
-         "Sid": "WriteAppCoreCredential",
-         "Effect": "Allow",
-         "Action": [
-          "ssm:PutParameter"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"
-         }
-        },
-        {
-         "Sid": "StartOnlyConfiguredBuild",
-         "Effect": "Allow",
-         "Action": [
-          "codebuild:StartBuild"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"
-         },
-         "Condition": {
-          "Null": {
-           "codebuild:source.buildspec": "true",
-           "codebuild:source.location": "true",
-           "codebuild:source.auth.resource": "true",
-           "codebuild:source.auth.type": "true",
-           "codebuild:source.insecureSsl": "true",
-           "codebuild:serviceRole": "true",
-           "codebuild:environment.image": "true",
-           "codebuild:environment.type": "true",
-           "codebuild:environment.computeType": "true",
-           "codebuild:environment.privilegedMode": "true",
-           "codebuild:environment.registryCredential": "true",
-           "codebuild:environment.fleet.fleetArn": "true",
-           "codebuild:artifacts": "true",
-           "codebuild:secondaryArtifacts": "true",
-           "codebuild:logsConfig": "true"
-          },
-          "ForAllValues:StringEquals": {
-           "codebuild:environment.environmentVariables.name": [
-            "NCE_DEPLOYMENT",
-            "NCE_RESULT_KEY",
-            "NCE_RUN_TOKEN"
-           ]
-          }
-         }
-        },
-        {
-         "Sid": "VerifyIsolatedSourceBuilder",
-         "Effect": "Allow",
-         "Action": [
-          "codebuild:BatchGetProjects"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"
-         }
-        },
-        {
-         "Sid": "VerifyArtifactBucket",
-         "Effect": "Allow",
-         "Action": [
-          "s3:ListBucket"
-         ],
-         "Resource": {
-          "Fn::GetAtt": [
-           "Artifacts",
-           "Arn"
-          ]
-         },
-         "Condition": {
-          "StringEquals": {
-           "s3:ResourceAccount": {
-            "Ref": "AWS::AccountId"
-           }
-          }
-         }
-        },
-        {
-         "Sid": "EncryptDefaultSSMCredential",
-         "Effect": "Allow",
-         "Action": [
-          "kms:Encrypt"
-         ],
-         "Resource": {
-          "Fn::Sub": "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"
-         },
-         "Condition": {
-          "StringEquals": {
-           "kms:ViaService": {
-            "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
-           },
-           "kms:CallerAccount": {
-            "Ref": "AWS::AccountId"
-           }
-          },
-          "StringLike": {
-           "kms:EncryptionContext:PARAMETER_ARN": {
-            "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"
-           }
-          },
-          "ForAnyValue:StringEquals": {
-           "kms:ResourceAliases": [
-            "alias/aws/ssm"
-           ]
-          },
-          "Null": {
-           "kms:ResourceAliases": "false"
-          }
-         }
-        }
+        {"Sid":"RunnerReadAndStart","Effect":"Allow","Action":["codebuild:BatchGetProjects","codebuild:BatchGetBuilds","codebuild:StopBuild","codebuild:ListBuildsForProject"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"}},
+        {"Sid":"CheckConnection","Effect":"Allow","Action":["codeconnections:GetConnection"],"Resource":{"Ref":"CodeConnectionArn"}},
+        {"Sid":"ReadRunReceipts","Effect":"Allow","Action":["s3:GetObject"],"Resource":{"Fn::Sub":"${Artifacts.Arn}/runs/*"}},
+        {"Sid":"WriteAppCoreCredential","Effect":"Allow","Action":["ssm:PutParameter"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"}},
+        {"Sid":"StartOnlyConfiguredBuild","Effect":"Allow","Action":["codebuild:StartBuild"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-runner"},"Condition":{"Null":{"codebuild:source.buildspec":"true","codebuild:source.location":"true","codebuild:source.auth.resource":"true","codebuild:source.auth.type":"true","codebuild:source.insecureSsl":"true","codebuild:serviceRole":"true","codebuild:environment.image":"true","codebuild:environment.type":"true","codebuild:environment.computeType":"true","codebuild:environment.privilegedMode":"true","codebuild:environment.registryCredential":"true","codebuild:environment.fleet.fleetArn":"true","codebuild:artifacts":"true","codebuild:secondaryArtifacts":"true","codebuild:logsConfig":"true"},"ForAllValues:StringEquals":{"codebuild:environment.environmentVariables.name":["NCE_DEPLOYMENT","NCE_RESULT_KEY","NCE_RUN_TOKEN"]}}},
+        {"Sid":"VerifyIsolatedSourceBuilder","Effect":"Allow","Action":["codebuild:BatchGetProjects"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AWS::StackName}-source"}},
+        {"Sid":"VerifyArtifactBucket","Effect":"Allow","Action":["s3:ListBucket"],"Resource":{"Fn::GetAtt":["Artifacts","Arn"]},"Condition":{"StringEquals":{"s3:ResourceAccount":{"Ref":"AWS::AccountId"}}}},
+        {"Sid":"EncryptDefaultSSMCredential","Effect":"Allow","Action":["kms:Encrypt"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"},"Condition":{"StringEquals":{"kms:ViaService":{"Fn::Sub":"ssm.${AWS::Region}.amazonaws.com"},"kms:CallerAccount":{"Ref":"AWS::AccountId"}},"StringLike":{"kms:EncryptionContext:PARAMETER_ARN":{"Fn::Sub":"arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client"}},"ForAnyValue:StringEquals":{"kms:ResourceAliases":["alias/aws/ssm"]},"Null":{"kms:ResourceAliases":"false"}}}
        ]
       }
      }
@@ -1427,26 +479,7 @@
     "PolicyDocument": {
      "Version": "2012-10-17",
      "Statement": [
-      {
-       "Sid": "AssumeDeploymentControl",
-       "Effect": "Allow",
-       "Action": [
-        "sts:AssumeRole"
-       ],
-       "Resource": {
-        "Fn::GetAtt": [
-         "ControlRole",
-         "Arn"
-        ]
-       },
-       "Condition": {
-        "StringEquals": {
-         "sts:ExternalId": {
-          "Ref": "CoreExternalId"
-         }
-        }
-       }
-      }
+      {"Sid":"AssumeDeploymentControl","Effect":"Allow","Action":["sts:AssumeRole"],"Resource":{"Fn::GetAtt":["ControlRole","Arn"]},"Condition":{"StringEquals":{"sts:ExternalId":{"Ref":"CoreExternalId"}}}}
      ]
     }
    }
@@ -1518,6 +551,24 @@
        "Value": {
         "Fn::Sub": "${AWS::StackName}-source"
        }
+      },
+      {
+       "Fn::If": [
+        "EnableFargate",
+        {
+         "Name": "NCE_FARGATE_CFN_ROLE_ARN",
+         "Type": "PLAINTEXT",
+         "Value": {
+          "Fn::GetAtt": [
+           "FargateCloudFormationRole",
+           "Arn"
+          ]
+         }
+        },
+        {
+         "Ref": "AWS::NoValue"
+        }
+       ]
       }
      ]
     },
@@ -1692,6 +743,66 @@
      }
     ]
    }
+  },
+  "FargateCloudFormationRole": {
+   "Type": "AWS::IAM::Role",
+   "Condition": "EnableFargate",
+   "Metadata": {
+    "com.aws.cloudformation.Context": {
+     "why": "Container provisioning is separate from the existing serverless execution role; only pinned Core templates can use it.",
+     "must": [
+      "Use platform-tagged network resources and named container/database resources.",
+      "New task and execution roles require the platform boundary.",
+      "No managed-policy attachment, boundary removal or application-code execution.",
+      "Application roles cannot invoke network or DNS control operations.",
+      "Cloud Map manages private DNS internally; this role cannot change Route53 records."
+     ]
+    }
+   },
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Version": "2012-10-17",
+     "Statement": [
+      {"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}
+     ]
+    },
+    "Policies": [
+     {
+      "PolicyName": "FixedFargateRecipe",
+      "PolicyDocument": {
+       "Version": "2012-10-17",
+       "Statement": [
+        {"Sid":"AppBuckets","Effect":"Allow","Action":["s3:CreateBucket","s3:DeleteBucket","s3:Get*","s3:List*","s3:PutBucket*","s3:PutEncryptionConfiguration","s3:PutLifecycleConfiguration","s3:TagResource","s3:UntagResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"}},
+        {"Sid":"AppLogGroups","Effect":"Allow","Action":["logs:CreateLogGroup","logs:DeleteLogGroup","logs:PutRetentionPolicy","logs:DeleteRetentionPolicy","logs:TagResource","logs:UntagResource","logs:ListTagsForResource","logs:GetDataProtectionPolicy","logs:DescribeIndexPolicies"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/nce/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/nce/${Prefix}-*:*"}]},
+        {"Sid":"ReadLogGroups","Effect":"Allow","Action":["logs:DescribeLogGroups","logs:DescribeResourcePolicies"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Sid":"CreateTaggedAmplify","Effect":"Allow","Action":["amplify:CreateApp"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"CreateTaggedBranch","Effect":"Allow","Action":["amplify:CreateBranch"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"},"Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ManageTaggedAmplify","Effect":"Allow","Action":["amplify:Get*","amplify:Update*","amplify:Delete*","amplify:ListTagsForResource"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"TagNewAmplify","Effect":"Allow","Action":["amplify:TagResource"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"CreateBoundedContainerRoles","Effect":"Allow","Action":["iam:CreateRole"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}],"Condition":{"ArnEquals":{"iam:PermissionsBoundary":{"Ref":"AppBoundary"}}}},
+        {"Sid":"ManageBoundedContainerRoles","Effect":"Allow","Action":["iam:GetRole","iam:UpdateAssumeRolePolicy","iam:DeleteRole","iam:PutRolePolicy","iam:GetRolePolicy","iam:DeleteRolePolicy","iam:ListRolePolicies","iam:TagRole","iam:UntagRole","iam:ListAttachedRolePolicies"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}]},
+        {"Sid":"PassOnlyContainerRoles","Effect":"Allow","Action":["iam:PassRole"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}],"Condition":{"StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}},
+        {"Sid":"NamedContainerResources","Effect":"Allow","Action":["ecs:CreateCluster","ecs:UpdateCluster","ecs:UpdateClusterSettings","ecs:DeleteCluster","ecs:DeregisterTaskDefinition","ecs:CreateService","ecs:UpdateService","ecs:DeleteService","ecs:TagResource","ecs:UntagResource","ecs:ListTagsForResource","ecs:Describe*"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*:*"}]},
+        {"Sid":"RegisterNamedContainerRevision","Effect":"Allow","Action":["ecs:RegisterTaskDefinition"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"CreateNamedDatabase","Effect":"Allow","Action":["rds:CreateDBInstance","rds:ModifyDBInstance","rds:DeleteDBInstance","rds:CreateDBSubnetGroup","rds:ModifyDBSubnetGroup","rds:DeleteDBSubnetGroup","rds:AddTagsToResource","rds:RemoveTagsFromResource","rds:ListTagsForResource","rds:CreateDBParameterGroup","rds:ModifyDBParameterGroup","rds:DeleteDBParameterGroup","rds:Describe*"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:subgrp:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:snapshot:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:pg:${Prefix}-*"}]},
+        {"Sid":"DatabaseSecret","Effect":"Allow","Action":["secretsmanager:CreateSecret","secretsmanager:DescribeSecret","secretsmanager:GetSecretValue","secretsmanager:PutSecretValue","secretsmanager:UpdateSecret","secretsmanager:DeleteSecret","secretsmanager:TagResource","secretsmanager:UntagResource","secretsmanager:GetResourcePolicy"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Prefix}-*-database-*"}},
+        {"Sid":"DatabasePasswordGeneration","Effect":"Allow","Action":["secretsmanager:GetRandomPassword"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Sid":"CreateTaggedApplicationNetwork","Effect":"Allow","Action":["ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateSecurityGroup","ec2:CreateRouteTable","ec2:CreateInternetGateway","ec2:AllocateAddress","ec2:CreateNatGateway","ec2:CreateVpcEndpoint"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ManageApplicationNetwork","Effect":"Allow","Action":["ec2:ModifyVpcAttribute","ec2:DeleteVpc","ec2:DeleteSubnet","ec2:ModifySubnetAttribute","ec2:DeleteSecurityGroup","ec2:AuthorizeSecurityGroupIngress","ec2:RevokeSecurityGroupIngress","ec2:AuthorizeSecurityGroupEgress","ec2:RevokeSecurityGroupEgress","ec2:CreateRoute","ec2:ReplaceRoute","ec2:DeleteRoute","ec2:DeleteRouteTable","ec2:AssociateRouteTable","ec2:DisassociateRouteTable","ec2:AttachInternetGateway","ec2:DetachInternetGateway","ec2:DeleteInternetGateway","ec2:ReleaseAddress","ec2:DeleteNatGateway","ec2:DeleteVpcEndpoints","ec2:ModifyVpcEndpoint"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"ec2:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"TagNewNetwork","Effect":"Allow","Action":["ec2:CreateTags"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"},"ec2:CreateAction":["CreateVpc","CreateSubnet","CreateSecurityGroup","CreateRouteTable","CreateInternetGateway","AllocateAddress","CreateNatGateway","CreateVpcEndpoint"]}}},
+        {"Sid":"ReadNetworkAndLoadBalancers","Effect":"Allow","Action":["ec2:Describe*","elasticloadbalancing:Describe*"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Sid":"NamedApplicationLoadBalancer","Effect":"Allow","Action":["elasticloadbalancing:CreateLoadBalancer","elasticloadbalancing:DeleteLoadBalancer","elasticloadbalancing:ModifyLoadBalancerAttributes","elasticloadbalancing:CreateTargetGroup","elasticloadbalancing:DeleteTargetGroup","elasticloadbalancing:ModifyTargetGroup","elasticloadbalancing:ModifyTargetGroupAttributes","elasticloadbalancing:CreateListener","elasticloadbalancing:DeleteListener","elasticloadbalancing:ModifyListener","elasticloadbalancing:AddTags","elasticloadbalancing:RemoveTags"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:loadbalancer/app/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener/app/${Prefix}-*/*/*"}]},
+        {"Sid":"ReadIssuedCertificates","Effect":"Allow","Action":["acm:DescribeCertificate"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:acm:${AWS::Region}:${AWS::AccountId}:certificate/*"}},
+        {"Sid":"CreateTaggedServiceDiscovery","Effect":"Allow","Action":["servicediscovery:CreatePrivateDnsNamespace","servicediscovery:CreateService"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ManageTaggedServiceDiscovery","Effect":"Allow","Action":["servicediscovery:Get*","servicediscovery:Delete*","servicediscovery:UpdateService","servicediscovery:TagResource","servicediscovery:UntagResource","servicediscovery:ListTagsForResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:servicediscovery:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Sid":"ReadDiscoveryOperations","Effect":"Allow","Action":["servicediscovery:GetOperation"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Sid":"NamedContainerAlarms","Effect":"Allow","Action":["cloudwatch:PutMetricAlarm","cloudwatch:DescribeAlarms","cloudwatch:DeleteAlarms","cloudwatch:TagResource","cloudwatch:UntagResource","cloudwatch:ListTagsForResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${Prefix}-*"}},
+        {"Sid":"TaggedNetworkDependencies","Effect":"Allow","Action":["ec2:CreateSubnet","ec2:CreateSecurityGroup","ec2:CreateRouteTable","ec2:CreateNatGateway","ec2:CreateVpcEndpoint"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"ec2:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}}
+       ]
+      }
+     }
+    ]
+   }
   }
  },
  "Outputs": {
@@ -1759,6 +870,15 @@
   "Region": {
    "Value": {
     "Ref": "AWS::Region"
+   }
+  },
+  "FargateCloudFormationExecutionRoleArn": {
+   "Condition": "EnableFargate",
+   "Value": {
+    "Fn::GetAtt": [
+     "FargateCloudFormationRole",
+     "Arn"
+    ]
    }
   }
  }

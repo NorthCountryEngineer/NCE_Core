@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+import importlib.util
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -21,6 +22,9 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 
 ROOT = Path(__file__).resolve().parent
+_contract_spec = importlib.util.spec_from_file_location('nce_cloud_contract', ROOT.parent.parent / 'platform_services' / 'cloud_contract.py')
+_contract = importlib.util.module_from_spec(_contract_spec)
+_contract_spec.loader.exec_module(_contract)
 MAX_SOURCE_BYTES = 30 * 1024 * 1024
 MAX_ARTIFACT_BYTES = 200 * 1024 * 1024
 
@@ -43,7 +47,7 @@ def read_manifest(root, archetype):
     if not path.is_file() or path.is_symlink() or path.stat().st_size > 16384:
         raise RunnerError("A bounded nce-deploy.json manifest is required at the repository root.")
     manifest = json.loads(path.read_text())
-    if not isinstance(manifest, dict) or set(manifest) - {"schema", "archetype", "frontend", "backend"}:
+    if not isinstance(manifest, dict) or set(manifest) - {"schema", "archetype", "frontend", "backend", "identity"}:
         raise RunnerError("Manifest contains unsupported deployment settings.")
     if manifest.get("schema") != 1 or manifest.get("archetype") != archetype:
         raise RunnerError("Repository manifest does not match the approved archetype.")
@@ -68,8 +72,16 @@ def read_manifest(root, archetype):
         child_directory(root, backend["directory"])
         if not isinstance(backend["handler"], str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}\.[A-Za-z_][A-Za-z0-9_]*", backend["handler"]):
             raise RunnerError("Invalid Python Lambda handler.")
+    elif archetype == 'amplify-fargate':
+        try:
+            _contract.fargate_backend(manifest.get('backend'))
+            _contract.identity_contract(manifest.get('identity'))
+        except _contract.ContractError as error:
+            raise RunnerError(str(error)) from None
     elif "backend" in manifest:
         raise RunnerError("Static applications cannot supply a backend recipe.")
+    if archetype != 'amplify-fargate' and 'identity' in manifest:
+        raise RunnerError('Only the Fargate recipe accepts an explicit identity contract.')
     return manifest
 
 
@@ -110,11 +122,14 @@ def stable_names(platform, snapshot):
 def no_destructive_changes(changes):
     for change in changes:
         resource = change.get("ResourceChange", {})
-        if resource.get("Action") == "Remove" or resource.get("Replacement") in {"True", "Conditional"}:
+        # ECS task definitions are immutable revisions, replaced during every
+        # image update; replacing them is the required rolling-release behavior.
+        immutable_task = resource.get('ResourceType') == 'AWS::ECS::TaskDefinition'
+        if resource.get("Action") == "Remove" or (resource.get("Replacement") in {"True", "Conditional"} and not immutable_task):
             raise RunnerError("Deployment blocked: the infrastructure plan removes or replaces a resource.")
 
 
-def stack_parameters(platform, snapshot, manifest, code_key, existing=False):
+def stack_parameters(platform, snapshot, manifest, code_key, existing=False, activate=False):
     name, storage = stable_names(platform, snapshot)
     public = snapshot.get("public_config", {})
     values = {
@@ -130,6 +145,30 @@ def stack_parameters(platform, snapshot, manifest, code_key, existing=False):
         "CoreServiceId": public.get("VITE_CORE_SERVICE_ID", ""),
     }
     identity_keys = {"ApplicationOrigin", "CoreIssuer", "CoreOrganizationId", "CoreServiceId"}
+    if snapshot['archetype'] == 'amplify-fargate':
+        approved = platform['config']['fargate_apps'][snapshot['repository']]
+        try:
+            _contract.fargate_applications(platform['config'], platform['account_id'], platform['region'], platform['allowed_repositories'], platform['prefix'])
+            _contract.fargate_backend(manifest['backend'], approved)
+        except _contract.ContractError as error:
+            raise RunnerError(str(error)) from None
+        for key in ['Archetype', 'LambdaCodeBucket', 'LambdaCodeKey', 'LambdaHandler']:
+            values.pop(key)
+        values.update(ApiImageUri=manifest['backend']['image'], BrowserImageUri=manifest['backend']['browser_image'],
+            ApiRepositoryName=approved['image_repository'].split('/', 1)[1], BrowserRepositoryName=approved['browser_image_repository'].split('/', 1)[1],
+            RuntimeSecretArn=approved['runtime_secret_arn'], CertificateArn=approved['certificate_arn'], ApiHost=approved['api_host'],
+            CoreBrowserClientId=public.get('VITE_CORE_BROWSER_CLIENT_ID', ''),
+            CoreRedirectUri=public.get('VITE_CORE_REDIRECT_URI', ''), CoreDeploymentId=public.get('VITE_CORE_DEPLOYMENT_ID', ''),
+            DesiredCount='1' if activate else '0')
+        values['ApplicationOrigin'] = public.get('VITE_APPLICATION_ORIGIN', snapshot.get('public_origin') or 'https://pending.invalid')
+        # The first stack exists with count=0 before Core registration. Valid
+        # placeholders satisfy template URL constraints without starting tasks
+        # or impersonating an actual registered application.
+        values['CoreIssuer'] = public.get('VITE_CORE_ISSUER') or 'https://pending.invalid'
+        values['CoreRedirectUri'] = public.get('VITE_CORE_REDIRECT_URI') or values['ApplicationOrigin'] + manifest['identity']['callback_path']
+        for key in ['CoreOrganizationId', 'CoreServiceId', 'CoreBrowserClientId', 'CoreDeploymentId']:
+            values[key] = values[key] or 'pending'
+        identity_keys.update({'CoreBrowserClientId', 'CoreRedirectUri', 'CoreDeploymentId', 'DesiredCount', 'ApiImageUri', 'BrowserImageUri'})
     parameters = []
     for key, value in values.items():
         preserve = existing and snapshot["action"] == "provision" and key in identity_keys
@@ -149,6 +188,7 @@ class Runner:
         self.sleeper = sleeper
         self.client_factory = client_factory
         self.clients = {}
+        self.runtime_outputs = {}
 
     def client(self, service):
         if service not in self.clients:
@@ -170,7 +210,7 @@ class Runner:
         no_destructive_changes(changes)
         return changes
 
-    def provision(self, manifest, root):
+    def provision(self, manifest, root, activate=False):
         name, _ = stable_names(self.platform, self.snapshot)
         code_key = f"code/{name}/{self.snapshot['commit']}/api.zip"
         if self.snapshot["archetype"] == "amplify-serverless":
@@ -191,13 +231,18 @@ class Runner:
             if response.get("Error", {}).get("Code") != "ValidationError" or "does not exist" not in response.get("Error", {}).get("Message", ""):
                 raise
             existing = False
-        change_set = f"nce-{self.token[:32]}"
+        operation_token = (hashlib.sha256((self.token + ('-activate' if activate else '-configure')).encode()).hexdigest()
+                           if self.snapshot['archetype'] == 'amplify-fargate' else self.token)
+        change_set = f"nce-{operation_token[:32]}"
+        template = ROOT / ('fargate.template.json' if self.snapshot['archetype'] == 'amplify-fargate' else 'application.template.json')
+        if not template.is_file() or template.stat().st_size > 51200:
+            raise RunnerError('The pinned Core recipe template is missing or exceeds the inline limit.')
         arguments = {
             "StackName": name, "ChangeSetName": change_set, "ChangeSetType": "UPDATE" if existing else "CREATE",
-            "TemplateBody": (ROOT / "application.template.json").read_text(),
-            "Parameters": stack_parameters(self.platform, self.snapshot, manifest, code_key, existing),
-            "Capabilities": ["CAPABILITY_NAMED_IAM"], "RoleARN": self.config["cloudformation_role_arn"],
-            "ClientToken": self.token, "Tags": [{"Key": "nce:platform-prefix", "Value": self.platform["prefix"]},
+            "TemplateBody": template.read_text(),
+            "Parameters": stack_parameters(self.platform, self.snapshot, manifest, code_key, existing, activate),
+            "Capabilities": ["CAPABILITY_NAMED_IAM"], "RoleARN": self.config['fargate_cloudformation_role_arn'] if self.snapshot['archetype'] == 'amplify-fargate' else self.config["cloudformation_role_arn"],
+            "ClientToken": operation_token, "Tags": [{"Key": "nce:platform-prefix", "Value": self.platform["prefix"]},
                 {"Key": "nce:application", "Value": self.snapshot["app_identifier"]}],
         }
         client.create_change_set(**arguments)
@@ -216,7 +261,7 @@ class Runner:
             else:
                 raise error
         if changes:
-            client.execute_change_set(StackName=name, ChangeSetName=change_set, ClientRequestToken=self.token)
+            client.execute_change_set(StackName=name, ChangeSetName=change_set, ClientRequestToken=operation_token)
             client.get_waiter("stack_update_complete" if existing else "stack_create_complete").wait(
                 StackName=name, WaiterConfig={"Delay": 15, "MaxAttempts": 120})
         stack = client.describe_stacks(StackName=name)["Stacks"][0]
@@ -227,7 +272,40 @@ class Runner:
                         "commit": self.snapshot["commit"], "archetype": self.snapshot["archetype"]}
         if raw.get("ApiUrl"):
             self.outputs["api_url"] = raw["ApiUrl"]
+        if self.snapshot['archetype'] == 'amplify-fargate':
+            self.outputs['identity'] = json.dumps(manifest['identity'], sort_keys=True, separators=(',', ':'))
+            self.runtime_outputs = raw
         self.steps.append("backend-configured" if self.snapshot["action"] == "release" else "backend-provisioned")
+
+    def migrate_and_activate(self, manifest, root):
+        raw = self.runtime_outputs
+        required = {'Cluster', 'MigrationTaskDefinition', 'PrivateSubnet1', 'PrivateSubnet2', 'TaskSecurityGroup', 'Service', 'WorkerService', 'BrowserService'}
+        if not required <= raw.keys():
+            raise RunnerError('Fargate recipe did not return its required runtime resources.')
+        ecs = self.client('ecs')
+        response = ecs.run_task(cluster=raw['Cluster'], taskDefinition=raw['MigrationTaskDefinition'],
+            launchType='FARGATE', platformVersion='1.4.0', count=1,
+            clientToken=hashlib.sha256((self.token + '-migration').encode()).hexdigest(),
+            networkConfiguration={'awsvpcConfiguration': {'subnets': [raw['PrivateSubnet1'], raw['PrivateSubnet2']],
+                'securityGroups': [raw['TaskSecurityGroup']], 'assignPublicIp': 'DISABLED'}})
+        if response.get('failures') or len(response.get('tasks', [])) != 1:
+            raise RunnerError('ECS did not start the controlled migration task.')
+        task = response['tasks'][0]['taskArn']
+        ecs.get_waiter('tasks_stopped').wait(cluster=raw['Cluster'], tasks=[task], WaiterConfig={'Delay': 15, 'MaxAttempts': 120})
+        stopped = ecs.describe_tasks(cluster=raw['Cluster'], tasks=[task])
+        containers = stopped.get('tasks', [{}])[0].get('containers', [])
+        if not containers or any(container.get('exitCode') != 0 for container in containers):
+            raise RunnerError('Database migration failed. Keep services stopped and review the migration task log.')
+        self.steps.append('database-migrated')
+        self.provision(manifest, root, activate=True)
+        raw = self.runtime_outputs
+        services = [raw['Service'], raw['WorkerService'], raw['BrowserService']]
+        ecs.get_waiter('services_stable').wait(cluster=raw['Cluster'], services=services, WaiterConfig={'Delay': 15, 'MaxAttempts': 80})
+        current = ecs.describe_services(cluster=raw['Cluster'], services=services)
+        if current.get('failures') or len(current.get('services', [])) != 3 or any(
+                service.get('runningCount') != 1 or service.get('desiredCount') != 1 for service in current['services']):
+            raise RunnerError('Fargate services are not healthy after migration.')
+        self.steps.append('services-healthy')
 
     def build_frontend(self, manifest):
         client = self.client("codebuild")
@@ -321,6 +399,8 @@ class Runner:
         manifest = read_manifest(root, self.snapshot["archetype"])
         self.provision(manifest, root)
         if self.snapshot["action"] == "release":
+            if self.snapshot['archetype'] == 'amplify-fargate':
+                self.migrate_and_activate(manifest, root)
             self.publish_frontend(self.build_frontend(manifest))
         self.write_result("succeeded")
 
@@ -341,6 +421,8 @@ def main():
             "NCE_BUILD_PROJECT": platform["config"]["build_project"]}
         if any(os.environ.get(key) != value for key, value in expected_environment.items()):
             raise RunnerError("Deployment snapshot does not match the onboarded runner settings.")
+        if snapshot['archetype'] == 'amplify-fargate' and os.environ.get('NCE_FARGATE_CFN_ROLE_ARN') != platform['config'].get('fargate_cloudformation_role_arn'):
+            raise RunnerError('Fargate recipe role does not match the onboarded runner.')
         runner = Runner(snapshot, token, os.environ["NCE_RESULT_KEY"])
         root = Path(os.environ["CODEBUILD_SRC_DIR_APPLICATION"]).resolve()
         runner.run(root)

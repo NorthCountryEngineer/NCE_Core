@@ -19,6 +19,7 @@ from .models import DeploymentEnvironment
 ARCHETYPES = [
     ('amplify-static', 'Website · Amplify Hosting'),
     ('amplify-serverless', 'Website and serverless API · Amplify + Lambda'),
+    ('amplify-fargate', 'Website, API and workers · Amplify + Fargate'),
 ]
 
 
@@ -42,9 +43,11 @@ class PlatformForm(forms.Form):
     build_project = forms.CharField(max_length=255, required=False, label='Isolated source build project')
     artifact_bucket = forms.CharField(max_length=63, required=False, label='Deployment artifact bucket')
     cloudformation_role_arn = forms.CharField(max_length=255, required=False, label='CloudFormation execution role ARN')
+    fargate_cloudformation_role_arn = forms.CharField(max_length=255, required=False, label='Container CloudFormation execution role ARN', help_text='The separately onboarded role for the fixed Fargate recipe.')
     permissions_boundary_arn = forms.CharField(max_length=255, required=False, label='Application role permissions boundary ARN')
     runner_repository = forms.CharField(max_length=160, required=False, label='Approved deployment runner repository', help_text='Owner/repository containing the reviewed Core deployment runner.')
     runner_commit = forms.RegexField(r'^[0-9a-fA-F]{40}$', required=False, label='Approved runner commit', help_text='Pin the exact 40-character revision of the deployment runner.')
+    fargate_apps = forms.JSONField(required=False, widget=forms.Textarea(attrs={'rows': 8}), label='Approved container resources', help_text='Operator-reviewed repository map with ECR repository URLs, runtime secret ARN, certificate ARN and API hostname. Enter resource references only.')
     prefix = forms.RegexField(r'^[a-z][a-z0-9-]{2,15}$', initial='nce', label='AWS resource prefix', help_text='Used to restrict which resources this platform can manage.')
     allowed_repositories = forms.CharField(widget=forms.Textarea(attrs={'rows': 4}), label='Approved GitHub repositories', help_text='One Owner/repository per line. Only these repositories appear when creating an app.')
     environments = forms.ModelMultipleChoiceField(queryset=DeploymentEnvironment.objects.none(), widget=forms.CheckboxSelectMultiple, label='Available environments')
@@ -56,11 +59,12 @@ class PlatformForm(forms.Form):
         if instance:
             for key in ['name', 'mode', 'account_id', 'region', 'role_arn', 'runner_project', 'connection_arn', 'prefix']:
                 initial[key] = getattr(instance, key)
-            for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
+            for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit', 'fargate_cloudformation_role_arn']:
                 initial[key] = instance.config.get(key, '')
             initial['allowed_repositories'] = '\n'.join(instance.allowed_repositories)
             initial['environments'] = instance.config.get('environment_ids', [])
             initial['archetypes'] = instance.config.get('archetypes', [value for value, _ in ARCHETYPES])
+            initial['fargate_apps'] = instance.config.get('fargate_apps', {})
         else:
             initial.setdefault('archetypes', [value for value, _ in ARCHETYPES])
         super().__init__(*args, initial=initial, **kwargs)
@@ -97,8 +101,18 @@ class PlatformForm(forms.Form):
         platform.config = dict(platform.config or {})
         for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
             platform.config[key] = self.cleaned_data.get(key, '')
+        role = self.cleaned_data.get('fargate_cloudformation_role_arn')
+        if role:
+            platform.config['fargate_cloudformation_role_arn'] = role
+        else:
+            platform.config.pop('fargate_cloudformation_role_arn', None)
         platform.config['environment_ids'] = [str(value.pk) for value in self.cleaned_data['environments']]
         platform.config['archetypes'] = list(self.cleaned_data['archetypes'])
+        approved = self.cleaned_data.get('fargate_apps') or {}
+        if approved:
+            platform.config['fargate_apps'] = approved
+        else:
+            platform.config.pop('fargate_apps', None)
         platform.active = False
         platform.verified_at = None
         platform.full_clean()

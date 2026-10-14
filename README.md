@@ -307,5 +307,7 @@ application, rather than forwarding a token to unrelated services.
 
 The [deployment console walkthrough](docs/cloud-deployments.md) provides an isolated
 local simulation, AWS platform onboarding, and literal commands for upgrading an
-existing Core deployment. Supported recipes are Amplify static hosting and Amplify
-with a serverless Python API. Live deployment is disabled by default.
+existing Core deployment. Supported recipes include Amplify static hosting,
+Amplify with a serverless Python API, and the fixed [Amplify + Fargate container
+recipe](docs/cloud-fargate.md) for an API, workers and private PostgreSQL/document
+storage. Live deployment is disabled by default.

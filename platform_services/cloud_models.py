@@ -10,7 +10,8 @@ from django.db import models
 from identity.models import TaggedResource
 from .secrets import decrypt_bundle, encrypt_bundle
 
-ARCHETYPES = [('amplify-static', 'Amplify website'), ('amplify-serverless', 'Amplify website and Lambda API')]
+ARCHETYPES = [('amplify-static', 'Amplify website'), ('amplify-serverless', 'Amplify website and Lambda API'),
+              ('amplify-fargate', 'Amplify website and Fargate application')]
 
 
 def digest(value):
@@ -125,6 +126,8 @@ class CloudApplication(TaggedResource):
         if (str(self.environment_id) not in self.platform.config.get('environment_ids', []) or
                 self.archetype not in self.platform.config.get('archetypes', [])):
             raise ValidationError('This environment or template is not configured for the platform.')
+        if self.archetype == 'amplify-fargate' and self.platform.mode == 'aws' and self.repository not in self.platform.config.get('fargate_apps', {}):
+            raise ValidationError('Approve this repository’s container resource references in the deployment platform first.')
         if self.public_origin:
             value = urlsplit(self.public_origin)
             if value.scheme != 'https' or not value.netloc or value.username or value.password or value.path or value.query or value.fragment:

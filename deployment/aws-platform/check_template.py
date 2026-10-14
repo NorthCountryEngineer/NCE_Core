@@ -57,6 +57,7 @@ require(resources['Runner']['Properties']['ServiceRole'] != resources['SourceBui
 require(resources['Runner']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_SMALL' and resources['SourceBuilder']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_MEDIUM', 'nested builder must use a separate concurrency quota from its waiting runner')
 source_actions = actions('SourceRole')
 require(not any(action.startswith(('iam:', 'ssm:', 'cloudformation:', 'amplify:', 'lambda:', 'sts:')) for action in source_actions), 'source builder received deployment/secret permissions')
+require(not any(action.startswith(('ecs:', 'ecr:', 'rds:', 'secretsmanager:', 'ec2:', 'servicediscovery:')) for action in source_actions), 'source builder received container or runtime-secret permissions')
 require(not any(action in source_actions for action in ['s3:GetObject', 's3:ListBucket']), 'source builder cannot read other app archives')
 source_write = next(item for item in statements('SourceRole') if 's3:PutObject' in item['Action'])
 require(source_write['Resource'] == {'Fn::Sub': '${Artifacts.Arn}/builds/*'}, 'source archive writes escaped build prefix')
@@ -88,6 +89,16 @@ require(not actions('CloudFormationRole') & {'iam:AttachRolePolicy', 'iam:Create
 for name, service in [('RunnerRole', 'cloudformation.amazonaws.com'), ('CloudFormationRole', 'lambda.amazonaws.com')]:
     pass_role = next(item for item in statements(name) if 'iam:PassRole' in item['Action'])
     require(pass_role['Resource'] != '*' and pass_role['Condition']['StringEquals']['iam:PassedToService'] == service, f'{name} pass-role must stay bounded')
+fargate = resources['FargateCloudFormationRole']
+require(fargate['Condition'] == 'EnableFargate', 'container provisioning must be explicitly enabled at onboarding')
+fargate_statements = statements('FargateCloudFormationRole')
+new_roles = next(item for item in fargate_statements if 'iam:CreateRole' in item['Action'])
+require(new_roles['Condition']['ArnEquals']['iam:PermissionsBoundary'] == {'Ref': 'AppBoundary'}, 'container role boundary missing')
+require(not actions('FargateCloudFormationRole') & {'iam:AttachRolePolicy', 'iam:CreatePolicy', 'iam:DeleteRolePermissionsBoundary'}, 'container role permits privilege escalation')
+require(not any(action.startswith('route53:') for action in actions('FargateCloudFormationRole')), 'container recipe cannot manage public DNS')
+migrations = next(item for item in statements('RunnerRole') if 'ecs:RunTask' in item['Action'])
+require(migrations['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*-migration:*'}, 'runner can execute an arbitrary container task')
+require(migrations['Condition']['ArnLike']['ecs:cluster'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*'}, 'migration cluster scope missing')
 for name, resource in resources.items():
     if resource['Type'] == 'AWS::IAM::Role':
         length = sum(len(json.dumps(entry['PolicyDocument'], separators=(',', ':'))) for entry in resource['Properties'].get('Policies', []))

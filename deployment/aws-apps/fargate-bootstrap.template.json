@@ -1,0 +1,114 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Core container application bootstrap: retained immutable image repositories and an independent generated vault/session encryption secret.",
+  "Metadata": {
+    "AWSToolsMetrics": {
+      "AWSAgentToolkit": "aws-cloudformation@3"
+    }
+  },
+  "Parameters": {
+    "Name": {
+      "Type": "String",
+      "AllowedPattern": "[a-z][a-z0-9-]{2,48}"
+    }
+  },
+  "Resources": {
+    "ApiRepository": {
+      "Type": "AWS::ECR::Repository",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Immutable digest-pinned runtime releases with rollback retention",
+          "must": [
+            "Retain repository and prevent tag overwrite"
+          ]
+        }
+      },
+      "Properties": {
+        "RepositoryName": {
+          "Fn::Sub": "${Name}-api"
+        },
+        "ImageTagMutability": "IMMUTABLE",
+        "EncryptionConfiguration": {
+          "EncryptionType": "AES256"
+        },
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        }
+      }
+    },
+    "BrowserRepository": {
+      "Type": "AWS::ECR::Repository",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Immutable digest-pinned runtime releases with rollback retention",
+          "must": [
+            "Retain repository and prevent tag overwrite"
+          ]
+        }
+      },
+      "Properties": {
+        "RepositoryName": {
+          "Fn::Sub": "${Name}-browser"
+        },
+        "ImageTagMutability": "IMMUTABLE",
+        "EncryptionConfiguration": {
+          "EncryptionType": "AES256"
+        },
+        "ImageScanningConfiguration": {
+          "ScanOnPush": true
+        }
+      }
+    },
+    "RuntimeSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Vault bootstrap remains outside application DB and frontend",
+          "must": [
+            "Preserve matching key across database recovery; never regenerate during update"
+          ]
+        }
+      },
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${Name}-runtime"
+        },
+        "GenerateSecretString": {
+          "SecretStringTemplate": "{}",
+          "GenerateStringKey": "session_secret",
+          "PasswordLength": 64,
+          "ExcludePunctuation": true
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "ApiRepositoryUri": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ApiRepository",
+          "RepositoryUri"
+        ]
+      }
+    },
+    "BrowserRepositoryUri": {
+      "Value": {
+        "Fn::GetAtt": [
+          "BrowserRepository",
+          "RepositoryUri"
+        ]
+      }
+    },
+    "RuntimeSecretArn": {
+      "Value": {
+        "Ref": "RuntimeSecret"
+      }
+    }
+  }
+}
