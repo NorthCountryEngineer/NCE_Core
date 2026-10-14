@@ -45,6 +45,40 @@ def manifest(value):
 
 
 class FargateContractTests(SimpleTestCase):
+    def test_request_tag_guarded_creation_has_explicit_platform_and_application_tags(self):
+        template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
+        onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        policies = onboarding['Resources']['FargateCloudFormationRole']['Properties']['Policies']
+        guarded_actions = {action for policy in policies for statement in policy['PolicyDocument']['Statement']
+                           if 'aws:RequestTag/nce:platform-prefix' in statement.get('Condition', {}).get('StringEquals', {})
+                           for action in statement['Action']}
+        create_actions = {
+            'AWS::Amplify::App': 'amplify:CreateApp',
+            'AWS::Amplify::Branch': 'amplify:CreateBranch',
+            'AWS::EC2::VPC': 'ec2:CreateVpc',
+            'AWS::EC2::Subnet': 'ec2:CreateSubnet',
+            'AWS::EC2::SecurityGroup': 'ec2:CreateSecurityGroup',
+            'AWS::EC2::RouteTable': 'ec2:CreateRouteTable',
+            'AWS::EC2::InternetGateway': 'ec2:CreateInternetGateway',
+            'AWS::EC2::EIP': 'ec2:AllocateAddress',
+            'AWS::EC2::NatGateway': 'ec2:CreateNatGateway',
+            'AWS::EC2::VPCEndpoint': 'ec2:CreateVpcEndpoint',
+            'AWS::ECS::TaskDefinition': 'ecs:RegisterTaskDefinition',
+            'AWS::ServiceDiscovery::PrivateDnsNamespace': 'servicediscovery:CreatePrivateDnsNamespace',
+            'AWS::ServiceDiscovery::Service': 'servicediscovery:CreateService',
+        }
+        self.assertLessEqual(set(create_actions.values()), guarded_actions)
+        expected = {'nce:platform-prefix': {'Ref': 'PlatformPrefix'},
+                    'nce:application': {'Ref': 'ApplicationIdentifier'}}
+        for name, resource in template['Resources'].items():
+            if resource['Type'] not in create_actions:
+                continue
+            with self.subTest(resource=name, create_action=create_actions[resource['Type']]):
+                # CloudFormation cannot rely on inherited app/stack tags when
+                # the create call itself must satisfy aws:RequestTag.
+                tags = {tag['Key']: tag['Value'] for tag in resource['Properties'].get('Tags', [])}
+                self.assertEqual({key: tags.get(key) for key in expected}, expected)
+
     def test_canonical_www_redirect_precedes_proxies_and_spa_fallback(self):
         template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
         rules = template['Resources']['AmplifyApp']['Properties']['CustomRules']

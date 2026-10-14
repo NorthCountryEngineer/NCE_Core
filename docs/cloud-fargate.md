@@ -86,6 +86,9 @@ policies and Cloud Map tags. A separate managed policy grants those exact reads
 on `*` only in the platform region and only to the Fargate CloudFormation role.
 ECS service-deployment listing stays scoped to the platform's named services.
 Database writes and application roles retain their existing resource scopes.
+The app and branch both carry explicit platform/application tags, as do all
+fixed resources whose create calls require the platform request tag. Branch
+creation cannot rely on tags inherited from its Amplify app.
 
 Create the Core application with final origin `https://proposalstudio.ai`.
 Client placement is immutable; complete DNS and TLS at that origin before
