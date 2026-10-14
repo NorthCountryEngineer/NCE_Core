@@ -602,25 +602,9 @@
   "FargateCloudFormationRole": {
    "Type": "AWS::IAM::Role",
    "Condition": "EnableFargate",
-   "Metadata": {
-    "com.aws.cloudformation.Context": {
-     "why": "Container provisioning is separate from the existing serverless execution role; only pinned Core templates can use it.",
-     "must": [
-      "Use platform-tagged network resources and named container/database resources.",
-      "New task and execution roles require the platform boundary.",
-      "No managed-policy attachment, boundary removal or application-code execution.",
-      "Application roles cannot invoke network or DNS control operations.",
-      "Private namespace support is separate; no Route53 record mutation or zone deletion."
-     ]
-    }
-   },
+   "Metadata": {"com.aws.cloudformation.Context":{"why":"Container provisioning is separate from the existing serverless execution role; only pinned Core templates can use it.","must":["Use platform-tagged network resources and named container/database resources.","New task and execution roles require the platform boundary.","No managed-policy attachment, boundary removal or application-code execution.","Application roles cannot invoke network or DNS control operations.","Private namespace support is separate; no Route53 record mutation or zone deletion."]}},
    "Properties": {
-    "AssumeRolePolicyDocument": {
-     "Version": "2012-10-17",
-     "Statement": [
-      {"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}
-     ]
-    },
+    "AssumeRolePolicyDocument": {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"cloudformation.amazonaws.com"},"Action":"sts:AssumeRole"}]},
     "Policies": [
      {
       "PolicyName": "FixedFargateRecipe",
@@ -629,7 +613,7 @@
        "Statement": [
         {"Sid":"AppBuckets","Effect":"Allow","Action":["s3:CreateBucket","s3:DeleteBucket","s3:Get*","s3:List*","s3:PutBucket*","s3:PutEncryptionConfiguration","s3:PutLifecycleConfiguration","s3:TagResource","s3:UntagResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*"}},
         {"Sid":"AppLogGroups","Effect":"Allow","Action":["logs:CreateLogGroup","logs:DeleteLogGroup","logs:PutRetentionPolicy","logs:DeleteRetentionPolicy","logs:TagResource","logs:UntagResource","logs:ListTagsForResource","logs:GetDataProtectionPolicy","logs:DescribeIndexPolicies"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/nce/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/nce/${Prefix}-*:*"}]},
-        {"Sid":"ReadLogGroups","Effect":"Allow","Action":["logs:DescribeLogGroups","logs:DescribeResourcePolicies"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Effect":"Allow","Action":["logs:DescribeLogGroups","logs:DescribeResourcePolicies"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
         {"Sid":"CreateTaggedAmplify","Effect":"Allow","Action":["amplify:CreateApp"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"CreateTaggedBranch","Effect":"Allow","Action":["amplify:CreateBranch"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"},"Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"ManageTaggedAmplify","Effect":"Allow","Action":["amplify:Get*","amplify:Update*","amplify:Delete*","amplify:ListTagsForResource"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*"},{"Fn::Sub":"arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*"}],"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
@@ -637,21 +621,21 @@
         {"Sid":"CreateBoundedContainerRoles","Effect":"Allow","Action":["iam:CreateRole"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}],"Condition":{"ArnEquals":{"iam:PermissionsBoundary":{"Ref":"AppBoundary"}}}},
         {"Sid":"ManageBoundedContainerRoles","Effect":"Allow","Action":["iam:GetRole","iam:UpdateAssumeRolePolicy","iam:DeleteRole","iam:PutRolePolicy","iam:GetRolePolicy","iam:DeleteRolePolicy","iam:ListRolePolicies","iam:TagRole","iam:UntagRole","iam:ListAttachedRolePolicies"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}]},
         {"Sid":"PassOnlyContainerRoles","Effect":"Allow","Action":["iam:PassRole"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-task"},{"Fn::Sub":"arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${Prefix}-*-execution"}],"Condition":{"StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}},
-        {"Sid":"NamedContainerResources","Effect":"Allow","Action":["ecs:CreateCluster","ecs:UpdateCluster","ecs:UpdateClusterSettings","ecs:DeleteCluster","ecs:DeregisterTaskDefinition","ecs:CreateService","ecs:UpdateService","ecs:DeleteService","ecs:TagResource","ecs:UntagResource","ecs:ListTagsForResource","ecs:Describe*"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*:*"}]},
-        {"Sid":"RegisterNamedContainerRevision","Effect":"Allow","Action":["ecs:RegisterTaskDefinition"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
+        {"Effect":"Allow","Action":["ecs:ListServiceDeployments","ecs:CreateCluster","ecs:UpdateCluster","ecs:UpdateClusterSettings","ecs:DeleteCluster","ecs:DeregisterTaskDefinition","ecs:CreateService","ecs:UpdateService","ecs:DeleteService","ecs:TagResource","ecs:UntagResource","ecs:ListTagsForResource","ecs:Describe*"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*:*"}]},
+        {"Effect":"Allow","Action":["ecs:RegisterTaskDefinition"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"CreateNamedDatabase","Effect":"Allow","Action":["rds:CreateDBInstance","rds:ModifyDBInstance","rds:DeleteDBInstance","rds:CreateDBSubnetGroup","rds:ModifyDBSubnetGroup","rds:DeleteDBSubnetGroup","rds:AddTagsToResource","rds:RemoveTagsFromResource","rds:ListTagsForResource","rds:CreateDBParameterGroup","rds:ModifyDBParameterGroup","rds:DeleteDBParameterGroup","rds:Describe*"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:subgrp:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:snapshot:${Prefix}-*"},{"Fn::Sub":"arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:pg:${Prefix}-*"}]},
         {"Sid":"DatabaseSecret","Effect":"Allow","Action":["secretsmanager:CreateSecret","secretsmanager:DescribeSecret","secretsmanager:GetSecretValue","secretsmanager:PutSecretValue","secretsmanager:UpdateSecret","secretsmanager:DeleteSecret","secretsmanager:TagResource","secretsmanager:UntagResource","secretsmanager:GetResourcePolicy"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Prefix}-*-database-*"}},
-        {"Sid":"DatabasePasswordGeneration","Effect":"Allow","Action":["secretsmanager:GetRandomPassword"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Effect":"Allow","Action":["secretsmanager:GetRandomPassword"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
         {"Sid":"CreateTaggedApplicationNetwork","Effect":"Allow","Action":["ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateSecurityGroup","ec2:CreateRouteTable","ec2:CreateInternetGateway","ec2:AllocateAddress","ec2:CreateNatGateway","ec2:CreateVpcEndpoint"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"ManageApplicationNetwork","Effect":"Allow","Action":["ec2:ModifyVpcAttribute","ec2:DeleteVpc","ec2:DeleteSubnet","ec2:ModifySubnetAttribute","ec2:DeleteSecurityGroup","ec2:AuthorizeSecurityGroupIngress","ec2:RevokeSecurityGroupIngress","ec2:AuthorizeSecurityGroupEgress","ec2:RevokeSecurityGroupEgress","ec2:CreateRoute","ec2:ReplaceRoute","ec2:DeleteRoute","ec2:DeleteRouteTable","ec2:AssociateRouteTable","ec2:DisassociateRouteTable","ec2:AttachInternetGateway","ec2:DetachInternetGateway","ec2:DeleteInternetGateway","ec2:ReleaseAddress","ec2:DeleteNatGateway","ec2:DeleteVpcEndpoints","ec2:ModifyVpcEndpoint"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"ec2:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"TagNewNetwork","Effect":"Allow","Action":["ec2:CreateTags"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"},"ec2:CreateAction":["CreateVpc","CreateSubnet","CreateSecurityGroup","CreateRouteTable","CreateInternetGateway","AllocateAddress","CreateNatGateway","CreateVpcEndpoint"]}}},
-        {"Sid":"ReadNetworkAndLoadBalancers","Effect":"Allow","Action":["ec2:Describe*","elasticloadbalancing:Describe*"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Effect":"Allow","Action":["ec2:Describe*","elasticloadbalancing:Describe*"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
         {"Sid":"NamedApplicationLoadBalancer","Effect":"Allow","Action":["elasticloadbalancing:CreateLoadBalancer","elasticloadbalancing:DeleteLoadBalancer","elasticloadbalancing:ModifyLoadBalancerAttributes","elasticloadbalancing:CreateTargetGroup","elasticloadbalancing:DeleteTargetGroup","elasticloadbalancing:ModifyTargetGroup","elasticloadbalancing:ModifyTargetGroupAttributes","elasticloadbalancing:CreateListener","elasticloadbalancing:DeleteListener","elasticloadbalancing:ModifyListener","elasticloadbalancing:AddTags","elasticloadbalancing:RemoveTags"],"Resource":[{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:loadbalancer/app/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/${Prefix}-*/*"},{"Fn::Sub":"arn:${AWS::Partition}:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener/app/${Prefix}-*/*/*"}]},
-        {"Sid":"ReadIssuedCertificates","Effect":"Allow","Action":["acm:DescribeCertificate"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:acm:${AWS::Region}:${AWS::AccountId}:certificate/*"}},
+        {"Effect":"Allow","Action":["acm:DescribeCertificate"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:acm:${AWS::Region}:${AWS::AccountId}:certificate/*"}},
         {"Sid":"CreateTaggedServiceDiscovery","Effect":"Allow","Action":["servicediscovery:CreatePrivateDnsNamespace","servicediscovery:CreateService","servicediscovery:TagResource"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"aws:RequestTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
         {"Sid":"ManageTaggedServiceDiscovery","Effect":"Allow","Action":["servicediscovery:Get*","servicediscovery:Delete*","servicediscovery:UpdateService","servicediscovery:TagResource","servicediscovery:UntagResource","servicediscovery:ListTagsForResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:servicediscovery:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}},
-        {"Sid":"ReadDiscoveryOperations","Effect":"Allow","Action":["servicediscovery:GetOperation"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
-        {"Sid":"NamedContainerAlarms","Effect":"Allow","Action":["cloudwatch:PutMetricAlarm","cloudwatch:DescribeAlarms","cloudwatch:DeleteAlarms","cloudwatch:TagResource","cloudwatch:UntagResource","cloudwatch:ListTagsForResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${Prefix}-*"}},
+        {"Effect":"Allow","Action":["servicediscovery:GetOperation"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}},
+        {"Effect":"Allow","Action":["cloudwatch:PutMetricAlarm","cloudwatch:DescribeAlarms","cloudwatch:DeleteAlarms","cloudwatch:TagResource","cloudwatch:UntagResource","cloudwatch:ListTagsForResource"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${Prefix}-*"}},
         {"Sid":"TaggedNetworkDependencies","Effect":"Allow","Action":["ec2:CreateSubnet","ec2:CreateSecurityGroup","ec2:CreateRouteTable","ec2:CreateNatGateway","ec2:CreateVpcEndpoint"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:*/*"},"Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"},"ec2:ResourceTag/nce:platform-prefix":{"Ref":"Prefix"}}}}
        ]
       }
@@ -659,36 +643,8 @@
     ]
    }
   },
-  "FargatePrivateNamespacePolicy": {
-   "Type": "AWS::IAM::ManagedPolicy",
-   "Condition": "EnableFargate",
-   "Metadata": {
-    "com.aws.cloudformation.Context": {
-     "why": "CloudFormation private namespace handlers need Route53; separate policy preserves inline limits.",
-     "must": [
-      "CreateHostedZone requires a VPC in this region.",
-      "Attach only to fixed Fargate CloudFormation role.",
-      "No record changes or zone deletion."
-     ]
-    }
-   },
-   "Properties": {
-    "Roles": [
-     {
-      "Ref": "FargateCloudFormationRole"
-     }
-    ],
-    "PolicyDocument": {
-     "Version": "2012-10-17",
-     "Statement": [
-      {"Sid":"CreatePrivateNamespaceZone","Effect":"Allow","Action":["route53:CreateHostedZone"],"Resource":"*","Condition":{"StringLike":{"route53:VPCs":{"Fn::Sub":"VPCId=vpc-*,VPCRegion=${AWS::Region}"}},"Null":{"route53:VPCs":"false"}}},
-      {"Sid":"ReadNamespaceHostedZone","Effect":"Allow","Action":["route53:GetHostedZone"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:route53:::hostedzone/*"}},
-      {"Sid":"FindNamespaceHostedZone","Effect":"Allow","Action":["route53:ListHostedZonesByName"],"Resource":"*"},
-      {"Sid":"FindNamespaceServices","Effect":"Allow","Action":["servicediscovery:ListServices"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}}
-     ]
-    }
-   }
-  }
+  "FargateProviderMetadataPolicy": {"Type":"AWS::IAM::ManagedPolicy","Condition":"EnableFargate","Metadata":{"com.aws.cloudformation.Context":{"why":"Fixed provider metadata reads lack ARN support.","must":["Exact Fargate role; same region; read only."]}},"Properties":{"Roles":[{"Ref":"FargateCloudFormationRole"}],"PolicyDocument":{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["ecs:DescribeTaskDefinition","logs:DescribeIndexPolicies","rds:DescribeEngineDefaultParameters","rds:DescribeEvents","servicediscovery:ListTagsForResource"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}}]}}},
+  "FargatePrivateNamespacePolicy": {"Type":"AWS::IAM::ManagedPolicy","Condition":"EnableFargate","Metadata":{"com.aws.cloudformation.Context":{"why":"CloudFormation private namespace handlers need Route53; separate policy preserves inline limits.","must":["CreateHostedZone requires a VPC in this region.","Attach only to fixed Fargate CloudFormation role.","No record changes or zone deletion."]}},"Properties":{"Roles":[{"Ref":"FargateCloudFormationRole"}],"PolicyDocument":{"Version":"2012-10-17","Statement":[{"Sid":"CreatePrivateNamespaceZone","Effect":"Allow","Action":["route53:CreateHostedZone"],"Resource":"*","Condition":{"StringLike":{"route53:VPCs":{"Fn::Sub":"VPCId=vpc-*,VPCRegion=${AWS::Region}"}},"Null":{"route53:VPCs":"false"}}},{"Sid":"ReadNamespaceHostedZone","Effect":"Allow","Action":["route53:GetHostedZone"],"Resource":{"Fn::Sub":"arn:${AWS::Partition}:route53:::hostedzone/*"}},{"Sid":"FindNamespaceHostedZone","Effect":"Allow","Action":["route53:ListHostedZonesByName"],"Resource":"*"},{"Sid":"FindNamespaceServices","Effect":"Allow","Action":["servicediscovery:ListServices"],"Resource":"*","Condition":{"StringEquals":{"aws:RequestedRegion":{"Ref":"AWS::Region"}}}}]}}}
  },
  "Outputs": {
   "ControlRoleArn": {

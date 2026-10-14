@@ -1,5 +1,6 @@
 """Offline AWS contract tests. No AWS credentials, network, or paid builds."""
 import base64
+import fnmatch
 import importlib.util
 import io
 import json
@@ -167,6 +168,60 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_provider_reads_allow_aws_unscoped_resource_only_in_platform_region(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        resources = document['Resources']
+        role = resources['FargateCloudFormationRole']['Properties']
+        policies = [item['PolicyDocument'] for item in role['Policies']]
+        for resource in resources.values():
+            if resource['Type'] == 'AWS::IAM::ManagedPolicy' and resource['Properties'].get('Roles') == [{'Ref': 'FargateCloudFormationRole'}]:
+                self.assertEqual(resource['Condition'], 'EnableFargate')
+                policies.append(resource['Properties']['PolicyDocument'])
+        values = {'AWS::Partition': 'aws', 'AWS::Region': 'us-east-1', 'AWS::AccountId': '123456789012', 'Prefix': 'nce-tests'}
+
+        def resolve(value):
+            if isinstance(value, str):
+                return value
+            if 'Ref' in value:
+                return values[value['Ref']]
+            if 'Fn::Sub' in value:
+                result = value['Fn::Sub']
+                for key, replacement in values.items():
+                    result = result.replace('${' + key + '}', replacement)
+                return result
+            raise AssertionError('Unexpected intrinsic in tested authorization statement')
+
+        def allowed(action, arn, region):
+            for policy in policies:
+                for statement in policy['Statement']:
+                    if statement['Effect'] != 'Allow' or not any(fnmatch.fnmatchcase(action.lower(), item.lower()) for item in statement['Action']):
+                        continue
+                    scopes = statement['Resource'] if isinstance(statement['Resource'], list) else [statement['Resource']]
+                    if not any(fnmatch.fnmatchcase(arn, resolve(scope)) for scope in scopes):
+                        continue
+                    conditions = statement.get('Condition', {})
+                    if set(conditions) - {'StringEquals'}:
+                        continue
+                    if any(key != 'aws:RequestedRegion' or region != resolve(value) for key, value in conditions.get('StringEquals', {}).items()):
+                        continue
+                    return True
+            return False
+
+        # These current IAM actions have no resource type in the AWS service
+        # authorization reference. A parameter-group/task-definition ARN grant
+        # cannot authorize the provider's request, even with Describe* present.
+        for action in ['rds:DescribeEngineDefaultParameters', 'rds:DescribeEvents',
+                       'ecs:DescribeTaskDefinition', 'logs:DescribeIndexPolicies',
+                       'servicediscovery:ListTagsForResource']:
+            with self.subTest(action=action):
+                self.assertTrue(allowed(action, '*', 'us-east-1'))
+                self.assertFalse(allowed(action, '*', 'eu-west-1'))
+                self.assertFalse(allowed(action, '*', None))
+        self.assertFalse(allowed('rds:CreateDBInstance', '*', 'us-east-1'))
+        self.assertFalse(allowed('servicediscovery:UntagResource', '*', 'us-east-1'))
+        self.assertTrue(allowed('ecs:ListServiceDeployments', 'arn:aws:ecs:us-east-1:123456789012:service/nce-tests-app/service', 'us-east-1'))
+        self.assertFalse(allowed('ecs:ListServiceDeployments', 'arn:aws:ecs:us-east-1:123456789012:service/other-app/service', 'us-east-1'))
+
     def test_private_namespace_support_is_role_bound_and_requires_vpc_context(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         resources = document['Resources']
@@ -181,7 +236,7 @@ class RunnerContractTests(SimpleTestCase):
         self.assertEqual(create['Condition']['StringLike']['route53:VPCs'], {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'})
         inline = resources['FargateCloudFormationRole']['Properties']['Policies']
         self.assertLessEqual(sum(len(json.dumps(item['PolicyDocument'], separators=(',', ':'))) for item in inline), 10240)
-        tag = next(statement for policy in inline for statement in policy['PolicyDocument']['Statement'] if statement['Sid'] == 'CreateTaggedServiceDiscovery')
+        tag = next(statement for policy in inline for statement in policy['PolicyDocument']['Statement'] if statement.get('Sid') == 'CreateTaggedServiceDiscovery')
         self.assertIn('servicediscovery:TagResource', tag['Action'])
         self.assertEqual(tag['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'], {'Ref': 'Prefix'})
 

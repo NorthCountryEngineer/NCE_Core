@@ -80,6 +80,13 @@ creation, and grants no DNS record changes or zone deletion. Newly created
 namespace/service tags use the approved request tag; existing resources retain
 their resource-tag checks. This preserves the role's inline-policy size limit.
 
+The fixed providers also require metadata reads whose IAM actions do not support
+resource ARNs: RDS engine defaults/events, ECS task definitions, log index
+policies and Cloud Map tags. A separate managed policy grants those exact reads
+on `*` only in the platform region and only to the Fargate CloudFormation role.
+ECS service-deployment listing stays scoped to the platform's named services.
+Database writes and application roles retain their existing resource scopes.
+
 Create the Core application with final origin `https://proposalstudio.ai`.
 Client placement is immutable; complete DNS and TLS at that origin before
 testing sign-in. Core creates a public authorization-code + PKCE client and a

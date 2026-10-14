@@ -102,9 +102,18 @@ require(namespace_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormati
 namespace_statements = namespace_policy['Properties']['PolicyDocument']['Statement']
 namespace_actions = {action for entry in namespace_statements for action in entry['Action']}
 require(namespace_actions == {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'}, 'private namespace support gained unrelated operations')
+provider_policy = resources['FargateProviderMetadataPolicy']
+require(provider_policy['Condition'] == 'EnableFargate' and provider_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'provider metadata support escaped the gated container execution role')
+provider_statements = provider_policy['Properties']['PolicyDocument']['Statement']
+require(len(provider_statements) == 1, 'provider metadata gained unrelated grants')
+provider_read = provider_statements[0]
+require(set(provider_read['Action']) == {'ecs:DescribeTaskDefinition', 'logs:DescribeIndexPolicies', 'rds:DescribeEngineDefaultParameters', 'rds:DescribeEvents', 'servicediscovery:ListTagsForResource'}, 'provider metadata gained unrelated operations')
+require(provider_read['Effect'] == 'Allow' and provider_read['Resource'] == '*' and provider_read['Condition'] == {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}}, 'provider metadata must use supported unscoped resources and require this region')
+service_listing = next(item for item in fargate_statements if 'ecs:ListServiceDeployments' in item['Action'])
+require({'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*'} in service_listing['Resource'] and '*' not in service_listing['Resource'], 'service deployment listing escaped named container resources')
 zone_create = next(entry for entry in namespace_statements if 'route53:CreateHostedZone' in entry['Action'])
 require(zone_create['Condition']['StringLike']['route53:VPCs'] == {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'} and zone_create['Condition']['Null']['route53:VPCs'] == 'false', 'hosted zone creation must require a private VPC in this region')
-new_discovery = next(entry for entry in fargate_statements if entry['Sid'] == 'CreateTaggedServiceDiscovery')
+new_discovery = next(entry for entry in fargate_statements if entry.get('Sid') == 'CreateTaggedServiceDiscovery')
 require('servicediscovery:TagResource' in new_discovery['Action'] and new_discovery['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'] == {'Ref': 'Prefix'}, 'new namespace tags need request-tag authorization')
 migrations = next(item for item in statements('RunnerRole') if 'ecs:RunTask' in item['Action'])
 require(migrations['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*-migration:*'}, 'runner can execute an arbitrary container task')
