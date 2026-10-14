@@ -45,6 +45,118 @@ def manifest(value):
 
 
 class FargateContractTests(SimpleTestCase):
+    def test_retained_database_keeps_its_dependency_chain(self):
+        import re
+        template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
+        resources = template['Resources']
+
+        def references(node):
+            if isinstance(node, dict):
+                reference = node.get('Ref')
+                if reference in resources:
+                    yield reference
+                substitution = node.get('Fn::Sub')
+                if isinstance(substitution, str):
+                    for reference in re.findall(r'\$\{([^}.]+)(?:\.[^}]+)?\}', substitution):
+                        if reference in resources:
+                            yield reference
+                for child in node.values():
+                    yield from references(child)
+            elif isinstance(node, list):
+                for child in node:
+                    yield from references(child)
+
+        # Retaining only the instance leaves rollback trying to remove network
+        # and configuration resources still used by the protected database.
+        retained, pending = set(), ['Database']
+        while pending:
+            name = pending.pop()
+            if name in retained:
+                continue
+            retained.add(name)
+            pending.extend(references(resources[name]['Properties']))
+        self.assertEqual(retained, {'Database', 'DatabaseSecret', 'DatabaseSubnetGroup',
+                                   'DatabaseParameters', 'DatabaseSecurityGroup',
+                                   'PrivateSubnet1', 'PrivateSubnet2', 'Vpc'})
+        for name in retained:
+            with self.subTest(resource=name):
+                self.assertEqual(resources[name]['DeletionPolicy'], 'Retain')
+                self.assertEqual(resources[name]['UpdateReplacePolicy'], 'Retain')
+        self.assertTrue(resources['Database']['Properties']['DeletionProtection'])
+
+    def test_namespace_zone_creation_requires_cloud_map_forward_access(self):
+        from fnmatch import fnmatchcase
+        onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        resources = onboarding['Resources']
+        namespace = resources['FargatePrivateNamespacePolicy']
+        self.assertEqual(namespace['Properties']['Roles'], [{'Ref': 'FargateCloudFormationRole'}])
+        statements = namespace['Properties']['PolicyDocument']['Statement']
+        grant = next(statement for statement in statements if 'route53:CreateHostedZone' in statement['Action'])
+        conditions = grant['Condition']
+
+        # Evaluate the actual grant's supported conditions against positive and
+        # negative AWS context. This is an offline boundary regression, not
+        # evidence that a live Cloud Map call supplies a particular context.
+        def admitted(context):
+            for operator, entries in conditions.items():
+                for key, required in entries.items():
+                    value = context.get(key)
+                    if operator == 'Bool':
+                        if value is None or str(value).lower() != required.lower():
+                            return False
+                    elif operator == 'StringEquals':
+                        if value != required:
+                            return False
+                    elif operator == 'Null':
+                        if (value is None) != (required == 'true'):
+                            return False
+                    else:
+                        self.fail('Unexpected namespace delegation condition operator')
+            return True
+
+        self.assertTrue(admitted({'aws:ViaAWSService': True, 'aws:CalledViaLast': 'servicediscovery.amazonaws.com'}))
+        for context in [{}, {'aws:ViaAWSService': False}, {'aws:ViaAWSService': True},
+                        {'aws:CalledViaLast': 'servicediscovery.amazonaws.com'},
+                        {'aws:ViaAWSService': False, 'aws:CalledViaLast': 'servicediscovery.amazonaws.com'},
+                        {'aws:ViaAWSService': True, 'aws:CalledViaLast': 'cloudformation.amazonaws.com'},
+                        {'aws:ViaAWSService': True, 'aws:CalledViaLast': 's3.amazonaws.com'}]:
+            with self.subTest(context=context):
+                self.assertFalse(admitted(context))
+        role_statements = [statement for policy in resources['FargateCloudFormationRole']['Properties']['Policies']
+                           for statement in policy['PolicyDocument']['Statement']]
+        role_statements.extend(statement for resource in resources.values()
+                               if resource['Type'] == 'AWS::IAM::ManagedPolicy'
+                               and {'Ref': 'FargateCloudFormationRole'} in resource['Properties'].get('Roles', [])
+                               for statement in resource['Properties']['PolicyDocument']['Statement'])
+        allowed_actions = [action for statement in role_statements if statement['Effect'] == 'Allow'
+                           for action in statement['Action']]
+        self.assertTrue(any(fnmatchcase('servicediscovery:CreatePrivateDnsNamespace', action) for action in allowed_actions))
+        self.assertFalse(any(fnmatchcase('servicediscovery:CreatePublicDnsNamespace', action) for action in allowed_actions))
+
+    def test_cleanup_grants_keep_supported_resource_and_region_bounds(self):
+        from fnmatch import fnmatchcase
+        onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        resources = onboarding['Resources']
+        namespace = resources['FargatePrivateNamespacePolicy']['Properties']['PolicyDocument']['Statement']
+        creation = next(item for item in namespace if 'route53:CreateHostedZone' in item['Action'])
+        deletion = next(item for item in namespace if 'route53:DeleteHostedZone' in item['Action'])
+        self.assertEqual(deletion['Condition'], creation['Condition'])
+        self.assertEqual(deletion['Resource'], {'Fn::Sub': 'arn:${AWS::Partition}:route53:::hostedzone/*'})
+        cleanup = resources['FargateTaskDefinitionCleanupPolicy']
+        self.assertEqual(cleanup['Condition'], 'EnableFargate')
+        self.assertEqual(cleanup['Properties']['Roles'], [{'Ref': 'FargateCloudFormationRole'}])
+        self.assertEqual(cleanup['Properties']['PolicyDocument']['Statement'], [{
+            'Effect': 'Allow', 'Action': ['ecs:DeregisterTaskDefinition'], 'Resource': '*',
+            'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}}}])
+        role_statements = [item for policy in resources['FargateCloudFormationRole']['Properties']['Policies']
+                           for item in policy['PolicyDocument']['Statement']]
+        bucket = next(item for item in role_statements if item.get('Sid') == 'AppBuckets')
+        self.assertIn('s3:DeleteBucketPolicy', bucket['Action'])
+        self.assertEqual(bucket['Resource'], {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'})
+        normal_namespace = next(item for item in role_statements if any(fnmatchcase('servicediscovery:DeleteNamespace', action) for action in item['Action']))
+        self.assertIn('aws:ResourceTag/nce:platform-prefix', normal_namespace['Condition']['StringEquals'])
+        self.assertEqual(normal_namespace['Resource'], {'Fn::Sub': 'arn:${AWS::Partition}:servicediscovery:${AWS::Region}:${AWS::AccountId}:*/*'})
+
     def test_request_tag_guarded_creation_has_explicit_platform_and_application_tags(self):
         template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
         onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())

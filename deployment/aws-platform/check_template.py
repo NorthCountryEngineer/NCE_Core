@@ -101,7 +101,7 @@ require(namespace_policy['Condition'] == 'EnableFargate', 'private DNS support m
 require(namespace_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'private DNS support escaped its exact execution role')
 namespace_statements = namespace_policy['Properties']['PolicyDocument']['Statement']
 namespace_actions = {action for entry in namespace_statements for action in entry['Action']}
-require(namespace_actions == {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'}, 'private namespace support gained unrelated operations')
+require(namespace_actions == {'route53:CreateHostedZone', 'route53:DeleteHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZones', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'}, 'private namespace support gained unrelated operations')
 provider_policy = resources['FargateProviderMetadataPolicy']
 require(provider_policy['Condition'] == 'EnableFargate' and provider_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'provider metadata support escaped the gated container execution role')
 provider_statements = provider_policy['Properties']['PolicyDocument']['Statement']
@@ -112,7 +112,16 @@ require(provider_read['Effect'] == 'Allow' and provider_read['Resource'] == '*' 
 service_listing = next(item for item in fargate_statements if 'ecs:ListServiceDeployments' in item['Action'])
 require({'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*'} in service_listing['Resource'] and '*' not in service_listing['Resource'], 'service deployment listing escaped named container resources')
 zone_create = next(entry for entry in namespace_statements if 'route53:CreateHostedZone' in entry['Action'])
-require(zone_create['Condition']['StringLike']['route53:VPCs'] == {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'} and zone_create['Condition']['Null']['route53:VPCs'] == 'false', 'hosted zone creation must require a private VPC in this region')
+require(zone_create['Condition'] == {'Bool': {'aws:ViaAWSService': 'true'}, 'StringEquals': {'aws:CalledViaLast': 'servicediscovery.amazonaws.com'}, 'Null': {'aws:CalledViaLast': 'false'}}, 'hosted zone creation must require Cloud Map as the last FAS service; direct and missing-context calls deny')
+require('servicediscovery:CreatePublicDnsNamespace' not in actions('FargateCloudFormationRole'), 'private namespace role must not create a public namespace')
+zone_delete = next(entry for entry in namespace_statements if 'route53:DeleteHostedZone' in entry['Action'])
+require(zone_delete['Condition'] == zone_create['Condition'] and zone_delete['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:route53:::hostedzone/*'}, 'namespace zone deletion must remain Cloud Map FAS gated and zone-ARN scoped')
+cleanup_policy = resources['FargateTaskDefinitionCleanupPolicy']
+require(cleanup_policy['Condition'] == 'EnableFargate' and cleanup_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'task cleanup escaped its gated fixed execution role')
+require(cleanup_policy['Properties']['PolicyDocument']['Statement'] == [{'Effect': 'Allow', 'Action': ['ecs:DeregisterTaskDefinition'], 'Resource': '*', 'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}}}], 'task cleanup gained unrelated actions or unsupported ARN scoping')
+require('ecs:DeregisterTaskDefinition' not in actions('FargateCloudFormationRole'), 'unsupported deregistration ARN scope must not remain in the named container grant')
+app_bucket = next(entry for entry in fargate_statements if entry.get('Sid') == 'AppBuckets')
+require('s3:DeleteBucketPolicy' in app_bucket['Action'] and app_bucket['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'bucket-policy cleanup escaped named platform buckets')
 new_discovery = next(entry for entry in fargate_statements if entry.get('Sid') == 'CreateTaggedServiceDiscovery')
 require('servicediscovery:TagResource' in new_discovery['Action'] and new_discovery['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'] == {'Ref': 'Prefix'}, 'new namespace tags need request-tag authorization')
 migrations = next(item for item in statements('RunnerRole') if 'ecs:RunTask' in item['Action'])

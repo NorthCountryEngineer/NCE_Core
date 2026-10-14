@@ -75,10 +75,30 @@ credentials. Credential values never belong in the map, manifest or frontend.
 Private browser discovery uses a Cloud Map namespace. Its CloudFormation
 provider requires Route53 hosted-zone creation and metadata reads in addition
 to Cloud Map calls. A separate managed policy attaches only to the Fargate
-execution role, requires a VPC association in the deployment region for zone
-creation, and grants no DNS record changes or zone deletion. Newly created
+execution role and allows zone creation only when `aws:ViaAWSService` is true
+and `aws:CalledViaLast` identifies `servicediscovery.amazonaws.com`. Missing
+delegation keys, direct Route53 requests and other last-service identities are
+denied. This chain constraint does not prove a VPC condition was present in the
+delegated request: private-only admission also relies on the role allowing
+`CreatePrivateDnsNamespace` while denying `CreatePublicDnsNamespace` and on the
+fixed private-namespace template. Zone deletion uses the same FAS conditions
+and a hosted-zone ARN pattern; direct zone operations and DNS record mutations
+remain denied. Hosted-zone listing is read-only provider metadata. Newly created
 namespace/service tags use the approved request tag; existing resources retain
 their resource-tag checks. This preserves the role's inline-policy size limit.
+
+AWS documents [Cloud Map FAS support](https://docs.aws.amazon.com/cloud-map/latest/dg/security_iam_service-with-iam.html)
+and the [IAM forward-access condition keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_forward_access_sessions.html).
+Offline context tests verify the allow/deny boundary; actual delegated-call
+success must be verified during deployment.
+
+Rollback also needs exact cleanup actions. `s3:DeleteBucketPolicy` remains in
+the existing named platform-bucket grant. `ecs:DeregisterTaskDefinition` does
+not support IAM resource ARNs, so a separate managed policy allows only this
+action on `*` in the configured region and attaches only to the fixed Fargate
+CloudFormation role. No task-family restriction is asserted for this action.
+Normal Cloud Map namespace deletion retains its namespace ARN and resource-tag
+checks; a failed resource that never existed does not justify weakening them.
 
 The fixed providers also require metadata reads whose IAM actions do not support
 resource ARNs: RDS engine defaults/events, ECS task definitions, log index
@@ -128,6 +148,22 @@ CloudFormation rollback cannot reverse database migrations. Use compatible
 additive migrations and retain previous digests. For a failed migration inspect
 its task log, repair it or restore compatible previous images, then deliberately
 reactivate services. Do not drop data or run concurrent migrations blindly.
+
+The database's VPC, both private subnets, security group, subnet group and
+parameter group have `DeletionPolicy: Retain` and `UpdateReplacePolicy: Retain`
+along with the database and its credential secret. Retaining this dependency
+chain keeps a failed creation or rollback from attempting to remove resources
+still used by the protected database. A failed release may therefore leave
+retained infrastructure and its normal AWS charges. Recover it through reviewed
+resource imports using the existing physical identifiers and all original
+parameters, then apply the fixed recipe at zero task count before retrying Core's
+normal release. Preserve deletion protection and reject data/network replacement
+or deletion. During import, keep already managed resources and stack settings
+unchanged. If rollback already removed an unused subnet, capture the subnet
+group's actual identifiers in the import seed; the next update can create the
+missing subnet and modify the existing subnet group in place. See
+[CloudFormation manual imports](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/import-resources-manually.html)
+and [RDS subnet-group update behavior](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-rds-dbsubnetgroup.html).
 
 The application task role grants document storage access; the execution role
 injects exact runtime/database secrets and Core's SSM bundle at startup. The
