@@ -96,6 +96,16 @@ new_roles = next(item for item in fargate_statements if 'iam:CreateRole' in item
 require(new_roles['Condition']['ArnEquals']['iam:PermissionsBoundary'] == {'Ref': 'AppBoundary'}, 'container role boundary missing')
 require(not actions('FargateCloudFormationRole') & {'iam:AttachRolePolicy', 'iam:CreatePolicy', 'iam:DeleteRolePermissionsBoundary'}, 'container role permits privilege escalation')
 require(not any(action.startswith('route53:') for action in actions('FargateCloudFormationRole')), 'container recipe cannot manage public DNS')
+namespace_policy = resources['FargatePrivateNamespacePolicy']
+require(namespace_policy['Condition'] == 'EnableFargate', 'private DNS support must follow the container recipe gate')
+require(namespace_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'private DNS support escaped its exact execution role')
+namespace_statements = namespace_policy['Properties']['PolicyDocument']['Statement']
+namespace_actions = {action for entry in namespace_statements for action in entry['Action']}
+require(namespace_actions == {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'}, 'private namespace support gained unrelated operations')
+zone_create = next(entry for entry in namespace_statements if 'route53:CreateHostedZone' in entry['Action'])
+require(zone_create['Condition']['StringLike']['route53:VPCs'] == {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'} and zone_create['Condition']['Null']['route53:VPCs'] == 'false', 'hosted zone creation must require a private VPC in this region')
+new_discovery = next(entry for entry in fargate_statements if entry['Sid'] == 'CreateTaggedServiceDiscovery')
+require('servicediscovery:TagResource' in new_discovery['Action'] and new_discovery['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'] == {'Ref': 'Prefix'}, 'new namespace tags need request-tag authorization')
 migrations = next(item for item in statements('RunnerRole') if 'ecs:RunTask' in item['Action'])
 require(migrations['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*-migration:*'}, 'runner can execute an arbitrary container task')
 require(migrations['Condition']['ArnLike']['ecs:cluster'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*'}, 'migration cluster scope missing')
@@ -103,4 +113,7 @@ for name, resource in resources.items():
     if resource['Type'] == 'AWS::IAM::Role':
         length = sum(len(json.dumps(entry['PolicyDocument'], separators=(',', ':'))) for entry in resource['Properties'].get('Policies', []))
         require(length <= 10240, f'{name} inline policies exceed IAM role limit')
+    elif resource['Type'] == 'AWS::IAM::ManagedPolicy':
+        length = len(json.dumps(resource['Properties']['PolicyDocument'], separators=(',', ':')))
+        require(length <= 6144, f'{name} exceeds managed-policy size limit')
 print(f'PASS: onboarding invariants; {len(resources)} resources; {len(body)} bytes. No AWS calls made.')

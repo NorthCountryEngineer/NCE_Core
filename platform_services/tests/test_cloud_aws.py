@@ -167,6 +167,24 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_private_namespace_support_is_role_bound_and_requires_vpc_context(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        resources = document['Resources']
+        support = resources['FargatePrivateNamespacePolicy']
+        self.assertEqual(support['Condition'], 'EnableFargate')
+        self.assertEqual(support['Properties']['Roles'], [{'Ref': 'FargateCloudFormationRole'}])
+        statements = support['Properties']['PolicyDocument']['Statement']
+        actions = {action for statement in statements for action in statement['Action']}
+        self.assertEqual(actions, {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'})
+        create = next(statement for statement in statements if 'route53:CreateHostedZone' in statement['Action'])
+        self.assertEqual(create['Condition']['Null']['route53:VPCs'], 'false')
+        self.assertEqual(create['Condition']['StringLike']['route53:VPCs'], {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'})
+        inline = resources['FargateCloudFormationRole']['Properties']['Policies']
+        self.assertLessEqual(sum(len(json.dumps(item['PolicyDocument'], separators=(',', ':'))) for item in inline), 10240)
+        tag = next(statement for policy in inline for statement in policy['PolicyDocument']['Statement'] if statement['Sid'] == 'CreateTaggedServiceDiscovery')
+        self.assertIn('servicediscovery:TagResource', tag['Action'])
+        self.assertEqual(tag['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'], {'Ref': 'Prefix'})
+
     def test_real_starter_manifests_are_loadable_and_lambda_handler_is_zipped_without_execution(self):
         static = runner.read_manifest(ROOT / "templates/static", "amplify-static")
         serverless = runner.read_manifest(ROOT / "templates/serverless", "amplify-serverless")

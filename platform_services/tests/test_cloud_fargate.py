@@ -45,6 +45,57 @@ def manifest(value):
 
 
 class FargateContractTests(SimpleTestCase):
+    def test_canonical_www_redirect_precedes_proxies_and_spa_fallback(self):
+        template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
+        rules = template['Resources']['AmplifyApp']['Properties']['CustomRules']
+        redirect = rules[0]
+        self.assertEqual(redirect['Status'], '301')
+        self.assertEqual(redirect['Target'], {'Ref': 'ApplicationOrigin'})
+
+        def resolve(expression, origin):
+            if not isinstance(expression, dict):
+                return expression
+            if 'Ref' in expression:
+                self.assertEqual(expression['Ref'], 'ApplicationOrigin')
+                return origin
+            if 'Fn::Split' in expression:
+                delimiter, value = expression['Fn::Split']
+                return resolve(value, origin).split(delimiter)
+            if 'Fn::Select' in expression:
+                index, values = expression['Fn::Select']
+                return resolve(values, origin)[int(index)]
+            if 'Fn::Join' in expression:
+                delimiter, values = expression['Fn::Join']
+                return delimiter.join(resolve(value, origin) for value in values)
+            self.fail('Unexpected canonical redirect expression')
+
+        for origin in ['https://proposalstudio.ai', 'https://customer.example.test', 'https://pending.invalid']:
+            with self.subTest(origin=origin):
+                # Domain-only source is required: Amplify appends paths itself.
+                self.assertEqual(resolve(redirect['Source'], origin), 'https://www.' + origin.split('://')[1])
+        self.assertEqual([rule['Source'] for rule in rules[1:3]], ['/api/<*>', '/integrations/<*>'])
+        for rule, path in zip(rules[1:3], ['/api/<*>', '/integrations/<*>']):
+            self.assertEqual(rule['Status'], '200')
+            self.assertEqual(rule['Target'], {'Fn::Sub': 'https://${ApiHost}' + path})
+        self.assertEqual(rules[3]['Target'], '/index.html')
+        self.assertEqual(rules[3]['Status'], '200')
+        self.assertTrue(rules[3]['Source'].startswith('</^'))
+        self.assertFalse(any(rule['Type'] == 'AWS::Amplify::Domain' for rule in template['Resources'].values()))
+
+    def test_canonical_origin_parameter_rejects_ports_paths_and_credentials(self):
+        import re
+        template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
+        pattern = template['Parameters']['ApplicationOrigin']['AllowedPattern']
+        for origin in ['https://proposalstudio.ai', 'https://customer.example.test', 'https://pending.invalid']:
+            with self.subTest(origin=origin):
+                self.assertIsNotNone(re.fullmatch(pattern, origin))
+        for origin in ['http://proposalstudio.ai', 'https://proposalstudio.ai:443',
+                       'https://proposalstudio.ai/', 'https://proposalstudio.ai/path',
+                       'https://proposalstudio.ai?query=1', 'https://proposalstudio.ai#fragment',
+                       'https://user@proposalstudio.ai', 'https://user:password@proposalstudio.ai']:
+            with self.subTest(origin=origin):
+                self.assertIsNone(re.fullmatch(pattern, origin))
+
     def test_fixed_recipe_keeps_database_and_browser_credentials_isolated(self):
         template = json.loads((runner.ROOT / 'fargate.template.json').read_text())
         resources = template['Resources']

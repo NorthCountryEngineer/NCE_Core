@@ -72,11 +72,29 @@ bootstrap secret and issued regional ACM certificate through separately reviewed
 infrastructure. The bootstrap `session_secret` also protects encrypted provider
 credentials. Credential values never belong in the map, manifest or frontend.
 
+Private browser discovery uses a Cloud Map namespace. Its CloudFormation
+provider requires Route53 hosted-zone creation and metadata reads in addition
+to Cloud Map calls. A separate managed policy attaches only to the Fargate
+execution role, requires a VPC association in the deployment region for zone
+creation, and grants no DNS record changes or zone deletion. Newly created
+namespace/service tags use the approved request tag; existing resources retain
+their resource-tag checks. This preserves the role's inline-policy size limit.
+
 Create the Core application with final origin `https://proposalstudio.ai`.
 Client placement is immutable; complete DNS and TLS at that origin before
 testing sign-in. Core creates a public authorization-code + PKCE client and a
 separate confidential introspection client, using the manifest's permissions.
 Registration grants no ordinary user's membership or app permissions.
+
+The template makes `ApplicationOrigin` the canonical HTTPS host and permanently
+places a 301 redirect from `https://www.<configured-host>` first in Amplify's
+rules, before the `/api` and `/integrations` proxies and SPA fallback. Its
+domain-only source preserves request paths and query parameters; the origin
+constraint rejects ports, paths, credentials, queries and fragments. The rule
+becomes active when the operator associates the `www` alias and configures DNS
+and TLS for it. Domain association and Cloudflare records remain operator steps.
+See [Amplify domain redirect behavior](https://docs.aws.amazon.com/amplify/latest/userguide/redirect-rewrite-examples.html)
+and [Cloudflare domain setup](https://docs.aws.amazon.com/amplify/latest/userguide/to-add-a-custom-domain-managed-by-cloudflare.html).
 
 ## Release and recovery
 
