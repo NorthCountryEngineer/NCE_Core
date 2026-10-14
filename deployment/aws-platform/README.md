@@ -58,6 +58,8 @@ runner-only two-action grant, which covers only that literal branch ARN and its
 diagnostic under the same role succeeded after adding only the selected branch's
 descendants. AWS did not disclose the internally evaluated ARN. See
 [owner binding and validation](../../docs/cloud-fargate.md#optional-owner-bound-frontend-publishing).
+Cancel every unstarted diagnostic job with `StopJob` and verify `CANCELLED`
+before optional deletion; deleting a job alone is not cancellation evidence.
 
 CloudFormation's S3 read handler inspects bucket metadata beyond the properties
 declared in a template. Its execution role therefore includes those metadata

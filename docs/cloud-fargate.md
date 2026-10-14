@@ -129,6 +129,14 @@ deployment job; it performed no artifact upload or `StartDeployment`. CloudTrail
 did not expose the internally evaluated resource ARN, so this observation
 establishes the working scope without identifying a particular internal ARN.
 
+A `CreateDeployment` diagnostic creates an unstarted job. Cancel that exact
+returned job with `StopJob` and verify `CANCELLED` before optional deletion or
+another release. Deletion alone is not cancellation evidence. In the live
+October 14 check, a later release returned `BadRequestException` for an
+unfinished job; cancelling the pending jobs restored successful creation with
+the same pinned SDK, role and parameters. Never stop another app's job or a
+real publication to clean up a diagnostic.
+
 The onboarding template provides an optional owner-managed binding. After
 provisioning, verify the actual Amplify app ID, branch, stack ownership, account,
 region and both `nce:platform-prefix` and `nce:application` tags against the
