@@ -4,9 +4,9 @@ import io
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.core.exceptions import ValidationError
 from identity.access import Principal
 from identity.models import Organization, Membership, User
@@ -214,6 +214,43 @@ class FargateContractTests(SimpleTestCase):
 
 
 class FargateRegistrationTests(TestCase):
+    @override_settings(CORE_ENABLE_CLOUD_DEPLOYMENTS=True)
+    def test_worker_stores_fargate_credentials_before_release_without_exposing_them(self):
+        organization = Organization.objects.create(name='Proposal handoff', slug='proposal-handoff')
+        actor = User.objects.create_user('handoff-fixture@example.test', 'local-test-only')
+        Membership.objects.create(organization=organization, user=actor, kind='administrator')
+        environment = create_environment(organization, name='production', namespace='handoff-production', application_origin='https://proposal.example.test')
+        fixture = configuration()
+        fixture.config['environment_ids'] = [str(environment.pk)]
+        destination = CloudPlatform(organization=organization, name='AWS handoff fixture', mode='aws',
+            **{key: getattr(fixture, key) for key in ['account_id', 'region', 'prefix', 'role_arn', 'runner_project', 'connection_arn', 'allowed_repositories', 'config']})
+        destination.external_id = fixture.external_id
+        destination.full_clean()
+        destination.save()
+        with patch('platform_services.cloud_aws.verify', return_value={}):
+            destination = cloud_deployments.verify_platform(destination, Principal(user=actor))
+        app = cloud_deployments.create_application(organization, Principal(user=actor), platform=destination, environment=environment,
+            name='Proposal Studio', slug='proposal-studio', repository=fixture.allowed_repositories[0], branch='main',
+            commit='a' * 40, archetype='amplify-fargate', public_origin='https://proposal.example.test')
+        release = cloud_deployments.prepare_release(app, Principal(user=actor))
+        release = cloud_deployments.approve_release(release, Principal(user=actor), confirm_costs=True)
+        with patch('platform_services.cloud_aws.start_run', return_value={'build_id': 'fixture-runner:build-one'}):
+            self.assertTrue(cloud_deployments.process_one())
+        type(release).objects.filter(pk=release.pk).update(next_poll=None)
+        result = {'status': 'succeeded', 'outputs': {'origin': 'https://production.dtest.amplifyapp.com',
+            'api_url': 'https://api.proposal.example.test', 'identity': json.dumps(IDENTITY)}}
+        with patch('platform_services.cloud_aws.poll_run', return_value=result), patch('platform_services.cloud_aws.store_credentials') as store:
+            self.assertTrue(cloud_deployments.process_one())
+        release.refresh_from_db()
+        self.assertEqual(release.status, 'running', release.error)
+        self.assertEqual(release.provider_state['phase'], 'release')
+        store.assert_called_once()
+        _, parameter, credentials = store.call_args.args
+        self.assertEqual(parameter, f'/{destination.prefix}/apps/{app.pk}/core-resource-client')
+        self.assertEqual(set(credentials), {'client_id', 'client_secret'})
+        self.assertNotIn(credentials['client_secret'], json.dumps(release.outputs) + json.dumps(release.provider_state))
+        self.assertEqual(release.steps[1]['status'], 'succeeded')
+
     def test_registration_preserves_permission_vocabulary_callback_and_paired_public_client(self):
         organization = Organization.objects.create(name='Proposal organization', slug='proposal-test')
         admin = User.objects.create_user('proposal-admin@example.test', 'local-test-only')

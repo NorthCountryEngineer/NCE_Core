@@ -85,6 +85,8 @@ it preserves the running digests and desired count until migration. Core then
 registers identity clients and stores their private resource bundle in this
 application's SSM SecureString. The public configuration enters the runner
 payload; credentials do not.
+Both serverless and Fargate provision phases persist this SecureString before
+the release phase can start a migration or application task that injects it.
 
 The release stops services and registers the chosen image digests. A dedicated
 migration task runs on private subnets with public-IP assignment disabled, using

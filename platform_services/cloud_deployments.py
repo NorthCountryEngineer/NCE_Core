@@ -320,7 +320,7 @@ def process_one():
                 if result['status'] == 'succeeded':
                     if phase == 'provision':
                         variables, credentials, _ = _register(release, outputs)
-                        if working['archetype'] == 'amplify-serverless':
+                        if working['archetype'] in {'amplify-serverless', 'amplify-fargate'}:
                             if not CloudRelease.objects.filter(pk=release.pk, lease_owner=owner, status='running', lease_until__gt=timezone.now()).exists():
                                 return True
                             store_credentials(platform, working['secret_parameter'], credentials)
