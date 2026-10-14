@@ -120,6 +120,15 @@ and `StartDeployment`. The observed result suggests a tag-context mismatch for
 that call; it does not establish an AWS service defect or justify a broad write
 grant.
 
+The subsequent live CodeBuild call at 22:53 UTC on October 14, 2026 still
+returned `AccessDenied` when the owner binding included only the exact
+production branch ARN. At 22:59 UTC, a diagnostic under the same CodeBuild
+runner role succeeded after adding that branch's `/*` descendants, with the
+app, branch, two actions and region unchanged. It created only an unstarted
+deployment job; it performed no artifact upload or `StartDeployment`. CloudTrail
+did not expose the internally evaluated resource ARN, so this observation
+establishes the working scope without identifying a particular internal ARN.
+
 The onboarding template provides an optional owner-managed binding. After
 provisioning, verify the actual Amplify app ID, branch, stack ownership, account,
 region and both `nce:platform-prefix` and `nce:application` tags against the
@@ -132,11 +141,13 @@ values. Do not bind another tenant's app merely because its name is familiar.
 
 A separate conditional managed policy attaches only to the trusted runner and
 permits exactly `amplify:CreateDeployment` and `amplify:StartDeployment` on that
-single app/branch ARN in the platform account and region. The parameters reject
-wildcards and branch paths. The grant uses the exact ARN and requested region
-without a resource-tag condition; the existing tag-conditioned reads and normal
-publish grant remain intact. It grants no application edits, other branches,
-CodeBuild, role, secret or data access. Clear `FrontendAppId` to remove the
+single app/branch ARN and its `/*` descendants in the platform account and
+region. The parameters reject wildcards and branch paths; only the template
+adds the descendant suffix after the literal approved branch. The grant uses
+that binding and requested region without a resource-tag condition; the existing
+tag-conditioned reads and normal publish grant remain intact. It grants no
+application edits, other apps or branches, CodeBuild, role, secret or data access.
+Clear `FrontendAppId` to remove the
 optional grant. This policy-only change requires no runner-code or Core-runtime
 update; keep the reviewed runner commit pin unchanged.
 

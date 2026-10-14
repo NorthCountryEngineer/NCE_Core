@@ -74,9 +74,12 @@ require(frontend_policy['Type'] == 'AWS::IAM::ManagedPolicy' and frontend_policy
 require(frontend_policy['Properties']['Roles'] == [{'Ref': 'RunnerRole'}], 'optional frontend publishing escaped the trusted runner role')
 require(frontend_policy['Properties']['PolicyDocument']['Statement'] == [{
     'Effect': 'Allow', 'Action': ['amplify:CreateDeployment', 'amplify:StartDeployment'],
-    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}'},
+    'Resource': [
+        {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}'},
+        {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}/*'},
+    ],
     'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
-}], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch ARN')
+}], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch and its descendants')
 normal_publish = next(item for item in statements('RunnerRole') if item.get('Sid') == 'PublishOnlyTaggedFrontends')
 require(normal_publish['Action'] == ['amplify:CreateDeployment', 'amplify:StartDeployment', 'amplify:GetApp', 'amplify:GetBranch'] and normal_publish['Condition'] == {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}}, 'normal frontend publish/read tag authority must remain intact')
 

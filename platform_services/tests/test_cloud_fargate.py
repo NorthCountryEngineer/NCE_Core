@@ -82,6 +82,7 @@ class FargateContractTests(SimpleTestCase):
                 self.assertIsNone(re.fullmatch(branch['AllowedPattern'], value))
 
     def test_optional_frontend_publish_grant_selects_one_runner_app_branch_and_region(self):
+        import fnmatch
         import re
         onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
         resource = onboarding['Resources']['BoundFrontendPublishPolicy']
@@ -95,27 +96,38 @@ class FargateContractTests(SimpleTestCase):
         self.assertEqual(grant['Condition'], {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}})
         values = {'AWS::Partition': 'aws', 'AWS::Region': 'us-east-1', 'AWS::AccountId': '123456789012',
                   'FrontendAppId': 'dapproved123', 'FrontendBranch': 'production'}
-        arn = re.sub(r'\$\{([^}]+)\}', lambda match: values[match[1]], grant['Resource']['Fn::Sub'])
+        resources = [re.sub(r'\$\{([^}]+)\}', lambda match: values[match[1]], item['Fn::Sub'])
+                     for item in grant['Resource']]
+        arn = resources[0]
         self.assertEqual(arn, 'arn:aws:amplify:us-east-1:123456789012:apps/dapproved123/branches/production')
         self.assertNotIn('*', arn)
         self.assertNotIn('?', arn)
+        self.assertEqual(resources, [arn, arn + '/*'])
 
         # Evaluate this optional grant independently of the existing tag grant:
-        # absent resource tags cannot expand its exact action/resource boundary.
+        # live publishing needs descendants, but tags cannot expand the owner
+        # binding into another app, branch, account, region or action.
         def admitted(action, requested_arn, region):
-            return action in grant['Action'] and requested_arn == arn and region == values['AWS::Region']
+            return (action in grant['Action'] and region == values['AWS::Region']
+                    and any(fnmatch.fnmatchcase(requested_arn, resource) for resource in resources))
 
         for action in grant['Action']:
-            self.assertTrue(admitted(action, arn, 'us-east-1'))
-            self.assertFalse(admitted(action, arn, 'us-west-2'))
+            for selected in [arn, arn + '/jobs/1', arn + '/jobs/123456789', arn + '/']:
+                with self.subTest(action=action, selected_resource=selected):
+                    self.assertTrue(admitted(action, selected, 'us-east-1'))
+                    self.assertFalse(admitted(action, selected, 'us-west-2'))
             for other in [arn.replace('dapproved123', 'danother123'), arn.replace('/production', '/preview'),
+                          arn.replace('/production', '/preview') + '/jobs/1',
+                          arn.replace('/production', '/production-other') + '/jobs/1',
+                          arn.replace('dapproved123', 'danother123') + '/jobs/1',
                           arn.replace('123456789012', '999999999999'), arn.replace('us-east-1', 'us-west-2'),
-                          arn.rsplit('/branches/', 1)[0], arn + '/jobs/1']:
+                          arn.rsplit('/branches/', 1)[0], arn.rsplit('/branches/', 1)[0] + '/branches/preview']:
                 with self.subTest(action=action, unrelated_resource=other):
                     self.assertFalse(admitted(action, other, 'us-east-1'))
         for action in ['amplify:GetApp', 'amplify:UpdateApp', 'amplify:StartJob', 'amplify:DeleteBranch',
                        'iam:PassRole', 'codebuild:StartBuild', 'ssm:GetParameter', 's3:GetObject']:
-            self.assertFalse(admitted(action, arn, 'us-east-1'))
+            for selected in [arn, arn + '/jobs/1']:
+                self.assertFalse(admitted(action, selected, 'us-east-1'))
         normal = next(item for policy in onboarding['Resources']['RunnerRole']['Properties']['Policies']
                       for item in policy['PolicyDocument']['Statement'] if item.get('Sid') == 'PublishOnlyTaggedFrontends')
         self.assertEqual(normal['Condition'], {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}})
