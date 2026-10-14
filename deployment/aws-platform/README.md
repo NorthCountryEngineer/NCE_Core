@@ -49,6 +49,10 @@ has no broad write access to HTTP API routes/integrations, whose tags are not
 inherited from the parent HTTP API. Amplify applications and branches carry the
 platform prefix tag. Amplify's create API and CloudWatch log-group discovery
 require `Resource: "*"`; those statements use request-tag or region conditions.
+If manual frontend publication fails despite verified app/branch tags, the
+platform owner can optionally bind `FrontendAppId` and `FrontendBranch` to one
+verified app/branch after provisioning. Empty app ID disables the separate
+runner-only two-action grant. See [owner binding and validation](../../docs/cloud-fargate.md#optional-owner-bound-frontend-publishing).
 
 CloudFormation's S3 read handler inspects bucket metadata beyond the properties
 declared in a template. Its execution role therefore includes those metadata

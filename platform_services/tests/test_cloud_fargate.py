@@ -45,6 +45,81 @@ def manifest(value):
 
 
 class FargateContractTests(SimpleTestCase):
+    def test_optional_frontend_binding_defaults_disabled_and_rejects_wildcards(self):
+        import re
+        onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        parameters = onboarding['Parameters']
+        app = parameters['FrontendAppId']
+        branch = parameters['FrontendBranch']
+        self.assertEqual(app['Default'], '')
+        self.assertEqual(branch['Default'], 'production')
+        condition = onboarding['Conditions']['HasBoundFrontendApp']
+        self.assertEqual(condition, {'Fn::Not': [{'Fn::Equals': [{'Ref': 'FrontendAppId'}, '']}]})
+
+        def resolve(value, values):
+            if isinstance(value, dict):
+                if 'Ref' in value:
+                    return values[value['Ref']]
+                if 'Fn::Equals' in value:
+                    return resolve(value['Fn::Equals'][0], values) == resolve(value['Fn::Equals'][1], values)
+                if 'Fn::Not' in value:
+                    return not resolve(value['Fn::Not'][0], values)
+                self.fail('Unexpected frontend binding condition')
+            return value
+
+        self.assertFalse(resolve(condition, {'FrontendAppId': app['Default']}))
+        for value in ['', 'd1', 'dapproved123', 'd' + 'a' * 40]:
+            with self.subTest(valid_app=value):
+                self.assertIsNotNone(re.fullmatch(app['AllowedPattern'], value))
+                self.assertEqual(resolve(condition, {'FrontendAppId': value}), bool(value))
+        for value in ['*', 'd*', 'd?', 'Dabc', 'abc', 'dabc/branches/production', 'd' + 'a' * 41, '${AppId}']:
+            with self.subTest(invalid_app=value):
+                self.assertIsNone(re.fullmatch(app['AllowedPattern'], value))
+        for value in ['production', 'Release-1.2_candidate', 'a' * 255]:
+            self.assertIsNotNone(re.fullmatch(branch['AllowedPattern'], value))
+        for value in ['', '*', 'prod?', 'branch/production', 'a' * 256, '${Branch}', 'prod\n']:
+            with self.subTest(invalid_branch=value):
+                self.assertIsNone(re.fullmatch(branch['AllowedPattern'], value))
+
+    def test_optional_frontend_publish_grant_selects_one_runner_app_branch_and_region(self):
+        import re
+        onboarding = json.loads((runner.ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        resource = onboarding['Resources']['BoundFrontendPublishPolicy']
+        self.assertEqual(resource['Condition'], 'HasBoundFrontendApp')
+        self.assertEqual(resource['Properties']['Roles'], [{'Ref': 'RunnerRole'}])
+        statements = resource['Properties']['PolicyDocument']['Statement']
+        self.assertEqual(len(statements), 1)
+        grant = statements[0]
+        self.assertEqual(grant['Effect'], 'Allow')
+        self.assertEqual(set(grant['Action']), {'amplify:CreateDeployment', 'amplify:StartDeployment'})
+        self.assertEqual(grant['Condition'], {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}})
+        values = {'AWS::Partition': 'aws', 'AWS::Region': 'us-east-1', 'AWS::AccountId': '123456789012',
+                  'FrontendAppId': 'dapproved123', 'FrontendBranch': 'production'}
+        arn = re.sub(r'\$\{([^}]+)\}', lambda match: values[match[1]], grant['Resource']['Fn::Sub'])
+        self.assertEqual(arn, 'arn:aws:amplify:us-east-1:123456789012:apps/dapproved123/branches/production')
+        self.assertNotIn('*', arn)
+        self.assertNotIn('?', arn)
+
+        # Evaluate this optional grant independently of the existing tag grant:
+        # absent resource tags cannot expand its exact action/resource boundary.
+        def admitted(action, requested_arn, region):
+            return action in grant['Action'] and requested_arn == arn and region == values['AWS::Region']
+
+        for action in grant['Action']:
+            self.assertTrue(admitted(action, arn, 'us-east-1'))
+            self.assertFalse(admitted(action, arn, 'us-west-2'))
+            for other in [arn.replace('dapproved123', 'danother123'), arn.replace('/production', '/preview'),
+                          arn.replace('123456789012', '999999999999'), arn.replace('us-east-1', 'us-west-2'),
+                          arn.rsplit('/branches/', 1)[0], arn + '/jobs/1']:
+                with self.subTest(action=action, unrelated_resource=other):
+                    self.assertFalse(admitted(action, other, 'us-east-1'))
+        for action in ['amplify:GetApp', 'amplify:UpdateApp', 'amplify:StartJob', 'amplify:DeleteBranch',
+                       'iam:PassRole', 'codebuild:StartBuild', 'ssm:GetParameter', 's3:GetObject']:
+            self.assertFalse(admitted(action, arn, 'us-east-1'))
+        normal = next(item for policy in onboarding['Resources']['RunnerRole']['Properties']['Policies']
+                      for item in policy['PolicyDocument']['Statement'] if item.get('Sid') == 'PublishOnlyTaggedFrontends')
+        self.assertEqual(normal['Condition'], {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}})
+
     def test_retained_database_keeps_its_dependency_chain(self):
         import re
         template = json.loads((runner.ROOT / 'fargate.template.json').read_text())

@@ -5,6 +5,7 @@ This supplements, rather than replaces, CloudFormation schema validation and an
 account-aware first deployment. Run it whenever editing the onboarding template.
 """
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -61,6 +62,23 @@ require(not any(action.startswith(('ecs:', 'ecr:', 'rds:', 'secretsmanager:', 'e
 require(not any(action in source_actions for action in ['s3:GetObject', 's3:ListBucket']), 'source builder cannot read other app archives')
 source_write = next(item for item in statements('SourceRole') if 's3:PutObject' in item['Action'])
 require(source_write['Resource'] == {'Fn::Sub': '${Artifacts.Arn}/builds/*'}, 'source archive writes escaped build prefix')
+
+frontend_app = template['Parameters']['FrontendAppId']
+frontend_branch = template['Parameters']['FrontendBranch']
+require(frontend_app['Default'] == '' and frontend_app['AllowedPattern'] == '^$|^d[a-z0-9]{1,40}$', 'frontend app binding must default disabled and reject ARN/path/wildcard injection')
+require(frontend_branch['Default'] == 'production' and frontend_branch['AllowedPattern'] == '^[A-Za-z0-9._-]{1,255}$', 'frontend branch binding must select one bounded literal branch')
+require(re.fullmatch(frontend_app['AllowedPattern'], '') is not None, 'empty frontend app must remain a valid disabled setting')
+require(template['Conditions']['HasBoundFrontendApp'] == {'Fn::Not': [{'Fn::Equals': [{'Ref': 'FrontendAppId'}, '']}]}, 'frontend publishing must be explicitly bound by the platform owner')
+frontend_policy = resources['BoundFrontendPublishPolicy']
+require(frontend_policy['Type'] == 'AWS::IAM::ManagedPolicy' and frontend_policy['Condition'] == 'HasBoundFrontendApp', 'optional frontend grant must be a conditional managed policy')
+require(frontend_policy['Properties']['Roles'] == [{'Ref': 'RunnerRole'}], 'optional frontend publishing escaped the trusted runner role')
+require(frontend_policy['Properties']['PolicyDocument']['Statement'] == [{
+    'Effect': 'Allow', 'Action': ['amplify:CreateDeployment', 'amplify:StartDeployment'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}'},
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch ARN')
+normal_publish = next(item for item in statements('RunnerRole') if item.get('Sid') == 'PublishOnlyTaggedFrontends')
+require(normal_publish['Action'] == ['amplify:CreateDeployment', 'amplify:StartDeployment', 'amplify:GetApp', 'amplify:GetBranch'] and normal_publish['Condition'] == {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}}, 'normal frontend publish/read tag authority must remain intact')
 
 for name, permitted in [('ControlRole', ['NCE_DEPLOYMENT', 'NCE_RESULT_KEY', 'NCE_RUN_TOKEN']), ('RunnerRole', ['NCE_BUILD_CONFIG', 'NCE_RUN_TOKEN'])]:
     condition = start_statement(name)['Condition']

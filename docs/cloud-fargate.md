@@ -110,6 +110,36 @@ The app and branch both carry explicit platform/application tags, as do all
 fixed resources whose create calls require the platform request tag. Branch
 creation cannot rely on tags inherited from its Amplify app.
 
+### Optional owner-bound frontend publishing
+
+A live manual publish returned `AccessDenied` for `amplify:CreateDeployment`
+even though the selected app and branch both carried the expected platform and
+application tags. AWS's [Amplify Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amplify.html)
+documents branch ARN scoping and resource-tag conditions for `CreateDeployment`
+and `StartDeployment`. The observed result suggests a tag-context mismatch for
+that call; it does not establish an AWS service defect or justify a broad write
+grant.
+
+The onboarding template provides an optional owner-managed binding. After
+provisioning, verify the actual Amplify app ID, branch, stack ownership, account,
+region and both `nce:platform-prefix` and `nce:application` tags against the
+approved application. Before retrying frontend publication, update only the
+platform stack's `FrontendAppId` to that verified ID and `FrontendBranch` to the
+exact approved branch, preserving all other parameters. The branch defaults to
+`production`; the app ID defaults to empty, which creates no additional policy.
+These are platform-owner inputs, never application-source or release-manifest
+values. Do not bind another tenant's app merely because its name is familiar.
+
+A separate conditional managed policy attaches only to the trusted runner and
+permits exactly `amplify:CreateDeployment` and `amplify:StartDeployment` on that
+single app/branch ARN in the platform account and region. The parameters reject
+wildcards and branch paths. The grant uses the exact ARN and requested region
+without a resource-tag condition; the existing tag-conditioned reads and normal
+publish grant remain intact. It grants no application edits, other branches,
+CodeBuild, role, secret or data access. Clear `FrontendAppId` to remove the
+optional grant. This policy-only change requires no runner-code or Core-runtime
+update; keep the reviewed runner commit pin unchanged.
+
 Create the Core application with final origin `https://proposalstudio.ai`.
 Client placement is immutable; complete DNS and TLS at that origin before
 testing sign-in. Core creates a public authorization-code + PKCE client and a
