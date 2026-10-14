@@ -54,7 +54,7 @@ platform owner can optionally bind `FrontendAppId` and `FrontendBranch` to one
 verified app/branch after provisioning. Empty app ID disables the separate
 runner-only two-action grant, which covers only that literal branch ARN and its
 `/*` descendants in the platform account and region. On October 14, 2026, a
-22:53 UTC live CodeBuild publish was denied with branch-only scope; a 22:59 UTC
+22:53 UTC live CodeBuild publish was denied with branch-only scope; a 22:58 UTC
 diagnostic under the same role succeeded after adding only the selected branch's
 descendants. AWS did not disclose the internally evaluated ARN. See
 [owner binding and validation](../../docs/cloud-fargate.md#optional-owner-bound-frontend-publishing).

@@ -122,7 +122,7 @@ grant.
 
 The subsequent live CodeBuild call at 22:53 UTC on October 14, 2026 still
 returned `AccessDenied` when the owner binding included only the exact
-production branch ARN. At 22:59 UTC, a diagnostic under the same CodeBuild
+production branch ARN. At 22:58 UTC, a diagnostic under the same CodeBuild
 runner role succeeded after adding that branch's `/*` descendants, with the
 app, branch, two actions and region unchanged. It created only an unstarted
 deployment job; it performed no artifact upload or `StartDeployment`. CloudTrail
