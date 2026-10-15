@@ -1,12 +1,19 @@
 from .models import Membership
+from .policy_evaluation import policy_evaluation, policy_fact
+
+
+def active_membership(user, organization):
+    return policy_fact(("membership", str(organization.pk), str(user.pk)),
+        lambda: Membership.objects.filter(user=user, organization=organization, active=True).first()) if user else None
 
 
 def membership_for(user, service):
     if not user or not user.is_active or not service.active or not service.organization.active:
         return None
-    return Membership.objects.filter(user=user, organization=service.organization, active=True).first()
+    return active_membership(user, service.organization)
 
 
+@policy_evaluation()
 def authorization_for(membership, service, principal=None):
     """Evaluate current persisted policy, always constrained to this tenant and service."""
     if membership.organization_id != service.organization_id or not membership.active:
@@ -26,7 +33,7 @@ def authorization_for(membership, service, principal=None):
         if not decision(principal, service)[0]:
             permissions = set()
         else:
-            by_name = {p.codename: p for p in service.permissions.all()}
+            by_name = {p.codename: p for p in service.permissions.prefetch_related("permission_tags")}
             filtered = set()
             for name in permissions:
                 if name == "admin":

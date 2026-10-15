@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import AuditEvent, AuthenticationEvidence, Membership, OAuthEvidence, Organization, PermissionTag
+from .policy_evaluation import evaluation_active, policy_fact
 
 
 @dataclass
@@ -54,7 +55,8 @@ def request_principal(request):
 def authentication_valid(user, organization, evidence):
     if not user or not user.is_active or not organization.active:
         return False
-    policy = getattr(organization, "authentication_policy", None)
+    policy = policy_fact(("authentication_policy", str(organization.pk)),
+        lambda: getattr(organization, "authentication_policy", None))
     if evidence:
         if evidence.user_id != user.pk or evidence.revoked:
             return False
@@ -87,6 +89,16 @@ def resource_organization(resource):
 
 
 def resource_chain(resource):
+    if not evaluation_active():
+        return _resource_chain(resource)
+    return list(policy_fact(("resource_chain", *_resource_key(resource)), lambda: _resource_chain(resource)))
+
+
+def _resource_key(resource):
+    return (str(resource_organization(resource).pk), resource._meta.label_lower, str(resource.pk))
+
+
+def _resource_chain(resource):
     result, seen = [], set()
     def visit(item):
         key = (item._meta.label_lower, str(item.pk))
@@ -151,6 +163,12 @@ def resource_chain(resource):
 
 
 def effective_tags(resource):
+    if not evaluation_active():
+        return _effective_tags(resource)
+    return list(policy_fact(("effective_tags", *_resource_key(resource)), lambda: _effective_tags(resource)))
+
+
+def _effective_tags(resource):
     tags = {}
     if isinstance(resource, PermissionTag):
         tags[resource.pk] = resource
@@ -158,18 +176,22 @@ def effective_tags(resource):
         if item._meta.label_lower == 'platform_services.deploymentenvironment':
             tags[item.boundary_tag_id] = item.boundary_tag
         if hasattr(item, "permission_tags"):
-            tags.update({tag.pk: tag for tag in item.permission_tags.all()})
+            direct = policy_fact(("direct_tags", *_resource_key(item)), lambda: list(item.permission_tags.all())) if evaluation_active() else item.permission_tags.all()
+            tags.update({tag.pk: tag for tag in direct})
     # A boundary tag carries its environment's additional policy controls even
     # when assigned to a dataset or conversation without an environment FK.
     from platform_services.models import DeploymentEnvironment
     visited = set()
     while True:
-        environments = list(DeploymentEnvironment.objects.filter(boundary_tag_id__in=tags).exclude(pk__in=visited))
+        environments = policy_fact(("tag_environments", str(resource_organization(resource).pk),
+            tuple(sorted(str(pk) for pk in tags)), tuple(sorted(str(pk) for pk in visited))),
+            lambda: list(DeploymentEnvironment.objects.filter(boundary_tag_id__in=tags).exclude(pk__in=visited)))
         if not environments:
             break
         for environment in environments:
             visited.add(environment.pk)
-            tags.update({tag.pk: tag for tag in environment.permission_tags.all()})
+            direct = policy_fact(("direct_tags", *_resource_key(environment)), lambda: list(environment.permission_tags.all())) if evaluation_active() else environment.permission_tags.all()
+            tags.update({tag.pk: tag for tag in direct})
     return list(tags.values())
 
 
@@ -232,13 +254,16 @@ def decision(principal, resource):
     else:
         if not authentication_valid(principal.user, organization, principal.evidence):
             return False, "authentication_policy", tags
-        membership = Membership.objects.filter(organization=organization, user=principal.user, active=True).first()
+        from .policy import active_membership
+        membership = active_membership(principal.user, organization)
         if not membership and not principal.user.is_superuser:
             return False, "membership_required", tags
         active_grants = Q(active=True) | Q(pk=resource.pk) if control_tag else Q(active=True)
-        grants = set(PermissionTag.objects.filter(organization=organization).filter(active_grants).filter(
-            Q(member_grants=membership) | Q(role_grants__memberships=membership,
-                                          role_grants__organization=organization)).values_list("pk", flat=True)) if membership else set()
+        grants = set(policy_fact(("user_tag_grants", str(organization.pk), str(membership.pk),
+            str(resource.pk) if control_tag else None),
+            lambda: set(PermissionTag.objects.filter(organization=organization).filter(active_grants).filter(
+                Q(member_grants=membership) | Q(role_grants__memberships=membership,
+                                              role_grants__organization=organization)).values_list("pk", flat=True)))) if membership else set()
         if any(tag.requires_mfa and not (principal.evidence and principal.evidence.mfa) for tag in tags):
             return False, "mfa_required", tags
         if any(tag.max_auth_age and (not principal.evidence or not principal.evidence.authenticated_at or

@@ -29,6 +29,7 @@ from .forms import (
 from .client_credentials import resource_client_secrets
 from .models import Application, AuditEvent, Invitation, Membership, Organization, Role, Service, ServicePermission, User
 from .policy import authorization_for, membership_for
+from .policy_evaluation import policy_evaluation
 
 
 def audit(request, action, target):
@@ -358,6 +359,7 @@ def authenticate_resource_client(request):
     return None
 
 
+@policy_evaluation()
 def token_claims(raw, resource_client, purpose="", request_id=None):
     token = get_access_token_model().objects.select_related("application__service__organization", "user").filter(
         token_checksum=hashlib.sha256(raw.encode()).hexdigest(),

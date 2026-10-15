@@ -90,6 +90,15 @@ rehashing changes the fingerprint immediately; deactivation and revocation do
 not wait for this cache to expire. Human password checks are unchanged. This
 requires no shared cache service or infrastructure change.
 
+Within one introspection, Core loads shared policy facts once: current
+membership/tag grants, organization authentication policy, application placement,
+resource inheritance and permission tags. The evaluation scope is cleared before
+the response returns and cannot be reused by a later request or copied context.
+Each permission still checks its current inherited tags, authentication age,
+MFA and purpose, and retains its individual audit record. No authorization result
+is stored across requests. Bulk permission-tag loading avoids repeating the same
+database reads for every permission granted to an administrator.
+
 Give a child an ordinary organization membership, then assign a role on the **Axolotl News** service with `posts-write` and, when desired, `posts-publish`. Grant the matching environment boundary tag and any additional policy tags required by that environment or service. Do not make the child an organization administrator for blog editing. An administrator receives registered service permissions, subject to Core's current tag/authentication policy.
 
 | Capability | Required live permission |
@@ -111,9 +120,16 @@ proofs, concurrent verification, live revocation after a warm proof, secret
 rotation/rehashing and database failures. Run these locally together before
 deploying changes to machine-client authentication.
 
+`identity.tests.test_policy_evaluation` checks constant read-query growth as
+permissions increase, preserved auditing, evaluation cleanup/isolation, current
+time/purpose checks, and revocation on the next HTTP request.
+
 ### Change log — 2026-10-15
 
 Added bounded process-local machine-secret verification reuse to remove repeated
 password hashing from resource-client requests while retaining live revocation.
 Successful proofs last at most 10 minutes; authorization results are never cached.
+Added call-scoped policy facts and bulk permission-tag loading to eliminate
+repeated policy reads within a single live introspection. Revocation remains
+effective on the next request; per-permission auditing is retained.
 No migrations, new dependencies, shared cache or hosting changes are required.

@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from identity.models import Application, AuditEvent, Organization
+from identity.policy_evaluation import policy_fact
 from .models import Deployment
 from .secrets import decrypt_bundle, encrypt_bundle
 from .validation import validate_endpoint
@@ -13,8 +14,11 @@ from .validation import validate_endpoint
 def application_deployment(application):
     if not application or not application.pk:
         return None
-    return Deployment.objects.select_related('environment', 'installation__package', 'installation__service', 'node').filter(
-        Q(application=application) | Q(resource_application=application)).first()
+    return policy_fact(("application_deployment", str(application.service.organization_id), str(application.pk)),
+        lambda: Deployment.objects.select_related('environment__boundary_tag', 'environment__organization',
+            'installation__package', 'installation__service', 'installation__organization', 'node',
+            'application', 'resource_application').filter(
+            Q(application=application) | Q(resource_application=application)).first())
 
 
 def external_available(deployment):
