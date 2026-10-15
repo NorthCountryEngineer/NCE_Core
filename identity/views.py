@@ -10,7 +10,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.hashers import check_password
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from django.http import HttpResponse, JsonResponse
@@ -27,6 +26,7 @@ from .forms import (
     AcceptInvitationForm, ApplicationForm, BrandingForm, InvitationForm, MembershipForm,
     PermissionForm, RoleForm, ServiceForm,
 )
+from .client_credentials import resource_client_secrets
 from .models import Application, AuditEvent, Invitation, Membership, Organization, Role, Service, ServicePermission, User
 from .policy import authorization_for, membership_for
 
@@ -350,7 +350,8 @@ def authenticate_resource_client(request):
         client_id, secret = base64.b64decode(encoded, validate=True).decode().split(":", 1)
         application = Application.objects.select_related("service__organization").filter(client_id=unquote(client_id)).first()
         if (application and application.client_type == Application.CLIENT_CONFIDENTIAL
-                and application.is_usable(None) and check_password(unquote(secret), application.client_secret)):
+                and application.is_usable(None) and resource_client_secrets.verify(
+                    application.client_id, unquote(secret), application.client_secret)):
             return application
     except (ValueError, UnicodeDecodeError, binascii.Error):
         pass
