@@ -1,0 +1,54 @@
+let buckets = Resources.*[ Type == 'AWS::S3::Bucket' ]
+let databases = Resources.*[ Type == 'AWS::RDS::DBInstance' ]
+let services = Resources.*[ Type == 'AWS::ECS::Service' ]
+rule private_encrypted_versioned_documents when %buckets !empty {
+  %buckets {
+    Properties.PublicAccessBlockConfiguration.BlockPublicAcls == true
+    Properties.PublicAccessBlockConfiguration.BlockPublicPolicy == true
+    Properties.PublicAccessBlockConfiguration.IgnorePublicAcls == true
+    Properties.PublicAccessBlockConfiguration.RestrictPublicBuckets == true
+    Properties.BucketEncryption exists
+    Properties.VersioningConfiguration.Status == 'Enabled'
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+  }
+}
+rule durable_private_database when %databases !empty {
+  %databases {
+    Properties.PubliclyAccessible == false
+    Properties.StorageEncrypted == true
+    Properties.DeletionProtection == true
+    Properties.BackupRetentionPeriod >= 7
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+  }
+}
+rule private_fargate_tasks when %services !empty {
+  %services {
+    Properties.LaunchType == 'FARGATE'
+    Properties.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp == 'DISABLED'
+    Properties.DeploymentConfiguration.DeploymentCircuitBreaker.Enable == true
+    Properties.DeploymentConfiguration.DeploymentCircuitBreaker.Rollback == true
+  }
+}
+rule credential_free_browser when Resources.BrowserTaskDefinition exists {
+  Resources.BrowserTaskDefinition.Properties.TaskRoleArn !exists
+  Resources.BrowserTaskDefinition.Properties.ContainerDefinitions[0].Secrets !exists
+  Resources.BrowserTaskDefinition.Properties.ContainerDefinitions[0].Environment !exists
+  Resources.BrowserTaskDefinition.Properties.ContainerDefinitions[0].ReadonlyRootFilesystem == true
+}
+let repositories = Resources.*[ Type == 'AWS::ECR::Repository' ]
+rule immutable_retained_images when %repositories !empty {
+  %repositories {
+    Properties.ImageTagMutability == 'IMMUTABLE'
+    Properties.EncryptionConfiguration.EncryptionType == 'AES256'
+    Properties.ImageScanningConfiguration.ScanOnPush == true
+    DeletionPolicy == 'Retain'
+    UpdateReplacePolicy == 'Retain'
+  }
+}
+rule independent_generated_vault_key when Resources.RuntimeSecret exists {
+  Resources.RuntimeSecret.Properties.GenerateSecretString.GenerateStringKey == 'session_secret'
+  Resources.RuntimeSecret.Properties.GenerateSecretString.PasswordLength >= 32
+  Resources.RuntimeSecret.DeletionPolicy == 'Retain'
+}

@@ -10,7 +10,8 @@ from django.db import models
 from identity.models import TaggedResource
 from .secrets import decrypt_bundle, encrypt_bundle
 
-ARCHETYPES = [('amplify-static', 'Amplify website'), ('amplify-serverless', 'Amplify website and Lambda API')]
+ARCHETYPES = [('amplify-static', 'Amplify website'), ('amplify-serverless', 'Amplify website and Lambda API'),
+              ('amplify-fargate', 'Amplify website and Fargate application')]
 
 
 def digest(value):
@@ -26,6 +27,7 @@ class CloudPlatform(TaggedResource):
     region = models.CharField(max_length=30, blank=True)
     role_arn = models.CharField(max_length=255, blank=True)
     encrypted_external_id = models.TextField(blank=True, editable=False)
+    encrypted_ci_github_token = models.TextField(blank=True, editable=False)
     runner_project = models.CharField(max_length=255, blank=True)
     connection_arn = models.CharField(max_length=255, blank=True)
     prefix = models.CharField(max_length=16, default='nce')
@@ -50,10 +52,22 @@ class CloudPlatform(TaggedResource):
     def external_id(self, value):
         self.encrypted_external_id = encrypt_bundle({'external_id': value}) if value else ''
 
+    @property
+    def ci_github_token(self):
+        return decrypt_bundle(self.encrypted_ci_github_token).get('token', '') if self.encrypted_ci_github_token else ''
+
+    @ci_github_token.setter
+    def ci_github_token(self, value):
+        if value and (not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_]{20,512}', value)):
+            raise ValidationError('Use a GitHub credential with repository Actions read access.')
+        self.encrypted_ci_github_token = encrypt_bundle({'token': value}) if value else ''
+
     def fingerprint(self):
+        # Preserve pre-CI fingerprints for platforms that have no CI credential.
+        credential = {'encrypted_ci_github_token': self.encrypted_ci_github_token} if self.encrypted_ci_github_token else {}
         return digest({key: getattr(self, key) for key in ['organization_id', 'mode', 'account_id', 'region', 'role_arn',
             'encrypted_external_id', 'runner_project', 'connection_arn', 'prefix', 'allowed_repositories', 'config']}
-            | {'organization_id': str(self.organization_id)})
+            | {'organization_id': str(self.organization_id)} | credential)
 
     def clean(self):
         if not re.fullmatch(r'[a-z][a-z0-9-]{2,15}', self.prefix):
@@ -125,6 +139,8 @@ class CloudApplication(TaggedResource):
         if (str(self.environment_id) not in self.platform.config.get('environment_ids', []) or
                 self.archetype not in self.platform.config.get('archetypes', [])):
             raise ValidationError('This environment or template is not configured for the platform.')
+        if self.archetype == 'amplify-fargate' and self.platform.mode == 'aws' and self.repository not in self.platform.config.get('fargate_apps', {}):
+            raise ValidationError('Approve this repository’s container resource references in the deployment platform first.')
         if self.public_origin:
             value = urlsplit(self.public_origin)
             if value.scheme != 'https' or not value.netloc or value.username or value.password or value.path or value.query or value.fragment:

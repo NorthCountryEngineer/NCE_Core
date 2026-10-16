@@ -1,5 +1,6 @@
 """Human approval, immutable plans, and restartable cloud deployment orchestration."""
 import copy
+import json
 import hashlib
 import logging
 import traceback
@@ -16,6 +17,7 @@ from django.utils import timezone
 from identity.access import Principal, require_access, resource_organization
 from identity.models import AuditEvent, Membership, User
 from .cloud_models import CloudApplication, CloudPlatform, CloudRelease, digest
+from platform_services.github_ci import CIGateError
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +139,16 @@ def _snapshot(app):
         'public_origin': app.public_origin, 'secret_parameter': f'/{app.platform.prefix}/apps/{app.pk}/core-resource-client'}
 
 
+def _require_ci(app, snapshot):
+    if app.platform.mode != 'aws':
+        return []
+    from .cloud_aws import require_ci
+    try:
+        return require_ci(app.platform, snapshot)
+    except CIGateError as error:
+        raise ValidationError(str(error), code='ci_checks_required') from None
+
+
 @transaction.atomic
 def prepare_release(app, principal):
     app = CloudApplication.objects.select_for_update().select_related('platform', 'environment', 'organization').get(pk=app.pk)
@@ -146,10 +158,12 @@ def prepare_release(app, principal):
     if not app.active or not app.environment.active:
         raise ValidationError('The application and environment must be active.')
     snapshot = _snapshot(app)
+    _require_ci(app, snapshot)
     release = CloudRelease.objects.create(application=app, requested_by=principal.user, evidence=principal.evidence,
         purpose=principal.purpose, snapshot=snapshot, digest=digest(snapshot), steps=[
             {'label': 'Create or update AWS hosting', 'status': 'pending', 'description':
-                'Manual Amplify app and branch.' + (' Python Lambda, HTTP API, two on-demand DynamoDB tables, and a private media bucket.' if app.archetype == 'amplify-serverless' else '')},
+                'Manual Amplify app and branch.' + (' Python Lambda, HTTP API, two on-demand DynamoDB tables, and a private media bucket.' if app.archetype == 'amplify-serverless' else
+                ' Fargate API, database-backed worker, isolated browser service, private PostgreSQL and document storage; use approved immutable images and stop services for controlled migration.' if app.archetype == 'amplify-fargate' else '')},
             {'label': 'Register the application with Core', 'status': 'pending', 'description': 'Central user identity, app-branded sign-in, and explicit app roles. API credentials go to SSM SecureString.'},
             {'label': 'Build the reviewed commit', 'status': 'pending', 'description': 'Run the frontend build in a separate project with no deployment permissions.'},
             {'label': 'Publish and confirm hosting', 'status': 'pending', 'description': 'Deploy the compiled ZIP and wait for Amplify publication. Retain application data.'}])
@@ -176,6 +190,7 @@ def approve_release(release, principal, confirm_costs=False):
         raise ValidationError('This release cannot be queued in its current state.')
     if release.application.platform.mode == 'aws' and (not confirm_costs or not settings.CORE_ENABLE_CLOUD_DEPLOYMENTS):
         raise ValidationError('Live deployment requires operator enablement and explicit authorization of charges.')
+    _require_ci(release.application, release.snapshot)
     release.status, release.approved_at, release.requested_by = 'queued', timezone.now(), principal.user
     release.evidence, release.purpose = principal.evidence, principal.purpose
     release.save()
@@ -212,9 +227,16 @@ def _register(release, outputs):
     from .services import install_package
     from .external_apps import external_public_configuration, external_resource_credentials, register_external_deployment
     app = CloudApplication.objects.select_for_update().get(pk=release.application_id)
+    identity = {'callback_path': '/oauth/callback', 'permissions': [
+        {'codename': 'app-read', 'name': 'Read application'}, {'codename': 'app-write', 'name': 'Write application'}]}
+    if app.archetype == 'amplify-fargate':
+        from .cloud_contract import ContractError, identity_contract
+        try:
+            identity = identity_contract(json.loads(outputs.get('identity', 'null')))
+        except (ValueError, ContractError):
+            raise ValidationError('The container recipe did not return a valid application identity contract.') from None
     if not app.installation_id:
-        manifest = {'external_runtime': 'aws-amplify', 'callback_path': '/oauth/callback', 'capabilities': [],
-                    'permissions': [{'codename': 'app-read', 'name': 'Read application'}, {'codename': 'app-write', 'name': 'Write application'}]}
+        manifest = {'external_runtime': 'aws-amplify', 'capabilities': [], **identity}
         package, _ = MarketplacePackage.objects.get_or_create(slug='cloud-' + app.pk.hex,
             defaults={'organization': app.organization, 'name': app.name, 'description': 'Application managed by the Core cloud deployment console.',
                       'kind': 'application', 'version': '1.0.0', 'manifest': manifest})
@@ -223,6 +245,8 @@ def _register(release, outputs):
         service = app.installation.service
         service.auth_name = app.name
         service.save(update_fields=['auth_name'])
+    elif app.archetype == 'amplify-fargate' and any(app.installation.manifest.get(key) != value for key, value in identity.items()):
+        raise ValidationError('The reviewed identity contract differs from the installed application. Review an explicit package upgrade first.')
     origin = app.public_origin or outputs.get('origin')
     if not origin:
         raise ValidationError('Hosting did not return an application origin.')
@@ -231,6 +255,8 @@ def _register(release, outputs):
     variables = {'VITE_CORE_ISSUER': public['issuer'], 'VITE_CORE_ORGANIZATION_ID': public['organization_id'],
         'VITE_CORE_SERVICE_ID': public['service_id'], 'VITE_CORE_BROWSER_CLIENT_ID': public['browser_client_id'],
         'VITE_APPLICATION_ORIGIN': origin, 'VITE_API_URL': outputs.get('api_url', '')}
+    if app.archetype == 'amplify-fargate':
+        variables.update(VITE_CORE_REDIRECT_URI=public['redirect_uri'], VITE_CORE_DEPLOYMENT_ID=public['deployment_id'])
     return variables, external_resource_credentials(deployment), deployment
 
 
@@ -268,6 +294,12 @@ def process_one():
             # Simulation never imports the provider SDK, executes repository code, or creates cloud resources.
             if phase == 'provision':
                 outputs.update(origin=f'https://{release.application.slug}.example.test', api_url='', commit=working['commit'])
+                if working['archetype'] == 'amplify-fargate':
+                    # Simulation never downloads application source or images.
+                    outputs['identity'] = json.dumps({'callback_path': '/api/auth/core/callback', 'permissions': [
+                        {'codename': 'app-read', 'name': 'Read application'},
+                        {'codename': 'app-write', 'name': 'Write application'},
+                        {'codename': 'app-admin', 'name': 'Administer application'}]})
                 variables, _, _ = _register(release, outputs)
                 state = {'phase': 'release', 'public_config': variables}
                 release.steps[0]['status'] = release.steps[1]['status'] = 'succeeded'
@@ -301,7 +333,7 @@ def process_one():
                 if result['status'] == 'succeeded':
                     if phase == 'provision':
                         variables, credentials, _ = _register(release, outputs)
-                        if working['archetype'] == 'amplify-serverless':
+                        if working['archetype'] in {'amplify-serverless', 'amplify-fargate'}:
                             if not CloudRelease.objects.filter(pk=release.pk, lease_owner=owner, status='running', lease_until__gt=timezone.now()).exists():
                                 return True
                             store_credentials(platform, working['secret_parameter'], credentials)
@@ -319,7 +351,11 @@ def process_one():
                 observed_state='running', healthy=True, last_seen=timezone.now())
     except Exception as failure:
         from .cloud_aws import AWSAdapterError, stop_run, recover_run
-        if isinstance(failure, (ValidationError, PermissionDenied, AWSAdapterError)):
+        if isinstance(failure, CIGateError):
+            # Admission failed before AWS credential acquisition or StartBuild.
+            # Do not treat the durable intent as an ambiguous billable start.
+            state.pop('starting', None)
+        if isinstance(failure, (ValidationError, PermissionDenied, AWSAdapterError, CIGateError)):
             error = (' '.join(failure.messages) if isinstance(failure, ValidationError) else str(failure))[:400]
         else:
             error = 'The deployment step could not be completed. Review Core worker logs and prepare a new release if needed.'

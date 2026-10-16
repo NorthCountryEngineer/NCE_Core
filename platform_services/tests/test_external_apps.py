@@ -125,6 +125,8 @@ class ExternalApplicationTests(TestCase):
 
     def test_external_environment_and_package_revocation_is_immediate(self):
         tokens = self.exchange()
+        # A successful machine-credential proof must not cache deployment state.
+        self.assertTrue(self.introspect(tokens['access_token']).json()['active'])
         for resource, field in [(self.environment, 'active'), (self.installation, 'enabled'), (self.package, 'active')]:
             setattr(resource, field, False)
             resource.save(update_fields=[field])
@@ -133,6 +135,7 @@ class ExternalApplicationTests(TestCase):
             self.assertFalse(result.json().get('active', False))
             setattr(resource, field, True)
             resource.save(update_fields=[field])
+            self.assertTrue(self.introspect(tokens['access_token']).json()['active'])
 
     def test_external_client_pair_cannot_introspect_another_environment(self):
         tokens = self.exchange()

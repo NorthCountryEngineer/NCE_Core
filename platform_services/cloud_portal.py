@@ -19,6 +19,7 @@ from .models import DeploymentEnvironment
 ARCHETYPES = [
     ('amplify-static', 'Website · Amplify Hosting'),
     ('amplify-serverless', 'Website and serverless API · Amplify + Lambda'),
+    ('amplify-fargate', 'Website, API and workers · Amplify + Fargate'),
 ]
 
 
@@ -37,14 +38,18 @@ class PlatformForm(forms.Form):
     region = forms.CharField(max_length=30, required=False, initial='us-east-1', label='AWS region')
     role_arn = forms.CharField(max_length=255, required=False, label='Deployment role ARN')
     external_id = forms.CharField(max_length=256, required=False, widget=forms.PasswordInput(render_value=False), label='Role external ID', help_text='Stored encrypted. Leave blank when editing to keep the current value.')
+    ci_github_token = forms.RegexField(r'^[A-Za-z0-9_]{20,512}$', required=False, max_length=512, widget=forms.PasswordInput(render_value=False), label='GitHub CI read credential', help_text='Stored encrypted. For private source repositories, grant only Actions read and Metadata read on the approved repositories. Leave blank to keep the current credential.')
+    clear_ci_github_token = forms.BooleanField(required=False, label='Remove the stored GitHub CI read credential')
     runner_project = forms.CharField(max_length=255, required=False, label='CodeBuild deployment runner', help_text='The preconfigured runner builds and deploys the reviewed release.')
     connection_arn = forms.CharField(max_length=255, required=False, label='GitHub CodeConnection ARN')
     build_project = forms.CharField(max_length=255, required=False, label='Isolated source build project')
     artifact_bucket = forms.CharField(max_length=63, required=False, label='Deployment artifact bucket')
     cloudformation_role_arn = forms.CharField(max_length=255, required=False, label='CloudFormation execution role ARN')
+    fargate_cloudformation_role_arn = forms.CharField(max_length=255, required=False, label='Container CloudFormation execution role ARN', help_text='The separately onboarded role for the fixed Fargate recipe.')
     permissions_boundary_arn = forms.CharField(max_length=255, required=False, label='Application role permissions boundary ARN')
     runner_repository = forms.CharField(max_length=160, required=False, label='Approved deployment runner repository', help_text='Owner/repository containing the reviewed Core deployment runner.')
     runner_commit = forms.RegexField(r'^[0-9a-fA-F]{40}$', required=False, label='Approved runner commit', help_text='Pin the exact 40-character revision of the deployment runner.')
+    fargate_apps = forms.JSONField(required=False, widget=forms.Textarea(attrs={'rows': 8}), label='Approved container resources', help_text='Operator-reviewed repository map with ECR repository URLs, runtime secret ARN, certificate ARN and API hostname. Enter resource references only.')
     prefix = forms.RegexField(r'^[a-z][a-z0-9-]{2,15}$', initial='nce', label='AWS resource prefix', help_text='Used to restrict which resources this platform can manage.')
     allowed_repositories = forms.CharField(widget=forms.Textarea(attrs={'rows': 4}), label='Approved GitHub repositories', help_text='One Owner/repository per line. Only these repositories appear when creating an app.')
     environments = forms.ModelMultipleChoiceField(queryset=DeploymentEnvironment.objects.none(), widget=forms.CheckboxSelectMultiple, label='Available environments')
@@ -56,14 +61,17 @@ class PlatformForm(forms.Form):
         if instance:
             for key in ['name', 'mode', 'account_id', 'region', 'role_arn', 'runner_project', 'connection_arn', 'prefix']:
                 initial[key] = getattr(instance, key)
-            for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
+            for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit', 'fargate_cloudformation_role_arn']:
                 initial[key] = instance.config.get(key, '')
             initial['allowed_repositories'] = '\n'.join(instance.allowed_repositories)
             initial['environments'] = instance.config.get('environment_ids', [])
             initial['archetypes'] = instance.config.get('archetypes', [value for value, _ in ARCHETYPES])
+            initial['fargate_apps'] = instance.config.get('fargate_apps', {})
         else:
             initial.setdefault('archetypes', [value for value, _ in ARCHETYPES])
         super().__init__(*args, initial=initial, **kwargs)
+        if instance and instance.encrypted_ci_github_token:
+            self.fields['ci_github_token'].help_text += ' A credential is currently configured.'
         environments = _visible(principal, organization.environments.filter(active=True))
         self.fields['environments'].queryset = organization.environments.filter(pk__in=[value.pk for value in environments])
 
@@ -80,6 +88,8 @@ class PlatformForm(forms.Form):
 
     def clean(self):
         values = super().clean()
+        if values.get('ci_github_token') and values.get('clear_ci_github_token'):
+            self.add_error('clear_ci_github_token', 'Choose either replacement or removal of the stored credential.')
         if values.get('mode') == 'aws':
             for field in ['account_id', 'region', 'role_arn', 'runner_project', 'connection_arn', 'build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
                 if not values.get(field):
@@ -94,11 +104,25 @@ class PlatformForm(forms.Form):
             setattr(platform, key, self.cleaned_data[key])
         if self.cleaned_data.get('external_id'):
             platform.external_id = self.cleaned_data['external_id']
+        if self.cleaned_data.get('clear_ci_github_token'):
+            platform.ci_github_token = ''
+        elif self.cleaned_data.get('ci_github_token'):
+            platform.ci_github_token = self.cleaned_data['ci_github_token']
         platform.config = dict(platform.config or {})
         for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
             platform.config[key] = self.cleaned_data.get(key, '')
+        role = self.cleaned_data.get('fargate_cloudformation_role_arn')
+        if role:
+            platform.config['fargate_cloudformation_role_arn'] = role
+        else:
+            platform.config.pop('fargate_cloudformation_role_arn', None)
         platform.config['environment_ids'] = [str(value.pk) for value in self.cleaned_data['environments']]
         platform.config['archetypes'] = list(self.cleaned_data['archetypes'])
+        approved = self.cleaned_data.get('fargate_apps') or {}
+        if approved:
+            platform.config['fargate_apps'] = approved
+        else:
+            platform.config.pop('fargate_apps', None)
         platform.active = False
         platform.verified_at = None
         platform.full_clean()
@@ -271,8 +295,9 @@ def release_prepare(request, organization, pk):
     app = _resource(request, organization, CloudApplication, pk)
     try:
         release = deployments.prepare_release(app, request_principal(request))
-    except ValidationError:
-        messages.error(request, 'A release could not be prepared. Check the application source and platform settings before trying again.')
+    except ValidationError as error:
+        messages.error(request, ' '.join(error.messages) if getattr(error, 'code', '') == 'ci_checks_required' else
+            'A release could not be prepared. Check the application source and platform settings before trying again.')
         return redirect('cloud_application', slug=organization.slug, pk=app.pk)
     return redirect('cloud_release', slug=organization.slug, pk=release.pk)
 
@@ -313,8 +338,9 @@ def release_approve(request, organization, pk):
     if form.is_valid():
         try:
             deployments.approve_release(value, request_principal(request), confirm_costs=bool(form.cleaned_data.get('confirm_costs')))
-        except ValidationError:
-            form.add_error(None, 'The release cannot be approved. Reload the review; the platform, source, access, or release status may have changed.')
+        except ValidationError as error:
+            form.add_error(None, ' '.join(error.messages) if getattr(error, 'code', '') == 'ci_checks_required' else
+                'The release cannot be approved. Reload the review; the platform, source, access, or release status may have changed.')
         else:
             messages.success(request, 'Release approved. The deployment worker will run the reviewed steps.')
             return redirect('cloud_release', slug=organization.slug, pk=value.pk)

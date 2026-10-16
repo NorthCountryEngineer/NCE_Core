@@ -17,6 +17,16 @@ DIGEST = 'sha256:' + 'a' * 64
 
 
 class PipelineTests(unittest.TestCase):
+    def test_ci_rejection_prevents_registry_and_cluster_operations(self):
+        for operation, switch in [(p.publish, 'CORE_CI_ALLOW_PUBLISH'), (p.deploy, 'CORE_CI_ALLOW_DEPLOY')]:
+            with self.subTest(operation=operation.__name__), patch.dict(os.environ, {switch: '1'}), \
+                 patch.object(p, 'trusted_release'), patch.object(p, 'require_source_ci', side_effect=p.PipelineError('CI failed')), \
+                 patch.object(p, 'command') as command, patch.object(p, 'kubectl') as kubectl:
+                with self.assertRaises(p.PipelineError):
+                    operation(self.config)
+                command.assert_not_called()
+                kubectl.assert_not_called()
+
     def test_failed_chat_deployment_gate_prevents_publication(self):
         with patch('sys.argv', ['pipeline.py', 'run', '--mode', 'publish']), \
              patch.dict(os.environ, {'CORE_CI_CHAT_DEPLOYMENT': '1', 'CORE_CI_CHAT_BROWSER': 'chromium',
@@ -30,6 +40,9 @@ class PipelineTests(unittest.TestCase):
             deploy.assert_not_called()
 
     def setUp(self):
+        ci = patch.object(p, 'require_source_ci')
+        ci.start()
+        self.addCleanup(ci.stop)
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.artifacts = Path(self.directory.name) / 'artifacts'

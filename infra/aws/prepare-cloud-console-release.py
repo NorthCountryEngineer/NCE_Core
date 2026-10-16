@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Prepare existing-stack updates locally. Never calls AWS or reads runtime secrets."""
+"""Prepare existing-stack updates after exact-commit GitHub CI passes. Never calls AWS."""
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from platform_services.github_ci import CIGateError, verify_repository
 
 
 def prepare(stack, image, account, enable_live):
@@ -26,21 +30,33 @@ def prepare(stack, image, account, enable_live):
     return results
 
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stack-file', type=Path, required=True)
     parser.add_argument('--image', required=True)
+    parser.add_argument('--commit', required=True, help='Exact source commit used to build this immutable image.')
     parser.add_argument('--account', default='015454941623')
     parser.add_argument('--enable-live', choices=['0', '1'], default='0')
     parser.add_argument('--output-directory', type=Path, required=True)
     options = parser.parse_args()
     try:
         documents = prepare(json.loads(options.stack_file.read_text())['Stacks'][0], options.image, options.account, options.enable_live)
+        receipt = verify_repository('NorthCountryEngineer/NCE_Core', options.commit)
         options.output_directory.mkdir(parents=True, exist_ok=True)
         for name, values in documents.items():
             target = options.output_directory / f'core-cloud-{name}.json'
             target.write_text(json.dumps(values, indent=2) + '\n')
             target.chmod(0o600)
+        proof = options.output_directory / 'core-ci.json'
+        proof.write_text(json.dumps({'image': options.image, 'ci': receipt}, indent=2) + '\n')
+        proof.chmod(0o600)
+    except CIGateError as error:
+        parser.error(str(error))
     except (ValueError, KeyError, OSError):
         parser.error('Cannot prepare release: check the stable stack metadata, account, image digest, and output directory.')
-    print('Prepared stopped, running, and recovery updates locally. No AWS calls were made.')
+    print('Verified exact-commit GitHub CI and prepared stopped, running, and recovery updates locally. No AWS calls were made.')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

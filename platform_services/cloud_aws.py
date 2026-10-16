@@ -11,6 +11,8 @@ import hashlib
 import json
 import re
 from typing import Callable
+from .cloud_contract import ContractError, fargate_applications, identity_contract
+from platform_services.github_ci import CIGateError, POLICIES, verify_deployment
 
 
 class AWSAdapterError(Exception):
@@ -21,13 +23,13 @@ REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 COMMIT = re.compile(r"[a-f0-9]{40}\Z")
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,31}\Z")
 IDENTIFIER = re.compile(r"[a-zA-Z0-9-]{1,64}\Z")
-ARCHETYPES = ("amplify-static", "amplify-serverless")
+ARCHETYPES = ("amplify-static", "amplify-serverless", "amplify-fargate")
 APP_PERMISSIONS = [
     {"codename": "app-read", "name": "Read application data"},
     {"codename": "app-write", "name": "Write application data"},
 ]
 PUBLIC_VARIABLE = re.compile(r"VITE_[A-Z0-9_]{1,100}\Z")
-PUBLIC_OUTPUTS = {"origin", "amplify_app_id", "api_url", "stack_name", "commit", "archetype"}
+PUBLIC_OUTPUTS = {"origin", "amplify_app_id", "api_url", "stack_name", "commit", "archetype", "identity"}
 
 
 def _value(platform, name, default=None):
@@ -45,7 +47,7 @@ def configuration(platform, snapshot=None):
     config = dict(_value(platform, "config", {}) or {})
     approved_keys = {"runner_repository", "runner_commit", "build_project", "artifact_bucket",
                      "cloudformation_role_arn", "permissions_boundary_arn", "archetypes", "environment_ids",
-                     "credentials_kms_key_arn"}
+                     "credentials_kms_key_arn", "fargate_apps", "fargate_cloudformation_role_arn"}
     if set(config) - approved_keys:
         raise AWSAdapterError("Platform configuration contains unsupported fields.")
     if snapshot and snapshot.get("platform_config") != config:
@@ -75,7 +77,15 @@ def configuration(platform, snapshot=None):
         _required(repository, REPOSITORY, "approved repository")
     archetypes = config.get("archetypes", list(ARCHETYPES))
     if not isinstance(archetypes, list) or not archetypes or any(item not in ARCHETYPES for item in archetypes):
-        raise AWSAdapterError("Only the static and serverless AWS archetypes are supported.")
+        raise AWSAdapterError("Only the static, serverless and Fargate AWS archetypes are supported.")
+    try:
+        fargate_applications(config, account, region, repositories, prefix)
+    except ContractError as error:
+        raise AWSAdapterError(str(error)) from None
+    if config.get('fargate_cloudformation_role_arn') or config.get('fargate_apps'):
+        _required(config.get('fargate_cloudformation_role_arn'), rf'arn:aws:iam::{account}:role/[A-Za-z0-9+=,.@_/-]+', 'Fargate CloudFormation execution role')
+    if config.get('fargate_apps') and len(prefix) > 10:
+        raise AWSAdapterError('Fargate platform prefixes use at most 10 characters to fit load-balancer names.')
     return {"account_id": account, "region": region, "prefix": prefix, "role_arn": role,
             "connection_arn": connection, "runner_project": runner, "allowed_repositories": repositories,
             "config": config}
@@ -94,6 +104,8 @@ def _snapshot(platform, snapshot):
         raise AWSAdapterError("Invalid application branch.")
     if snapshot.get("archetype") not in settings["config"].get("archetypes", ARCHETYPES):
         raise AWSAdapterError("Application archetype is not approved for this platform.")
+    if snapshot.get('archetype') == 'amplify-fargate' and snapshot['repository'] not in settings['config'].get('fargate_apps', {}):
+        raise AWSAdapterError('Approve this repository’s Fargate resource references in platform settings first.')
     if snapshot.get("action", "provision") not in {"provision", "release"}:
         raise AWSAdapterError("Invalid deployment phase.")
     public = snapshot.get("public_config", {})
@@ -110,7 +122,7 @@ def _snapshot(platform, snapshot):
     # Only allow reviewed fields into the runner payload. Credential values and
     # browser-supplied extras are never propagated into CodeBuild variables.
     payload = {key: snapshot.get(key) for key in (
-        "app_identifier", "repository", "branch", "commit", "archetype", "environment", "plan_hash")}
+        "app_identifier", "repository", "branch", "commit", "archetype", "environment", "plan_hash", "public_origin")}
     payload.update(action=snapshot.get("action", "provision"), public_config=public,
                    secret_parameter=expected_parameter, platform=settings)
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -192,8 +204,23 @@ def verify(platform, *, client_factory=None):
         raise _safe_failure(error) from None
 
 
+def require_ci(platform, snapshot):
+    """Use current operator credentials; never forward them to the AWS runner."""
+    sources = (snapshot.get('repository', ''), (_value(platform, 'config', {}) or {}).get('runner_repository', ''))
+    if not any(isinstance(source, str) and policy.repository.casefold() == source.casefold() for source in sources for policy in POLICIES):
+        return []
+    settings = configuration(platform, snapshot)
+    try:
+        token = _value(platform, 'ci_github_token', '')
+    except Exception:
+        raise CIGateError('The operator GitHub CI credential could not be decrypted.') from None
+    return verify_deployment(snapshot['repository'], snapshot['commit'],
+        settings['config']['runner_repository'], settings['config']['runner_commit'], token=token)
+
+
 def start_run(platform, snapshot, idempotency_key, *, client_factory=None):
     settings, encoded = _snapshot(platform, snapshot)
+    require_ci(platform, snapshot)
     token = hashlib.sha256(str(idempotency_key).encode()).hexdigest()
     result_key = f"runs/{token}/result.json"
     try:
@@ -285,14 +312,24 @@ def poll_run(platform, snapshot, provider_state, *, client_factory=None):
         # Never forward raw CloudFormation outputs, presigned URLs, build log
         # links, or arbitrary runner messages to the browser.
         outputs = {key: value for key, value in result.get("outputs", {}).items()
-                   if key in PUBLIC_OUTPUTS and isinstance(value, str) and len(value) <= 2048}
+                   if key in PUBLIC_OUTPUTS and isinstance(value, str) and len(value) <= (8192 if key == 'identity' else 2048)}
+        if snapshot['archetype'] == 'amplify-fargate':
+            approved = settings['config']['fargate_apps'][snapshot['repository']]
+            if outputs.get('api_url') != 'https://' + approved['api_host']:
+                raise AWSAdapterError('Fargate API output does not match the approved host.')
+            try:
+                identity_contract(json.loads(outputs.get('identity', 'null')))
+            except (ContractError, ValueError):
+                raise AWSAdapterError('Fargate identity receipt is invalid.') from None
+        elif 'identity' in outputs:
+            raise AWSAdapterError('This application archetype cannot change its identity contract.')
         if (not re.fullmatch(r"https://[a-z0-9-]+\.d[a-z0-9]+\.amplifyapp\.com", outputs.get("origin", ""))
                 or not re.fullmatch(r"d[a-z0-9]{3,30}", outputs.get("amplify_app_id", ""))
                 or not re.fullmatch(re.escape(settings["prefix"]) + r"-[a-f0-9]{12}-[a-f0-9]{8}", outputs.get("stack_name", ""))
-                or (outputs.get("api_url") and not re.fullmatch(r"https://[a-z0-9]+\.execute-api\." + re.escape(settings["region"]) + r"\.amazonaws\.com", outputs["api_url"]))):
+                or (snapshot['archetype'] != 'amplify-fargate' and outputs.get("api_url") and not re.fullmatch(r"https://[a-z0-9]+\.execute-api\." + re.escape(settings["region"]) + r"\.amazonaws\.com", outputs["api_url"]))):
             raise AWSAdapterError("AWS returned an invalid public deployment output.")
         for name in result.get("completed_steps", []):
-            if name in {"source-verified", "backend-provisioned", "backend-configured", "frontend-built", "frontend-published"}:
+            if name in {"source-verified", "backend-provisioned", "backend-configured", "frontend-built", "frontend-published", 'database-migrated', 'services-healthy'}:
                 steps.append({"name": name, "status": "succeeded", "message": name.replace("-", " ").capitalize() + "."})
         return {"status": "succeeded", "steps": steps, "outputs": outputs, "provider_state": state}
     except Exception as error:

@@ -5,6 +5,7 @@ This supplements, rather than replaces, CloudFormation schema validation and an
 account-aware first deployment. Run it whenever editing the onboarding template.
 """
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -57,9 +58,30 @@ require(resources['Runner']['Properties']['ServiceRole'] != resources['SourceBui
 require(resources['Runner']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_SMALL' and resources['SourceBuilder']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_MEDIUM', 'nested builder must use a separate concurrency quota from its waiting runner')
 source_actions = actions('SourceRole')
 require(not any(action.startswith(('iam:', 'ssm:', 'cloudformation:', 'amplify:', 'lambda:', 'sts:')) for action in source_actions), 'source builder received deployment/secret permissions')
+require(not any(action.startswith(('ecs:', 'ecr:', 'rds:', 'secretsmanager:', 'ec2:', 'servicediscovery:')) for action in source_actions), 'source builder received container or runtime-secret permissions')
 require(not any(action in source_actions for action in ['s3:GetObject', 's3:ListBucket']), 'source builder cannot read other app archives')
 source_write = next(item for item in statements('SourceRole') if 's3:PutObject' in item['Action'])
 require(source_write['Resource'] == {'Fn::Sub': '${Artifacts.Arn}/builds/*'}, 'source archive writes escaped build prefix')
+
+frontend_app = template['Parameters']['FrontendAppId']
+frontend_branch = template['Parameters']['FrontendBranch']
+require(frontend_app['Default'] == '' and frontend_app['AllowedPattern'] == '^$|^d[a-z0-9]{1,40}$', 'frontend app binding must default disabled and reject ARN/path/wildcard injection')
+require(frontend_branch['Default'] == 'production' and frontend_branch['AllowedPattern'] == '^[A-Za-z0-9._-]{1,255}$', 'frontend branch binding must select one bounded literal branch')
+require(re.fullmatch(frontend_app['AllowedPattern'], '') is not None, 'empty frontend app must remain a valid disabled setting')
+require(template['Conditions']['HasBoundFrontendApp'] == {'Fn::Not': [{'Fn::Equals': [{'Ref': 'FrontendAppId'}, '']}]}, 'frontend publishing must be explicitly bound by the platform owner')
+frontend_policy = resources['BoundFrontendPublishPolicy']
+require(frontend_policy['Type'] == 'AWS::IAM::ManagedPolicy' and frontend_policy['Condition'] == 'HasBoundFrontendApp', 'optional frontend grant must be a conditional managed policy')
+require(frontend_policy['Properties']['Roles'] == [{'Ref': 'RunnerRole'}], 'optional frontend publishing escaped the trusted runner role')
+require(frontend_policy['Properties']['PolicyDocument']['Statement'] == [{
+    'Effect': 'Allow', 'Action': ['amplify:CreateDeployment', 'amplify:StartDeployment'],
+    'Resource': [
+        {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}'},
+        {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${FrontendAppId}/branches/${FrontendBranch}/*'},
+    ],
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch and its descendants')
+normal_publish = next(item for item in statements('RunnerRole') if item.get('Sid') == 'PublishOnlyTaggedFrontends')
+require(normal_publish['Action'] == ['amplify:CreateDeployment', 'amplify:StartDeployment', 'amplify:GetApp', 'amplify:GetBranch'] and normal_publish['Condition'] == {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}}, 'normal frontend publish/read tag authority must remain intact')
 
 for name, permitted in [('ControlRole', ['NCE_DEPLOYMENT', 'NCE_RESULT_KEY', 'NCE_RUN_TOKEN']), ('RunnerRole', ['NCE_BUILD_CONFIG', 'NCE_RUN_TOKEN'])]:
     condition = start_statement(name)['Condition']
@@ -88,8 +110,49 @@ require(not actions('CloudFormationRole') & {'iam:AttachRolePolicy', 'iam:Create
 for name, service in [('RunnerRole', 'cloudformation.amazonaws.com'), ('CloudFormationRole', 'lambda.amazonaws.com')]:
     pass_role = next(item for item in statements(name) if 'iam:PassRole' in item['Action'])
     require(pass_role['Resource'] != '*' and pass_role['Condition']['StringEquals']['iam:PassedToService'] == service, f'{name} pass-role must stay bounded')
+fargate = resources['FargateCloudFormationRole']
+require(fargate['Condition'] == 'EnableFargate', 'container provisioning must be explicitly enabled at onboarding')
+fargate_statements = statements('FargateCloudFormationRole')
+new_roles = next(item for item in fargate_statements if 'iam:CreateRole' in item['Action'])
+require(new_roles['Condition']['ArnEquals']['iam:PermissionsBoundary'] == {'Ref': 'AppBoundary'}, 'container role boundary missing')
+require(not actions('FargateCloudFormationRole') & {'iam:AttachRolePolicy', 'iam:CreatePolicy', 'iam:DeleteRolePermissionsBoundary'}, 'container role permits privilege escalation')
+require(not any(action.startswith('route53:') for action in actions('FargateCloudFormationRole')), 'container recipe cannot manage public DNS')
+namespace_policy = resources['FargatePrivateNamespacePolicy']
+require(namespace_policy['Condition'] == 'EnableFargate', 'private DNS support must follow the container recipe gate')
+require(namespace_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'private DNS support escaped its exact execution role')
+namespace_statements = namespace_policy['Properties']['PolicyDocument']['Statement']
+namespace_actions = {action for entry in namespace_statements for action in entry['Action']}
+require(namespace_actions == {'route53:CreateHostedZone', 'route53:DeleteHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZones', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'}, 'private namespace support gained unrelated operations')
+provider_policy = resources['FargateProviderMetadataPolicy']
+require(provider_policy['Condition'] == 'EnableFargate' and provider_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'provider metadata support escaped the gated container execution role')
+provider_statements = provider_policy['Properties']['PolicyDocument']['Statement']
+require(len(provider_statements) == 1, 'provider metadata gained unrelated grants')
+provider_read = provider_statements[0]
+require(set(provider_read['Action']) == {'ecs:DescribeTaskDefinition', 'logs:DescribeIndexPolicies', 'rds:DescribeEngineDefaultParameters', 'rds:DescribeEvents', 'servicediscovery:ListTagsForResource'}, 'provider metadata gained unrelated operations')
+require(provider_read['Effect'] == 'Allow' and provider_read['Resource'] == '*' and provider_read['Condition'] == {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}}, 'provider metadata must use supported unscoped resources and require this region')
+service_listing = next(item for item in fargate_statements if 'ecs:ListServiceDeployments' in item['Action'])
+require({'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${Prefix}-*/*'} in service_listing['Resource'] and '*' not in service_listing['Resource'], 'service deployment listing escaped named container resources')
+zone_create = next(entry for entry in namespace_statements if 'route53:CreateHostedZone' in entry['Action'])
+require(zone_create['Condition'] == {'Bool': {'aws:ViaAWSService': 'true'}, 'StringEquals': {'aws:CalledViaLast': 'servicediscovery.amazonaws.com'}, 'Null': {'aws:CalledViaLast': 'false'}}, 'hosted zone creation must require Cloud Map as the last FAS service; direct and missing-context calls deny')
+require('servicediscovery:CreatePublicDnsNamespace' not in actions('FargateCloudFormationRole'), 'private namespace role must not create a public namespace')
+zone_delete = next(entry for entry in namespace_statements if 'route53:DeleteHostedZone' in entry['Action'])
+require(zone_delete['Condition'] == zone_create['Condition'] and zone_delete['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:route53:::hostedzone/*'}, 'namespace zone deletion must remain Cloud Map FAS gated and zone-ARN scoped')
+cleanup_policy = resources['FargateTaskDefinitionCleanupPolicy']
+require(cleanup_policy['Condition'] == 'EnableFargate' and cleanup_policy['Properties']['Roles'] == [{'Ref': 'FargateCloudFormationRole'}], 'task cleanup escaped its gated fixed execution role')
+require(cleanup_policy['Properties']['PolicyDocument']['Statement'] == [{'Effect': 'Allow', 'Action': ['ecs:DeregisterTaskDefinition'], 'Resource': '*', 'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}}}], 'task cleanup gained unrelated actions or unsupported ARN scoping')
+require('ecs:DeregisterTaskDefinition' not in actions('FargateCloudFormationRole'), 'unsupported deregistration ARN scope must not remain in the named container grant')
+app_bucket = next(entry for entry in fargate_statements if entry.get('Sid') == 'AppBuckets')
+require('s3:DeleteBucketPolicy' in app_bucket['Action'] and app_bucket['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'bucket-policy cleanup escaped named platform buckets')
+new_discovery = next(entry for entry in fargate_statements if entry.get('Sid') == 'CreateTaggedServiceDiscovery')
+require('servicediscovery:TagResource' in new_discovery['Action'] and new_discovery['Condition']['StringEquals']['aws:RequestTag/nce:platform-prefix'] == {'Ref': 'Prefix'}, 'new namespace tags need request-tag authorization')
+migrations = next(item for item in statements('RunnerRole') if 'ecs:RunTask' in item['Action'])
+require(migrations['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-*-migration:*'}, 'runner can execute an arbitrary container task')
+require(migrations['Condition']['ArnLike']['ecs:cluster'] == {'Fn::Sub': 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:cluster/${Prefix}-*'}, 'migration cluster scope missing')
 for name, resource in resources.items():
     if resource['Type'] == 'AWS::IAM::Role':
         length = sum(len(json.dumps(entry['PolicyDocument'], separators=(',', ':'))) for entry in resource['Properties'].get('Policies', []))
         require(length <= 10240, f'{name} inline policies exceed IAM role limit')
+    elif resource['Type'] == 'AWS::IAM::ManagedPolicy':
+        length = len(json.dumps(resource['Properties']['PolicyDocument'], separators=(',', ':')))
+        require(length <= 6144, f'{name} exceeds managed-policy size limit')
 print(f'PASS: onboarding invariants; {len(resources)} resources; {len(body)} bytes. No AWS calls made.')

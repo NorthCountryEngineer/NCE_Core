@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from identity.models import Organization, PermissionTag
+from identity.policy_evaluation import policy_fact
 from .models import DeploymentEnvironment
 
 
@@ -56,14 +57,14 @@ def boundary_decision(principal, organization, chain, tags):
     Unscoped pre-migration keys work only in organizations with no registered
     environments. Registering an environment requires rotating those keys.
     """
-    tag_environments = list(DeploymentEnvironment.objects.filter(organization=organization,
-        boundary_tag_id__in=[tag.pk for tag in tags]))
+    tag_environments = policy_fact(("boundary_tag_environments", str(organization.pk), tuple(sorted(str(tag.pk) for tag in tags))),
+        lambda: list(DeploymentEnvironment.objects.filter(organization=organization,
+            boundary_tag_id__in=[tag.pk for tag in tags])))
     names = {env.name for env in tag_environments}
     names.update(item.name for item in chain if item._meta.label_lower == 'platform_services.deploymentenvironment')
     machine = principal.credential or principal.runtime or principal.agent_binding
     if not machine:
-        from .models import Deployment
-        deployment = Deployment.objects.select_related('environment', 'node').filter(application=principal.application).first() if principal.application else None
+        deployment = _application_deployment(principal)
         if deployment and deployment.environment_id:
             if not deployment.environment.active or deployment.desired_state != 'running' or deployment.node_id and not deployment.node.active:
                 return 'environment_disabled', set()
@@ -73,9 +74,9 @@ def boundary_decision(principal, organization, chain, tags):
                 return 'environment_assignment_required', set()
         if any(not env.active for env in tag_environments) and any(item._meta.label_lower in SCOPED_RESOURCES for item in chain):
             return 'environment_disabled', set()
-        from identity.models import Membership
-        admin = principal.user and (principal.user.is_superuser or Membership.objects.filter(
-            organization=organization, user=principal.user, active=True, kind='administrator').exists())
+        from identity.policy import active_membership
+        membership = active_membership(principal.user, organization) if principal.user and not principal.user.is_superuser else None
+        admin = principal.user and (principal.user.is_superuser or membership and membership.kind == 'administrator')
         return None, {env.boundary_tag_id for env in tag_environments} if admin else set()
     source_environment = None
     if principal.credential:
@@ -124,7 +125,15 @@ def principal_environment(principal):
     if principal.agent_binding:
         return principal.agent_binding.organization.environments.filter(name=principal.agent_binding.environment).first()
     if principal.application:
-        from .models import Deployment
-        deployment = Deployment.objects.select_related('environment').filter(application=principal.application).first()
+        deployment = _application_deployment(principal)
         return deployment.environment if deployment else None
     return None
+
+
+def _application_deployment(principal):
+    if not principal.application:
+        return None
+    from .models import Deployment
+    return policy_fact(("principal_deployment", str(principal.application.service.organization_id), str(principal.application.pk)),
+        lambda: Deployment.objects.select_related('environment__boundary_tag', 'environment__organization', 'node').filter(
+            application=principal.application).first())

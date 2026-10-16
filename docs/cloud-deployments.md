@@ -6,14 +6,36 @@ only that destination's approved repository, service approach, and environment
 when creating an app. A release records the exact Git commit and a reviewed plan;
 its progress and errors remain visible in Core.
 
-The first AWS recipes are **Website · Amplify Hosting** and **Website and
-serverless API · Amplify + Lambda**. They provision manual Amplify Hosting and,
+The AWS recipes include **Website · Amplify Hosting**, **Website and
+serverless API · Amplify + Lambda**, and the fixed **Website, API and workers ·
+Amplify + Fargate** recipe described in [Container application releases](cloud-fargate.md).
+The first two provision manual Amplify Hosting and,
 for the second recipe, a Python Lambda HTTP API, two on-demand DynamoDB tables,
 and a private media bucket. Core connects the app's central identity and injects
-public browser configuration. Existing users and RBAC remain in Core. Container
-apps, database migrations inside application containers, importing the existing
-Axolotl stack, and automated Cloudflare DNS changes are outside these recipes.
+public browser configuration. Existing users and RBAC remain in Core. The Fargate
+recipe keeps frontend source builds isolated and uses approved image digests and
+secret/certificate references. Importing the existing Axolotl stack and automated
+Cloudflare DNS changes are outside these recipes.
 The existing production Axolotl site is not changed by this local exercise.
+
+Production release preparation, approval and every billable build start require
+passing GitHub Actions push checks for both the exact application commit and the
+pinned Core runner commit. The policies live in Core source and cannot be changed
+by `nce-deploy.json`. See [exact-commit CI admission](cicd.md#exact-commit-deployment-admission)
+for the checked workflow identities and failure behavior. A pull-request result,
+local test receipt, old successful run, or same-named third-party status is not a
+substitute for the exact pushed source result.
+
+Proposal Studio is private. Before its first CI-gated release, enter a separate
+fine-grained GitHub credential under **Deployment platforms → Edit → GitHub CI
+read credential**. Limit repository access to the needed source repository and
+permissions to **Actions: read** / **Metadata: read**. Keep the token out of chat,
+source and application configuration. Core stores it encrypted in its existing
+database and does not send it to AWS. Blank input keeps the current credential;
+replacement and explicit removal invalidate platform verification and plans.
+Re-verify the platform, pin a Core runner commit whose own CI has passed, then
+prepare a fresh release. Missing or expired private-repository access blocks
+before an AWS build can be started and does not create an automatic retry loop.
 
 ## First validate locally without AWS calls or charges
 
@@ -374,9 +396,12 @@ printf 'Repository: %s\nImage tag: %s\n' "$CORE_REPOSITORY_URI" "$NCE_IMAGE_TAG"
 ```
 
 The repository must begin `015454941623.dkr.ecr.us-east-1.amazonaws.com/`.
-If it is empty or `None`, stop. Build, publish, and record the digest:
+If it is empty or `None`, stop. Require passing push CI for this exact source
+commit before publishing, then build, publish, and record the digest:
 
 ```sh
+python3 ci/github_gate.py --repository NorthCountryEngineer/NCE_Core \
+  --commit "$(git rev-parse HEAD)"
 docker build --platform linux/arm64 -f deployment/Dockerfile.aws \
   -t "$CORE_REPOSITORY_URI:$NCE_IMAGE_TAG" .
 aws ecr get-login-password --profile axolotl-deploy --region us-east-1 \
@@ -392,12 +417,15 @@ aws cloudformation describe-stacks --stack-name "$CORE_STACK" \
   > "$NCE_RELEASE_DIR/core-stack-before.json"
 python3 infra/aws/prepare-cloud-console-release.py \
   --stack-file "$NCE_RELEASE_DIR/core-stack-before.json" \
-  --image "$NCE_IMAGE_URI" --enable-live 1 \
+  --image "$NCE_IMAGE_URI" --commit "$(git rev-parse HEAD)" --enable-live 1 \
   --output-directory "$NCE_RELEASE_DIR"
 ```
 
-The helper checks the account, stack state, and digest. It prepares updates
-locally, preserves every other stack parameter, and adds the new operator switch.
+The helper checks the account, stack state, digest, and passing GitHub Actions
+checks for the exact Core source commit. It prepares updates locally, preserves
+every other stack parameter, and adds the new operator switch. The private
+`core-ci.json` receipt binds the checked source SHA to the reviewed image digest.
+Do not use a receipt for a different image or source revision.
 Use the new template for the first update so CloudFormation knows that parameter:
 
 ```sh
@@ -414,7 +442,7 @@ CORE_ENABLE_AWS_DEPLOYMENT=true uv run python infra/aws/run-management.py \
 
 Wait for **Release command completed successfully**. The new cloud deployment
 migrations should report `platform_services.0035... OK` and
-`platform_services.0036... OK`, or already applied on a retry. If migration fails,
+`platform_services.0036... OK` and `platform_services.0038... OK`, or already applied on a retry. If migration fails,
 keep Core stopped and inspect its named CloudWatch
 web log stream. Then start the new service:
 

@@ -6,14 +6,76 @@ remain the same whichever CI platform runs it. A pipeline run builds one image,
 publishes it, and deploys that exact registry digest without rebuilding it between
 those stages. Separate environments have separate reviewed configuration files.
 
-All templates default to verification. The active GitHub workflow is manual-only
-and defaults to an existing self-hosted runner. Other provider templates are inert
-until installed. No CI projects, hosted runners, registries, databases, clusters,
-or paid infrastructure are provisioned by these files. Obtain the owner's explicit
+GitHub runs `.github/workflows/verify.yml` on every pull request and push. Its
+**Core required checks** job validates the AWS templates and runs the existing
+verification pipeline with a disposable PostgreSQL database. It has read-only
+repository access, a bounded timeout, no deployment secrets, and no publish or
+deploy step. Concurrent checks for the same ref cancel superseded checks.
+
+The separate `.github/workflows/pipeline.yml` release workflow remains manual-only
+and defaults to an existing self-hosted runner. Automatic verification uses a
+standard GitHub-hosted Linux runner; other provider templates are inert until
+installed. These workflows create no AWS services, persistent runner capacity,
+registries or clusters. Obtain the owner's explicit
 cost approval before activating any billable runner, artifact storage, registry,
 cloud build, or deployment capacity. AWS CodeBuild/CodePipeline are normally
 billable even for manual runs. An external platform's webhook settings can trigger
 builds independently of this repository; disable those until approved.
+
+## Exact-commit deployment admission
+
+`platform_services/github_ci.py` is the shared, fail-closed GitHub Actions gate.
+Core source defines two policies: `NorthCountryEngineer/NCE_Core` requires
+`.github/workflows/verify.yml` / **Core required checks**;
+`NorthCountryEngineer/Proposal_Studio` requires `.github/workflows/ci.yml` /
+**Proposal Studio required checks**. Application manifests and browser input
+cannot disable or replace these policies.
+
+A deployment requires a successful **push** run for each exact 40-character source
+SHA: both the application and its approved Core runner. Pull-request merge
+checks remain useful review feedback, but cannot substitute for the pushed
+release commit. The gate checks GitHub's workflow identity/path, repository,
+`head_sha`, event, latest updated run and attempt, and the required aggregate job.
+It checks again after reading the attempt's jobs. A pending, failed, cancelled,
+skipped, missing, ambiguous, or inaccessible result blocks deployment; an old
+success does not override a newer failed rerun.
+
+The cloud console checks during release preparation, approval, and immediately
+before acquiring AWS credentials or starting each CodeBuild phase. A refusal
+before StartBuild never creates or recovers a billable AWS build. The pinned
+runner separately verifies its own Git checkout and the application checkout.
+Core's portable `publish` and `deploy` commands use the same gate before registry
+or cluster mutation. The AWS Core update helper requires `--commit` and checks
+that source SHA before writing parameter files plus a private `core-ci.json`
+receipt. Image digests and their source labels must still be reviewed together.
+
+Public GitHub CI metadata needs no token. For private Proposal Studio source,
+a human operator creates a fine-grained credential restricted to the approved
+repository with **Actions: read** and **Metadata: read**, and enters it in
+**Deployment platforms → Edit → GitHub CI read credential**. Core encrypts it
+with its existing database secret protection; the form never reads it back.
+Blank input preserves it, replacement rotates it, and the explicit remove box
+revokes it. Changes invalidate platform verification and existing release plans.
+This adds no AWS services, IAM permissions, secret mounts, or subscriptions.
+
+CLI operators can instead set `CORE_CI_GITHUB_TOKEN_FILE` to a protected temporary
+credential file; `GH_TOKEN` and `GITHUB_TOKEN` are never implicitly consumed.
+The live console uses only the current server-side platform credential and never
+falls back to that CLI file. Tokens are sent only to fixed `https://api.github.com`
+requests, with redirects and environment proxies disabled, bounded response sizes
+and timeouts. They never enter snapshots, AWS build variables, artifacts or logs.
+Test subprocesses discard token-file and ambient GitHub-token variables.
+
+Run the gate manually without starting a build or deployment:
+
+```sh
+python3 ci/github_gate.py --repository NorthCountryEngineer/NCE_Core --commit FULL_SOURCE_SHA
+```
+
+This command only reads GitHub. GitHub-hosted private-repository Actions minutes
+still depend on the account's included allowance and billing cap; the workflow
+does not configure billing or purchase capacity. Keep paid overage disabled when
+zero additional spend is required.
 
 ## Pipeline contract
 
@@ -145,6 +207,7 @@ by the existing reverse proxy or approved static host, as described in
 | Variable | Purpose |
 | --- | --- |
 | `CORE_CI_MODE` | `verify`, `publish`, or `deploy`; defaults to `verify`. |
+| `CORE_CI_GITHUB_TOKEN_FILE` | Operator-only protected GitHub Actions read credential file for release CLI checks; never passed to tests or AWS builds. |
 | `CORE_CI_CONFIG` | Tracked environment JSON; defaults to the example. |
 | `CORE_CI_ENVIRONMENT` | Optional protected CI environment name; when set, must match the JSON environment before publication/deployment. |
 | `DATABASE_URL` | Disposable CI PostgreSQL; never the production database. |
@@ -170,7 +233,7 @@ unless `CORE_CI_ALLOW_ARTIFACT_UPLOAD=1` is configured as a repository variable.
 
 | Platform | File and configuration |
 | --- | --- |
-| GitHub Actions | `.github/workflows/pipeline.yml`: manually select mode and config. Register an existing runner with `self-hosted`, `linux`, `x64`, `core-ci` labels. Optional `CORE_RUNNER_LABELS` repository variable is a JSON label array. Put secrets and enablement variables in a protected environment; set `CORE_CI_ENVIRONMENT` and `CORE_KUBECONFIG_PATH` as needed. |
+| GitHub Actions | `.github/workflows/verify.yml`: automatic PR/push verification. `.github/workflows/pipeline.yml`: manually select release mode and config. Register an existing runner with `self-hosted`, `linux`, `x64`, `core-ci` labels. Optional `CORE_RUNNER_LABELS` repository variable is a JSON label array. Put secrets and enablement variables in a protected environment; set `CORE_CI_ENVIRONMENT` and `CORE_KUBECONFIG_PATH` as needed. |
 | GitLab CI | Copy `ci/providers/gitlab-ci.yml` to `.gitlab-ci.yml`. Register a Linux shell runner tagged `core-ci`; define protected variables and use Run pipeline. Push/MR events are excluded. Use protected environments/manual approvals for production. |
 | Azure Pipelines | Register `ci/providers/azure-pipelines.yml`; configure existing pool `core-ci`, protected variable group `core-ci-settings`, environment approvals, and `CORE_KUBECONFIG_PATH`. Define all referenced variables, using empty registry values when relying on a credential helper. No push/PR triggers. |
 | Jenkins | Select `ci/providers/Jenkinsfile` as the pipeline script; configure agent label `core-ci` and credential IDs `core-ci-test-database`, `core-ci-registry`, `core-ci-kubeconfig`. Build with Parameters; publication/deployment approval switches default off. Disable external webhook/polling triggers. |
