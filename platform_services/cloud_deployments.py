@@ -17,6 +17,7 @@ from django.utils import timezone
 from identity.access import Principal, require_access, resource_organization
 from identity.models import AuditEvent, Membership, User
 from .cloud_models import CloudApplication, CloudPlatform, CloudRelease, digest
+from platform_services.github_ci import CIGateError
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,16 @@ def _snapshot(app):
         'public_origin': app.public_origin, 'secret_parameter': f'/{app.platform.prefix}/apps/{app.pk}/core-resource-client'}
 
 
+def _require_ci(app, snapshot):
+    if app.platform.mode != 'aws':
+        return []
+    from .cloud_aws import require_ci
+    try:
+        return require_ci(app.platform, snapshot)
+    except CIGateError as error:
+        raise ValidationError(str(error), code='ci_checks_required') from None
+
+
 @transaction.atomic
 def prepare_release(app, principal):
     app = CloudApplication.objects.select_for_update().select_related('platform', 'environment', 'organization').get(pk=app.pk)
@@ -147,6 +158,7 @@ def prepare_release(app, principal):
     if not app.active or not app.environment.active:
         raise ValidationError('The application and environment must be active.')
     snapshot = _snapshot(app)
+    _require_ci(app, snapshot)
     release = CloudRelease.objects.create(application=app, requested_by=principal.user, evidence=principal.evidence,
         purpose=principal.purpose, snapshot=snapshot, digest=digest(snapshot), steps=[
             {'label': 'Create or update AWS hosting', 'status': 'pending', 'description':
@@ -178,6 +190,7 @@ def approve_release(release, principal, confirm_costs=False):
         raise ValidationError('This release cannot be queued in its current state.')
     if release.application.platform.mode == 'aws' and (not confirm_costs or not settings.CORE_ENABLE_CLOUD_DEPLOYMENTS):
         raise ValidationError('Live deployment requires operator enablement and explicit authorization of charges.')
+    _require_ci(release.application, release.snapshot)
     release.status, release.approved_at, release.requested_by = 'queued', timezone.now(), principal.user
     release.evidence, release.purpose = principal.evidence, principal.purpose
     release.save()
@@ -338,7 +351,11 @@ def process_one():
                 observed_state='running', healthy=True, last_seen=timezone.now())
     except Exception as failure:
         from .cloud_aws import AWSAdapterError, stop_run, recover_run
-        if isinstance(failure, (ValidationError, PermissionDenied, AWSAdapterError)):
+        if isinstance(failure, CIGateError):
+            # Admission failed before AWS credential acquisition or StartBuild.
+            # Do not treat the durable intent as an ambiguous billable start.
+            state.pop('starting', None)
+        if isinstance(failure, (ValidationError, PermissionDenied, AWSAdapterError, CIGateError)):
             error = (' '.join(failure.messages) if isinstance(failure, ValidationError) else str(failure))[:400]
         else:
             error = 'The deployment step could not be completed. Review Core worker logs and prepare a new release if needed.'

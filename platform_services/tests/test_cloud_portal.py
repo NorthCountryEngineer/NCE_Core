@@ -145,6 +145,33 @@ class CloudPortalTests(TestCase):
         self.assertIsNone(self.platform.verified_at)
         self.assertEqual(self.platform.external_id, 'private-role-external-id')
 
+    def test_ci_credential_is_masked_preserved_replaced_and_explicitly_removable(self):
+        token = 'github_pat_' + 'x' * 40
+        self.platform.ci_github_token = token
+        self.platform.save()
+        page = self.client.get(self.url('cloud_platform_edit', self.platform.pk))
+        self.assertNotContains(page, token)
+        self.assertContains(page, 'A credential is currently configured.')
+        saved = self.client.post(self.url('cloud_platform_edit', self.platform.pk), self.platform_data())
+        self.assertEqual(saved.status_code, 302)
+        self.platform.refresh_from_db()
+        self.assertEqual(self.platform.ci_github_token, token)
+        replacement = 'github_pat_' + 'y' * 40
+        saved = self.client.post(self.url('cloud_platform_edit', self.platform.pk), self.platform_data(ci_github_token=replacement))
+        self.assertEqual(saved.status_code, 302)
+        self.platform.refresh_from_db()
+        self.assertEqual(self.platform.ci_github_token, replacement)
+        self.assertNotIn(replacement, self.platform.encrypted_ci_github_token)
+        invalid = self.client.post(self.url('cloud_platform_edit', self.platform.pk), self.platform_data(ci_github_token=replacement, clear_ci_github_token='on'))
+        self.assertEqual(invalid.status_code, 200)
+        self.assertNotContains(invalid, replacement)
+        self.assertContains(invalid, 'Choose either replacement or removal')
+        saved = self.client.post(self.url('cloud_platform_edit', self.platform.pk), self.platform_data(clear_ci_github_token='on'))
+        self.assertEqual(saved.status_code, 302)
+        self.platform.refresh_from_db()
+        self.assertEqual(self.platform.encrypted_ci_github_token, '')
+        self.assertEqual(self.platform.ci_github_token, '')
+
     def test_verify_provider_failure_never_renders_raw_credentials_or_traceback(self):
         with patch('platform_services.cloud_portal.deployments.verify_platform', side_effect=ValidationError('secret-provider-token-123456')):
             response = self.client.post(self.url('cloud_platform_verify', self.platform.pk), follow=True)

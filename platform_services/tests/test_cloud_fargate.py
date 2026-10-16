@@ -498,6 +498,11 @@ class FargateContractTests(SimpleTestCase):
 
 
 class FargateRegistrationTests(TestCase):
+    def setUp(self):
+        ci = patch('platform_services.cloud_aws.verify_deployment', return_value=[])
+        ci.start()
+        self.addCleanup(ci.stop)
+
     @override_settings(CORE_ENABLE_CLOUD_DEPLOYMENTS=True)
     def test_worker_stores_fargate_credentials_before_release_without_exposing_them(self):
         organization = Organization.objects.create(name='Proposal handoff', slug='proposal-handoff')

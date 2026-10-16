@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -150,13 +151,29 @@ class CloudReleasePreparationTests(SimpleTestCase):
             source = root / 'stack metadata.json'
             source.write_text(json.dumps({'Stacks': [stable_stack()]}))
             target = root / 'prepared updates'
-            result = subprocess.run([sys.executable, str(HELPER_PATH), '--stack-file', str(source), '--image', IMAGE, '--account', ACCOUNT, '--output-directory', str(target)], text=True, capture_output=True, check=True)
-            self.assertIn('No AWS calls were made', result.stdout)
-            self.assertEqual(set(path.name for path in target.iterdir()), {'core-cloud-stopped.json', 'core-cloud-running.json', 'core-cloud-recovery.json'})
+            with patch.object(sys, 'argv', [str(HELPER_PATH), '--stack-file', str(source), '--image', IMAGE, '--commit', 'c' * 40, '--account', ACCOUNT, '--output-directory', str(target)]), patch.object(HELPER, 'verify_repository', return_value={'commit': 'c' * 40}) as verify:
+                self.assertEqual(HELPER.main(), 0)
+                verify.assert_called_once_with('NorthCountryEngineer/NCE_Core', 'c' * 40)
+            self.assertEqual(set(path.name for path in target.iterdir()), {'core-cloud-stopped.json', 'core-cloud-running.json', 'core-cloud-recovery.json', 'core-ci.json'})
             for path in target.iterdir():
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                if path.name == 'core-ci.json':
+                    self.assertEqual(json.loads(path.read_text()), {'image': IMAGE, 'ci': {'commit': 'c' * 40}})
+                    continue
                 parameters = parameter_map(json.loads(path.read_text()))
                 self.assertEqual(parameters['EnableCloudDeployments']['ParameterValue'], '0')
+
+    def test_failed_exact_commit_ci_creates_no_release_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'stack.json'
+            source.write_text(json.dumps({'Stacks': [stable_stack()]}))
+            target = root / 'prepared'
+            with patch.object(sys, 'argv', [str(HELPER_PATH), '--stack-file', str(source), '--image', IMAGE, '--commit', 'c' * 40, '--output-directory', str(target)]), \
+                 patch.object(HELPER, 'verify_repository', side_effect=HELPER.CIGateError('Latest CI has not passed')), \
+                 self.assertRaises(SystemExit):
+                HELPER.main()
+            self.assertFalse(target.exists())
 
     def test_cli_rejects_unsupported_live_gate_without_creating_output_files(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -12,6 +12,7 @@ import json
 import re
 from typing import Callable
 from .cloud_contract import ContractError, fargate_applications, identity_contract
+from platform_services.github_ci import CIGateError, POLICIES, verify_deployment
 
 
 class AWSAdapterError(Exception):
@@ -203,8 +204,23 @@ def verify(platform, *, client_factory=None):
         raise _safe_failure(error) from None
 
 
+def require_ci(platform, snapshot):
+    """Use current operator credentials; never forward them to the AWS runner."""
+    sources = (snapshot.get('repository', ''), (_value(platform, 'config', {}) or {}).get('runner_repository', ''))
+    if not any(isinstance(source, str) and policy.repository.casefold() == source.casefold() for source in sources for policy in POLICIES):
+        return []
+    settings = configuration(platform, snapshot)
+    try:
+        token = _value(platform, 'ci_github_token', '')
+    except Exception:
+        raise CIGateError('The operator GitHub CI credential could not be decrypted.') from None
+    return verify_deployment(snapshot['repository'], snapshot['commit'],
+        settings['config']['runner_repository'], settings['config']['runner_commit'], token=token)
+
+
 def start_run(platform, snapshot, idempotency_key, *, client_factory=None):
     settings, encoded = _snapshot(platform, snapshot)
+    require_ci(platform, snapshot)
     token = hashlib.sha256(str(idempotency_key).encode()).hexdigest()
     result_key = f"runs/{token}/result.json"
     try:

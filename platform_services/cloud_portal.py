@@ -38,6 +38,8 @@ class PlatformForm(forms.Form):
     region = forms.CharField(max_length=30, required=False, initial='us-east-1', label='AWS region')
     role_arn = forms.CharField(max_length=255, required=False, label='Deployment role ARN')
     external_id = forms.CharField(max_length=256, required=False, widget=forms.PasswordInput(render_value=False), label='Role external ID', help_text='Stored encrypted. Leave blank when editing to keep the current value.')
+    ci_github_token = forms.RegexField(r'^[A-Za-z0-9_]{20,512}$', required=False, max_length=512, widget=forms.PasswordInput(render_value=False), label='GitHub CI read credential', help_text='Stored encrypted. For private source repositories, grant only Actions read and Metadata read on the approved repositories. Leave blank to keep the current credential.')
+    clear_ci_github_token = forms.BooleanField(required=False, label='Remove the stored GitHub CI read credential')
     runner_project = forms.CharField(max_length=255, required=False, label='CodeBuild deployment runner', help_text='The preconfigured runner builds and deploys the reviewed release.')
     connection_arn = forms.CharField(max_length=255, required=False, label='GitHub CodeConnection ARN')
     build_project = forms.CharField(max_length=255, required=False, label='Isolated source build project')
@@ -68,6 +70,8 @@ class PlatformForm(forms.Form):
         else:
             initial.setdefault('archetypes', [value for value, _ in ARCHETYPES])
         super().__init__(*args, initial=initial, **kwargs)
+        if instance and instance.encrypted_ci_github_token:
+            self.fields['ci_github_token'].help_text += ' A credential is currently configured.'
         environments = _visible(principal, organization.environments.filter(active=True))
         self.fields['environments'].queryset = organization.environments.filter(pk__in=[value.pk for value in environments])
 
@@ -84,6 +88,8 @@ class PlatformForm(forms.Form):
 
     def clean(self):
         values = super().clean()
+        if values.get('ci_github_token') and values.get('clear_ci_github_token'):
+            self.add_error('clear_ci_github_token', 'Choose either replacement or removal of the stored credential.')
         if values.get('mode') == 'aws':
             for field in ['account_id', 'region', 'role_arn', 'runner_project', 'connection_arn', 'build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
                 if not values.get(field):
@@ -98,6 +104,10 @@ class PlatformForm(forms.Form):
             setattr(platform, key, self.cleaned_data[key])
         if self.cleaned_data.get('external_id'):
             platform.external_id = self.cleaned_data['external_id']
+        if self.cleaned_data.get('clear_ci_github_token'):
+            platform.ci_github_token = ''
+        elif self.cleaned_data.get('ci_github_token'):
+            platform.ci_github_token = self.cleaned_data['ci_github_token']
         platform.config = dict(platform.config or {})
         for key in ['build_project', 'artifact_bucket', 'cloudformation_role_arn', 'permissions_boundary_arn', 'runner_repository', 'runner_commit']:
             platform.config[key] = self.cleaned_data.get(key, '')
@@ -285,8 +295,9 @@ def release_prepare(request, organization, pk):
     app = _resource(request, organization, CloudApplication, pk)
     try:
         release = deployments.prepare_release(app, request_principal(request))
-    except ValidationError:
-        messages.error(request, 'A release could not be prepared. Check the application source and platform settings before trying again.')
+    except ValidationError as error:
+        messages.error(request, ' '.join(error.messages) if getattr(error, 'code', '') == 'ci_checks_required' else
+            'A release could not be prepared. Check the application source and platform settings before trying again.')
         return redirect('cloud_application', slug=organization.slug, pk=app.pk)
     return redirect('cloud_release', slug=organization.slug, pk=release.pk)
 
@@ -327,8 +338,9 @@ def release_approve(request, organization, pk):
     if form.is_valid():
         try:
             deployments.approve_release(value, request_principal(request), confirm_costs=bool(form.cleaned_data.get('confirm_costs')))
-        except ValidationError:
-            form.add_error(None, 'The release cannot be approved. Reload the review; the platform, source, access, or release status may have changed.')
+        except ValidationError as error:
+            form.add_error(None, ' '.join(error.messages) if getattr(error, 'code', '') == 'ci_checks_required' else
+                'The release cannot be approved. Reload the review; the platform, source, access, or release status may have changed.')
         else:
             messages.success(request, 'Release approved. The deployment worker will run the reviewed steps.')
             return redirect('cloud_release', slug=organization.slug, pk=value.pk)

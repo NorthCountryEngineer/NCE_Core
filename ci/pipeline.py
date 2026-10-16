@@ -22,6 +22,9 @@ import uuid
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / 'artifacts'
 PYTHON = str(ROOT / '.venv/bin/python')
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from platform_services.github_ci import CIGateError, verify_repository
 
 
 class PipelineError(Exception):
@@ -86,7 +89,7 @@ def test_environment():
         'CORE_FABRIC_SECRET_ROOT': str(ROOT / '.local/data-fabric'), 'CORE_FABRIC_ORIGINS': ''}
     environment.pop('CORE_OIDC_PREVIOUS_KEY_FILES', None)
     for name in ['REGISTRY_USERNAME', 'REGISTRY_PASSWORD', 'KUBECONFIG', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY',
-                 'AWS_SESSION_TOKEN', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'AZURE_CLIENT_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS']:
+                 'AWS_SESSION_TOKEN', 'AWS_WEB_IDENTITY_TOKEN_FILE', 'CORE_CI_GITHUB_TOKEN_FILE', 'GH_TOKEN', 'GITHUB_TOKEN', 'AZURE_CLIENT_SECRET', 'GOOGLE_APPLICATION_CREDENTIALS']:
         environment.pop(name, None)
     return environment
 
@@ -146,9 +149,17 @@ def trusted_release(config):
         raise PipelineError('Release must match the current remote release branch tip.')
 
 
+def require_source_ci():
+    try:
+        return verify_repository('NorthCountryEngineer/NCE_Core', revision())
+    except CIGateError as error:
+        raise PipelineError(str(error)) from None
+
+
 def publish(config):
     require_switch('CORE_CI_ALLOW_PUBLISH')
     trusted_release(config)
+    require_source_ci()
     build_info = json.loads((ARTIFACTS / 'build.json').read_text())
     expected = config['image_repository'] + ':' + revision()
     if build_info != {'schema_version': 1, 'commit': revision(), 'image_tag': expected, 'dirty': False, 'config_hash': config_hash(config)}:
@@ -333,6 +344,7 @@ def release_lock(config):
 def deploy(config):
     require_switch('CORE_CI_ALLOW_DEPLOY')
     trusted_release(config)
+    require_source_ci()
     (ARTIFACTS / 'deployed.json').unlink(missing_ok=True)
     release = json.loads((ARTIFACTS / 'release.json').read_text())
     if release.get('schema_version') != 1 or release.get('commit') != revision() or release.get('config_hash') != config_hash(config):

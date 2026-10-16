@@ -43,6 +43,9 @@ def snapshot(value, action="provision"):
 
 class AdapterTests(SimpleTestCase):
     def setUp(self):
+        ci = patch('platform_services.cloud_aws.verify_deployment', return_value=[])
+        ci.start()
+        self.addCleanup(ci.stop)
         self.platform = platform()
         self.snapshot = snapshot(self.platform)
         self.clients = {name: Mock() for name in ("sts", "codebuild", "codeconnections", "s3", "ssm")}
@@ -222,7 +225,7 @@ class RunnerContractTests(SimpleTestCase):
         self.assertTrue(allowed('ecs:ListServiceDeployments', 'arn:aws:ecs:us-east-1:123456789012:service/nce-tests-app/service', 'us-east-1'))
         self.assertFalse(allowed('ecs:ListServiceDeployments', 'arn:aws:ecs:us-east-1:123456789012:service/other-app/service', 'us-east-1'))
 
-    def test_private_namespace_support_is_role_bound_and_requires_vpc_context(self):
+    def test_private_namespace_support_is_role_bound_and_requires_cloud_map_delegation(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         resources = document['Resources']
         support = resources['FargatePrivateNamespacePolicy']
@@ -230,10 +233,16 @@ class RunnerContractTests(SimpleTestCase):
         self.assertEqual(support['Properties']['Roles'], [{'Ref': 'FargateCloudFormationRole'}])
         statements = support['Properties']['PolicyDocument']['Statement']
         actions = {action for statement in statements for action in statement['Action']}
-        self.assertEqual(actions, {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName', 'servicediscovery:ListServices'})
-        create = next(statement for statement in statements if 'route53:CreateHostedZone' in statement['Action'])
-        self.assertEqual(create['Condition']['Null']['route53:VPCs'], 'false')
-        self.assertEqual(create['Condition']['StringLike']['route53:VPCs'], {'Fn::Sub': 'VPCId=vpc-*,VPCRegion=${AWS::Region}'})
+        self.assertEqual(actions, {'route53:CreateHostedZone', 'route53:GetHostedZone', 'route53:ListHostedZonesByName',
+                                  'route53:DeleteHostedZone', 'route53:ListHostedZones', 'servicediscovery:ListServices'})
+        # The committed recipe restricts zone mutation to Cloud Map's forward
+        # access session; direct Route53 requests cannot satisfy these keys.
+        for action in ['route53:CreateHostedZone', 'route53:DeleteHostedZone']:
+            statement = next(item for item in statements if action in item['Action'])
+            self.assertEqual(statement['Condition'], {'Bool': {'aws:ViaAWSService': 'true'},
+                'StringEquals': {'aws:CalledViaLast': 'servicediscovery.amazonaws.com'},
+                'Null': {'aws:CalledViaLast': 'false'}})
+        self.assertFalse(any('route53:ChangeResourceRecordSets' in item['Action'] for item in statements))
         inline = resources['FargateCloudFormationRole']['Properties']['Policies']
         self.assertLessEqual(sum(len(json.dumps(item['PolicyDocument'], separators=(',', ':'))) for item in inline), 10240)
         tag = next(statement for policy in inline for statement in policy['PolicyDocument']['Statement'] if statement.get('Sid') == 'CreateTaggedServiceDiscovery')
@@ -280,14 +289,26 @@ class RunnerContractTests(SimpleTestCase):
         target.build_frontend = Mock(side_effect=lambda *args: order.append("isolated-build") or "builds/test/frontend.zip")
         target.publish_frontend = Mock(side_effect=lambda *args: order.append("publication"))
         target.write_result = Mock(side_effect=lambda *args: order.append("receipt"))
-        with patch.object(runner.subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40)), patch.object(runner, "read_manifest", return_value={}):
+        with patch.object(runner.subprocess, "run", side_effect=[SimpleNamespace(stdout="b" * 40), SimpleNamespace(stdout="a" * 40)]), patch.object(runner, "read_manifest", return_value={}):
             target.run(ROOT)
         self.assertEqual(order, ["backend", "isolated-build", "publication", "receipt"])
         order.clear()
         target.snapshot["action"] = "provision"
-        with patch.object(runner.subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40)), patch.object(runner, "read_manifest", return_value={}):
+        with patch.object(runner.subprocess, "run", side_effect=[SimpleNamespace(stdout="b" * 40), SimpleNamespace(stdout="a" * 40)]), patch.object(runner, "read_manifest", return_value={}):
             target.run(ROOT)
         self.assertEqual(order, ["backend", "receipt"])
+
+    def test_wrong_trusted_runner_checkout_fails_before_any_provider_call(self):
+        value = platform()
+        _, encoded = cloud_aws._snapshot(value, snapshot(value))
+        factory = Mock()
+        target = runner.Runner(json.loads(encoded), 'c' * 64, 'runs/' + 'c' * 64 + '/result.json', client_factory=factory)
+        with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(stdout='f' * 40)), \
+             patch.object(runner, 'read_manifest') as manifest:
+            with self.assertRaisesMessage(runner.RunnerError, 'trusted runner commit'):
+                target.run(ROOT)
+        manifest.assert_not_called()
+        factory.assert_not_called()
 
     def test_existing_provision_preserves_identity_and_release_sets_exact_scoped_parameters(self):
         value = platform()

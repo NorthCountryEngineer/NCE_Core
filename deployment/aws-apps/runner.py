@@ -391,6 +391,10 @@ class Runner:
             ServerSideEncryption="AES256", ExpectedBucketOwner=self.platform["account_id"])
 
     def run(self, root):
+        trusted = subprocess.run(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[2], check=True,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
+        if trusted != self.config['runner_commit']:
+            raise RunnerError("Core runner checkout does not match the approved trusted runner commit.")
         actual = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True,
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
         if actual != self.snapshot["commit"]:
