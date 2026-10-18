@@ -303,6 +303,7 @@ def process_one():
                     if working['archetype'] == 'amplify-academy-fargate':
                         outputs['identity'] = json.dumps({'callback_path': '/api/auth/core/callback', 'permissions': [
                             {'codename': 'academy-use', 'name': 'Use NCAcademy'},
+                            {'codename': 'academy-school', 'name': 'Manage assigned schools and their resources'},
                             {'codename': 'academy-teach', 'name': 'Teach and manage assigned courses'},
                             {'codename': 'academy-audit', 'name': 'Review assigned student sessions'}]})
                 variables, _, _ = _register(release, outputs)

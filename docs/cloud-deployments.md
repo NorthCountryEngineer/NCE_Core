@@ -638,3 +638,26 @@ images and an independently tested restore are required before production.
 An independent retained audit checkpoint destination remains required before
 admitting real student records; database append-only grants alone cannot protect
 against database administrators.
+
+
+### Optional Academy teacher agents
+
+Academy school permissions include `academy-school` in addition to use, teach
+and audit. This is an application capability; it never grants Core's reserved
+human-only organization `admin`. Local school/class membership further limits it.
+
+The operator-approved `academy_fargate_apps` repository map accepts optional
+`allow_agent_teachers` and `allow_live_models` booleans, independently defaulting
+to false. The former maps only to the fixed recipe's `AllowAgentTeachers` flag.
+When enabled, ECS injects `CORE_WORKLOAD_TOKEN` from the `core_workload_token` JSON
+key of that application's already-approved `RuntimeSecretArn` into its API.
+No new ARN, IAM grant, application task role or frontend secret is accepted.
+Migration always receives `ALLOW_AGENT_TEACHERS=false` and no workload token.
+The existing paired confidential Basic client remains in its SSM JSON parameter.
+
+Before enabling, separately approve the backend workload credential, agent
+account/binding, consumer/environment/task, service roles, resource registrations
+and workload-compatible tags in Core, plus the exact local school/class placement
+in Academy. Missing or denied authority fails closed. Human owner-only policy is
+not changed by this template. Enabling agent authentication never enables model
+inference, starts a model runner or issues a credential automatically.

@@ -39,7 +39,7 @@ class AcademyFargateTests(SimpleTestCase):
     def test_configuration_requires_exact_approved_runtime_references(self):
         value = configuration()
         cloud_aws.configuration(value)
-        for name, item in [('browser_image_repository', 'bad'), ('command', ['sh']), ('session_secret', 'bad'), ('allow_live_models', 'true')]:
+        for name, item in [('browser_image_repository', 'bad'), ('command', ['sh']), ('session_secret', 'bad'), ('allow_live_models', 'true'), ('allow_agent_teachers', 'true')]:
             altered = copy.deepcopy(value)
             altered.config['academy_fargate_apps'][altered.allowed_repositories[0]][name] = item
             with self.assertRaises(cloud_aws.AWSAdapterError):
@@ -85,6 +85,7 @@ class AcademyFargateTests(SimpleTestCase):
         self.assertTrue(set(mapped) <= set(template['Parameters']))
         self.assertEqual(mapped['DesiredCount'], '0')
         self.assertEqual(mapped['AllowLiveModels'], 'false')
+        self.assertEqual(mapped['AllowAgentTeachers'], 'false')
         self.assertNotIn('BrowserImageUri', mapped)
         self.assertNotIn('StorageName', mapped)
         self.assertEqual(mapped['CoreRedirectUri'], 'https://pending.invalid/api/auth/core/callback')
@@ -118,7 +119,7 @@ class AcademyFargateTests(SimpleTestCase):
         serialized = json.dumps(template)
         self.assertNotIn('BrowserRepositoryName', serialized)
         self.assertNotIn('studio.runtime', serialized)
-        known = set(resources) | set(template['Parameters']) | {'AWS::AccountId', 'AWS::Region', 'AWS::Partition'}
+        known = set(resources) | set(template['Parameters']) | {'AWS::AccountId', 'AWS::Region', 'AWS::Partition', 'AWS::NoValue'}
         def check(node):
             if isinstance(node, dict):
                 if 'Ref' in node: self.assertIn(node['Ref'], known)
@@ -137,7 +138,7 @@ class AcademyFargateTests(SimpleTestCase):
         migration = resources['MigrationTaskDefinition']['Properties']
         self.assertEqual(api['ExecutionRoleArn'], {'Fn::GetAtt': ['ExecutionRole', 'Arn']})
         self.assertEqual(migration['ExecutionRoleArn'], {'Fn::GetAtt': ['MigrationExecutionRole', 'Arn']})
-        api_secrets = {item['Name']: item['ValueFrom'] for item in api['ContainerDefinitions'][0]['Secrets']}
+        api_secrets = {item['Name']: item['ValueFrom'] for item in api['ContainerDefinitions'][0]['Secrets'] if 'Name' in item}
         migration_secrets = {item['Name']: item['ValueFrom'] for item in migration['ContainerDefinitions'][0]['Secrets']}
         for field, key in [('DB_USERNAME', 'username'), ('DB_PASSWORD', 'password')]:
             self.assertEqual(api_secrets[field], {'Fn::Sub': '${DatabaseRuntimeSecret}:' + key + '::'})
@@ -153,6 +154,53 @@ class AcademyFargateTests(SimpleTestCase):
         self.assertEqual(migration_role['PermissionsBoundary'], {'Ref': 'PermissionsBoundaryArn'})
         self.assertEqual(migration_role['RoleName'], {'Fn::Sub': '${ResourceName}-migrate-execution'})
         self.assertEqual(template['Outputs']['MigrationExecutionRoleArn']['Value'], migration['ExecutionRoleArn'])
+
+    def test_agent_and_live_model_approvals_are_independent_bounded_booleans(self):
+        value = configuration()
+        repository = value.allowed_repositories[0]
+        snap = snapshot(value)
+        snap.update(archetype='amplify-academy-fargate', secret_parameter='/nce-tests/apps/app/core-resource-client')
+        for agents, models in [(False, False), (True, False), (False, True), (True, True)]:
+            value.config['academy_fargate_apps'][repository].update(
+                allow_agent_teachers=agents, allow_live_models=models)
+            settings = cloud_aws.configuration(value)
+            mapped = {row['ParameterKey']: row.get('ParameterValue') for row in
+                runner.stack_parameters(settings, snap, manifest(value), '')}
+            self.assertEqual(mapped['AllowAgentTeachers'], str(agents).lower())
+            self.assertEqual(mapped['AllowLiveModels'], str(models).lower())
+        for invalid in [0, 1, 'true', None, [], {}]:
+            bad = copy.deepcopy(value)
+            bad.config['academy_fargate_apps'][repository]['allow_agent_teachers'] = invalid
+            with self.assertRaises(cloud_aws.AWSAdapterError):
+                cloud_aws.configuration(bad)
+
+    def test_workload_token_is_conditional_api_only_without_authority_expansion(self):
+        template = json.loads((runner.ROOT / 'academy-fargate.template.json').read_text())
+        parameter = template['Parameters']['AllowAgentTeachers']
+        self.assertEqual(parameter['Default'], 'false')
+        self.assertEqual(parameter['AllowedValues'], ['true', 'false'])
+        self.assertEqual(template['Conditions']['AgentTeachersEnabled'],
+            {'Fn::Equals': [{'Ref': 'AllowAgentTeachers'}, 'true']})
+        resources = template['Resources']
+        api = resources['TaskDefinition']['Properties']['ContainerDefinitions'][0]
+        migration = resources['MigrationTaskDefinition']['Properties']['ContainerDefinitions'][0]
+        conditional = [row for row in api['Secrets'] if 'Fn::If' in row]
+        self.assertEqual(conditional, [{'Fn::If': ['AgentTeachersEnabled',
+            {'Name': 'CORE_WORKLOAD_TOKEN', 'ValueFrom': {'Fn::Sub': '${RuntimeSecretArn}:core_workload_token::'}},
+            {'Ref': 'AWS::NoValue'}]}])
+        api_env = {row['Name']: row['Value'] for row in api['Environment']}
+        migration_env = {row['Name']: row['Value'] for row in migration['Environment']}
+        self.assertEqual(api_env['ALLOW_AGENT_TEACHERS'], {'Ref': 'AllowAgentTeachers'})
+        self.assertEqual(migration_env['ALLOW_AGENT_TEACHERS'], 'false')
+        self.assertNotIn('core_workload_token', json.dumps(migration))
+        self.assertNotIn('CORE_WORKLOAD_TOKEN', json.dumps(migration))
+        self.assertNotIn('CORE_WORKLOAD_TOKEN', json.dumps(api['Environment']))
+        for task in ['TaskDefinition', 'MigrationTaskDefinition']:
+            self.assertNotIn('TaskRoleArn', resources[task]['Properties'])
+        # Existing backend Basic introspection remains exactly the SSM reference.
+        expected = {'Fn::Sub': 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CoreCredentialsParameter}'}
+        self.assertEqual(next(row['ValueFrom'] for row in api['Secrets'] if row.get('Name') == 'CORE_RESOURCE_CREDENTIALS_JSON'), expected)
+        self.assertEqual(next(row['ValueFrom'] for row in migration['Secrets'] if row.get('Name') == 'CORE_RESOURCE_CREDENTIALS_JSON'), expected)
 
     def runtime(self, exit_code):
         value = configuration()
@@ -218,8 +266,12 @@ class AcademyRegistrationTests(TestCase):
         release.refresh_from_db()
         self.assertEqual(release.status, 'succeeded', release.error)
         app.refresh_from_db()
-        self.assertEqual({p['codename'] for p in app.installation.manifest['permissions']},
-                         {'academy-use', 'academy-teach', 'academy-audit'})
+        # Names and order are part of Core's installed identity contract too.
+        self.assertEqual(app.installation.manifest['permissions'], [
+            {'codename': 'academy-use', 'name': 'Use NCAcademy'},
+            {'codename': 'academy-school', 'name': 'Manage assigned schools and their resources'},
+            {'codename': 'academy-teach', 'name': 'Teach and manage assigned courses'},
+            {'codename': 'academy-audit', 'name': 'Review assigned student sessions'}])
         deployment = app.installation.deployments.get(target='external')
         self.assertEqual(deployment.application.redirect_uris, 'https://academy.example.test/api/auth/core/callback')
         self.assertEqual(deployment.resource_application.client_type, 'confidential')

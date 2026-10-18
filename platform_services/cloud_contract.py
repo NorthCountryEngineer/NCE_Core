@@ -85,10 +85,11 @@ def academy_fargate_applications(config, account, region, repositories, prefix=N
         raise ContractError('Academy resources must be a bounded repository map.')
     keys = {'image_repository', 'runtime_secret_arn', 'certificate_arn', 'api_host'}
     for values in apps.values():
-        if (not isinstance(values, dict) or set(values) - {'allow_live_models'} != keys
-                or not isinstance(values.get('allow_live_models', False), bool)):
+        if (not isinstance(values, dict) or set(values) - {'allow_live_models', 'allow_agent_teachers'} != keys
+                or any(type(values.get(flag, False)) is not bool
+                       for flag in ('allow_live_models', 'allow_agent_teachers'))):
             raise ContractError('Academy resources require one ECR repository and approved runtime references.')
-    normalized = {repository: {**{key: item for key, item in values.items() if key != 'allow_live_models'},
+    normalized = {repository: {**{key: item for key, item in values.items() if key not in {'allow_live_models', 'allow_agent_teachers'}},
                               'browser_image_repository': values['image_repository']}
                   for repository, values in apps.items()}
     fargate_applications({'fargate_apps': normalized}, account, region, repositories, prefix)

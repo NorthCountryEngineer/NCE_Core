@@ -164,6 +164,7 @@ def stack_parameters(platform, snapshot, manifest, code_key, existing=False, act
         if academy:
             values.pop('StorageName')
             values['AllowLiveModels'] = 'true' if approved.get('allow_live_models', False) else 'false'
+            values['AllowAgentTeachers'] = 'true' if approved.get('allow_agent_teachers', False) else 'false'
         if not academy:
             values.update(BrowserImageUri=manifest['backend']['browser_image'],
                           BrowserRepositoryName=approved['browser_image_repository'].split('/', 1)[1])
