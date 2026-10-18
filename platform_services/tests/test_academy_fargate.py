@@ -20,7 +20,7 @@ def configuration():
     value.config['fargate_cloudformation_role_arn'] = 'arn:aws:iam::123456789012:role/nce-fargate-cfn'
     value.config['academy_fargate_apps'] = {value.allowed_repositories[0]: {
         'image_repository': '123456789012.dkr.ecr.us-east-1.amazonaws.com/nce-tests-academy-api',
-        'runtime_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:nce-tests-academy-runtime-abcdef',
+        'runtime_secret_arn': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:nce-tests-academy-runtime-abcdef',  # pragma: allowlist secret -- synthetic resource ARN, never a credential
         'certificate_arn': 'arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012',
         'api_host': 'api.academy.example.test'}}
     return value
