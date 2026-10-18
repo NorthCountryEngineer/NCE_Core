@@ -184,7 +184,7 @@ class AcademyFargateTests(SimpleTestCase):
         resources = template['Resources']
         api = resources['TaskDefinition']['Properties']['ContainerDefinitions'][0]
         migration = resources['MigrationTaskDefinition']['Properties']['ContainerDefinitions'][0]
-        conditional = [row for row in api['Secrets'] if 'Fn::If' in row]
+        conditional = [row for row in api['Secrets'] if row.get('Fn::If', [None])[0] == 'AgentTeachersEnabled']
         self.assertEqual(conditional, [{'Fn::If': ['AgentTeachersEnabled',
             {'Name': 'CORE_WORKLOAD_TOKEN', 'ValueFrom': {'Fn::Sub': '${RuntimeSecretArn}:core_workload_token::'}},
             {'Ref': 'AWS::NoValue'}]}])

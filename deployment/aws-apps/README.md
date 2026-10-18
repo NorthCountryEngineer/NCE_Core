@@ -36,6 +36,12 @@ The fixed `amplify-fargate` recipe serves Proposal Studio. The separate
 see `docs/cloud-deployments.md` for its bounded contract. Both consume audited
 immutable ECR digests and perform explicit migration before traffic.
 
+Academy's optional operator-only `PiiSecretArn` stack binding injects a dedicated
+retained PII key into its API. The runner preserves that binding on subsequent
+releases. It is disabled by default, separate from the migration-readable runtime
+secret, and unavailable to source manifests, frontend or migration. See the
+family PII section in `docs/cloud-deployments.md` for installation and recovery.
+
 The privileged runner rejects extra manifest fields, path escapes, symbolic
 links in Lambda code, and infrastructure changes that remove or replace any
 resource. Infrastructure is the reviewed Core template, not a template supplied

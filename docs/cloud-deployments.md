@@ -639,6 +639,54 @@ An independent retained audit checkpoint destination remains required before
 admitting real student records; database append-only grants alone cannot protect
 against database administrators.
 
+### Optional Academy family PII key
+
+Local student and parent identities use a dedicated application-layer PII key.
+The trusted Academy template accepts the **operator-owned** `PiiSecretArn` stack
+parameter, empty by default. Its full Secrets Manager ARN identifies a separate
+retained secret in the stack's account and region. The secret's entire
+`SecretString` is the canonical padded URL-safe base64 encoding of 32 random
+bytes. No value, JSON selector or secret reference is accepted from the
+application manifest, frontend variables or platform application configuration.
+The PII secret must not be the shared `RuntimeSecretArn` or either database
+credential secret. The template explicitly rejects reuse of the shared runtime
+secret; the operator reviews the remaining independent secret bindings.
+
+With a nonempty binding, ECS injects `PII_ENCRYPTION_KEY` into the API only. Its
+execution role gains a separate exact-ARN `secretsmanager:GetSecretValue` policy
+constrained to the stack account and requested region. Migration, archive,
+frontend and application task roles receive no PII key or PII secret grant.
+This initial contract uses the account's AWS-managed Secrets Manager encryption
+key; a customer-managed key requires separate reviewed decrypt/key-policy work.
+No family secret is created, rotated, deleted or output by this application
+template. Back it up independently and retain it through database restores;
+blind replacement would make private data and username indexes unreadable.
+
+Create the retained dedicated secret before installing the binding through a
+reviewed CloudFormation change set. Preserve all other stack parameters,
+resources and stateful IDs. A first/legacy stack without the parameter defaults
+to disabled; existing stacks retain the operator's prior value with
+`UsePreviousValue` on both provision and release/activation. The runner validates
+the retained ARN's account, region and separation from the shared runtime secret
+before creating a change set. Provision continues to preserve the existing API
+image and desired count; release stops admission, migrates with the owner
+credential, then activates the matching image. The PII key is unnecessary for
+the additive schema migration and is never given to it.
+
+This extension changes the trusted recipe and runner only. After exact-source
+Core CI, pin their reviewed commit in the platform's Runner/SourceBuilder
+projects; the running Core backend image can remain on its verified release
+because no backend model, configuration validator, registration, snapshot or
+permission contract changes. A future runner must retain this stack binding.
+Verify API-only injection, exact scoped role permission, absence from migration
+and public artifacts, key backup/restore and synthetic account/login/reset before
+admitting real student records. Offline checks cover the template, parameter
+preservation, manifest rejection and migration boundary; they do not prove live
+secret configuration, retention or restore.
+
+References: [ECS Secrets Manager injection](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/secrets-envvar-secrets-manager.html),
+[IAM resource account and requested region conditions](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html).
+
 
 ### Optional Academy teacher agents
 

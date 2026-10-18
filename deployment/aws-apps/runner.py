@@ -129,7 +129,7 @@ def no_destructive_changes(changes):
             raise RunnerError("Deployment blocked: the infrastructure plan removes or replaces a resource.")
 
 
-def stack_parameters(platform, snapshot, manifest, code_key, existing=False, activate=False):
+def stack_parameters(platform, snapshot, manifest, code_key, existing=False, activate=False, previous_parameters=None):
     name, storage = stable_names(platform, snapshot)
     public = snapshot.get("public_config", {})
     values = {
@@ -165,6 +165,16 @@ def stack_parameters(platform, snapshot, manifest, code_key, existing=False, act
             values.pop('StorageName')
             values['AllowLiveModels'] = 'true' if approved.get('allow_live_models', False) else 'false'
             values['AllowAgentTeachers'] = 'true' if approved.get('allow_agent_teachers', False) else 'false'
+            # The PII key is an operator-owned, API-only stack binding. Source
+            # manifests and public/platform configuration cannot select it.
+            previous_pii = next((row.get('ParameterValue') for row in (previous_parameters or [])
+                                 if row.get('ParameterKey') == 'PiiSecretArn'), '') if existing else ''
+            if not isinstance(previous_pii, str) or (previous_pii and (
+                    not re.fullmatch(r'arn:aws:secretsmanager:' + re.escape(platform['region']) + ':'
+                                     + re.escape(platform['account_id']) + r':secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}', previous_pii)
+                    or previous_pii == approved['runtime_secret_arn'])):
+                raise RunnerError('Academy PII secret must be separate and in the approved account and region.')
+            values['PiiSecretArn'] = ''
         if not academy:
             values.update(BrowserImageUri=manifest['backend']['browser_image'],
                           BrowserRepositoryName=approved['browser_image_repository'].split('/', 1)[1])
@@ -179,7 +189,9 @@ def stack_parameters(platform, snapshot, manifest, code_key, existing=False, act
         identity_keys.update({'CoreBrowserClientId', 'CoreRedirectUri', 'CoreDeploymentId', 'DesiredCount', 'ApiImageUri', 'BrowserImageUri'})
     parameters = []
     for key, value in values.items():
-        preserve = existing and snapshot["action"] == "provision" and key in identity_keys
+        preserve_pii = key == 'PiiSecretArn' and existing and any(
+            row.get('ParameterKey') == key for row in (previous_parameters or []))
+        preserve = preserve_pii or (existing and snapshot["action"] == "provision" and key in identity_keys)
         parameters.append({"ParameterKey": key, **({"UsePreviousValue": True} if preserve else {"ParameterValue": value})})
     return parameters
 
@@ -248,7 +260,8 @@ class Runner:
         arguments = {
             "StackName": name, "ChangeSetName": change_set, "ChangeSetType": "UPDATE" if existing else "CREATE",
             "TemplateBody": template.read_text(),
-            "Parameters": stack_parameters(self.platform, self.snapshot, manifest, code_key, existing, activate),
+            "Parameters": stack_parameters(self.platform, self.snapshot, manifest, code_key, existing, activate,
+                                           previous.get('Parameters', []) if existing else None),
             "Capabilities": ["CAPABILITY_NAMED_IAM"], "RoleARN": self.config['fargate_cloudformation_role_arn'] if self.snapshot['archetype'] in ('amplify-fargate', 'amplify-academy-fargate') else self.config["cloudformation_role_arn"],
             "ClientToken": operation_token, "Tags": [{"Key": "nce:platform-prefix", "Value": self.platform["prefix"]},
                 {"Key": "nce:application", "Value": self.snapshot["app_identifier"]}],
