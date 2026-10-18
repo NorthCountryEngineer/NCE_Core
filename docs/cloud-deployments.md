@@ -463,7 +463,7 @@ aws ecs wait services-stable --cluster "$CORE_CLUSTER" --services "$CORE_SERVICE
   --profile axolotl-deploy --region us-east-1
 ```
 
-Open <https://main.dpn5tiolbymzn.amplifyapp.com/accounts/login/>. Sign in with
+Open <https://core.nnytech.ai/accounts/login/>. Sign in with
 your existing account and confirm the deployment console opens before proceeding.
 If you need to restore the old image, run the same `update-stack` command using
 `core-cloud-recovery.json`, then its waiter. The recovery disables live deployment
@@ -474,7 +474,7 @@ users. Service stability alone does not prove the public page is healthy.
 
 Sign into your deployed Core administrator account. Open:
 
-`https://main.dpn5tiolbymzn.amplifyapp.com/organizations/family/platform/cloud/platforms/`
+`https://core.nnytech.ai/organizations/family/platform/cloud/platforms/`
 
 Choose **Add platform** and enter:
 

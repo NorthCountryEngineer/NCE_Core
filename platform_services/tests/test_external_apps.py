@@ -137,6 +137,26 @@ class ExternalApplicationTests(TestCase):
             resource.save(update_fields=[field])
             self.assertTrue(self.introspect(tokens['access_token']).json()['active'])
 
+    def test_remembered_approval_rechecks_external_environment_without_granting_access(self):
+        self.exchange()
+        verifier = secrets.token_urlsafe(48)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
+        params = {'client_id': self.browser.client_id, 'redirect_uri': self.browser.redirect_uris,
+            'response_type': 'code', 'scope': 'openid authorization', 'state': 'new-opaque-state',
+            'code_challenge': challenge, 'code_challenge_method': 'S256'}
+        self.assertEqual(self.client.get('/oauth/authorize/', params).status_code, 302)
+        self.membership.access_tags.clear()
+        self.assertEqual(self.client.get('/oauth/authorize/', params).status_code, 403)
+        self.assertEqual(self.membership.access_tags.count(), 0)
+        self.membership.access_tags.add(self.environment.boundary_tag)
+        self.assertEqual(self.client.get('/oauth/authorize/', params).status_code, 302)
+        self.environment.active = False
+        self.environment.save(update_fields=['active'])
+        self.assertIn(self.client.get('/oauth/authorize/', params).status_code, [400, 403])
+        self.environment.active = True
+        self.environment.save(update_fields=['active'])
+        self.assertEqual(self.client.get('/oauth/authorize/', params).status_code, 302)
+
     def test_external_client_pair_cannot_introspect_another_environment(self):
         tokens = self.exchange()
         sandbox = create_environment(self.organization, name='sandbox', namespace='external-sandbox',

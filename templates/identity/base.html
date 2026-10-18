@@ -16,7 +16,7 @@
   <form slot="account" class="header-account-form" method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Sign out</button></form>
 </core-header>
 <script src="{% url 'header_component' %}" defer></script>
-<noscript><p><a href="{% url 'home' %}">Organizations</a> · <a href="{% url 'password_change' %}">Password</a> · <a href="{% url 'chat' header_organization.slug %}">Chat</a></p></noscript>
+<noscript><p><a href="{% url 'home' %}">Organizations</a> · <a href="{% url 'profile' %}">Profile</a> · <a href="{% url 'password_change' %}">Password</a> · <a href="{% url 'chat' header_organization.slug %}">Chat</a></p></noscript>
 </div>
 {% else %}
 <header class="platform-banner">
@@ -26,6 +26,7 @@
   {% if user.is_authenticated %}
     {% if user.is_developer %}<span class="status-label">Developer</span>{% endif %}
     <a href="{% url 'home' %}">Organizations</a>
+    <a href="{% url 'profile' %}">Profile</a>
     <a href="{% url 'password_change' %}">Password</a>
     <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Sign out</button></form>
   {% endif %}

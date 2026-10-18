@@ -1,0 +1,38 @@
+{% extends "identity/base.html" %}
+{% block extra_head %}
+<style>
+  .profile-layout { max-width: 760px; }
+  .profile-avatar { width: 88px; height: 88px; object-fit: cover; border: 1px solid var(--core-line); border-radius: var(--core-radius); margin-bottom: 16px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="profile-layout">
+<div class="page-heading"><div><h1>Your profile</h1><p>Manage the name and avatar shared with applications you authorize.</p></div></div>
+<section aria-labelledby="profile-details-heading">
+  <h2 id="profile-details-heading">Profile details</h2>
+  {% if saved_avatar_url %}<img class="profile-avatar" src="{{ saved_avatar_url }}" alt="Your current avatar" width="88" height="88" referrerpolicy="no-referrer">{% endif %}
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Save profile</button>
+  </form>
+</section>
+<section aria-labelledby="account-details-heading">
+  <h2 id="account-details-heading">Account identity</h2>
+  <p><label for="account-email">Sign-in email</label><input id="account-email" type="email" value="{{ user.email }}" readonly aria-describedby="account-email-help"><span id="account-email-help" class="helptext">Email changes require an account identity verification process. Contact your Core administrator for help.</span></p>
+  <dl><dt>Account ID</dt><dd><code>{{ user.pk }}</code></dd></dl>
+  <p><a href="{% url 'password_change' %}">Change your password</a></p>
+</section>
+<section aria-labelledby="application-approvals-heading">
+  <h2 id="application-approvals-heading">Approved applications</h2>
+  <p>Revoke an application's approval to end its current Core token access and require your approval the next time it signs you in.</p>
+  <ul class="record-list">
+    {% for consent in application_consents %}
+    <li><strong>{{ consent.application.name }}</strong><p>{{ consent.application.service.organization.name }} · {{ consent.application.service.name }}</p>
+      <p class="muted">Approved {{ consent.granted_at }} · Scopes: <code>{{ consent.scope }}</code></p>
+      <form method="post" action="{% url 'revoke_application_consent' consent.pk %}">{% csrf_token %}<button type="submit" aria-label="Revoke approval for {{ consent.application.name }}">Revoke approval</button></form>
+    </li>
+    {% empty %}<li>You have no remembered application approvals.</li>{% endfor %}
+  </ul>
+</section>
+</div>
+{% endblock %}

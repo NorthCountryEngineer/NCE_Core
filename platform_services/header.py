@@ -82,6 +82,7 @@ def state(principal, organization, source=None):
     visible = {r['id'] for r in rows}
     result['pins'] = [str(pk) for pk in membership.application_pins.values_list('deployment_id', flat=True) if str(pk) in visible]
     result['tools'] = [{'name': 'Organizations', 'url': settings.ISSUER + reverse('home')},
+        {'name': 'Profile', 'url': settings.ISSUER + reverse('profile')},
         {'name': 'Password', 'url': settings.ISSUER + reverse('password_change')}]
     from .documentation import require_documentation_capabilities
     try:

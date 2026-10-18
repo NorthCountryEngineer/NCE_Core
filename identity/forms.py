@@ -1,6 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from .models import Application, Invitation, Membership, Organization, Role, Service, ServicePermission, User
+from .validators import validate_avatar_url
 
 
 class CoreAuthenticationForm(AuthenticationForm):
@@ -8,6 +9,27 @@ class CoreAuthenticationForm(AuthenticationForm):
         super().__init__(*args, **kwargs)
         # Let keyboard users reach the skip link before entering credentials.
         self.fields['username'].widget.attrs.pop('autofocus', None)
+
+
+class ProfileForm(forms.ModelForm):
+    def clean_avatar_url(self):
+        # URLField may normalize a missing scheme or strip URL control characters.
+        # Validate what was submitted before accepting that normalization.
+        validate_avatar_url(self.data.get(self.add_prefix("avatar_url"), "").strip())
+        return self.cleaned_data["avatar_url"]
+
+    class Meta:
+        model = User
+        fields = ["first_name", "last_name", "avatar_url"]
+        labels = {"avatar_url": "Avatar image URL"}
+        help_texts = {
+            "avatar_url": "Optional public HTTPS image URL. Your browser loads it from that host. Leave blank to remove your avatar.",
+        }
+        widgets = {
+            "first_name": forms.TextInput(attrs={"autocomplete": "given-name"}),
+            "last_name": forms.TextInput(attrs={"autocomplete": "family-name"}),
+            "avatar_url": forms.URLInput(attrs={"autocomplete": "off", "placeholder": "https://example.com/avatar.png"}),
+        }
 
 
 class BrandingForm(forms.ModelForm):

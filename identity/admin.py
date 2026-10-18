@@ -27,7 +27,7 @@ class PlatformUserAdmin(PlatformOnly, UserAdmin):
     search_fields = ["email"]
     fieldsets = [
         (None, {"fields": ["email", "password"]}),
-        ("Profile", {"fields": ["first_name", "last_name"]}),
+        ("Profile", {"fields": ["first_name", "last_name", "avatar_url"]}),
         ("Platform access", {"fields": ["is_active", "is_developer", "is_staff", "is_superuser"]}),
     ]
     add_fieldsets = [(None, {"fields": ["email", "password1", "password2"]})]

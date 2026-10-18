@@ -1,8 +1,8 @@
 from oauth2_provider.oauth2_validators import OAuth2Validator
-from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error
+from oauthlib.oauth2.rfc6749.errors import CustomOAuth2Error, InvalidGrantError
 from .policy import authorization_for, membership_for
 from .access import Principal, binding_for, decision, record_decision
-from .models import AuthenticationEvidence, AuditEvent, OAuthEvidence
+from .models import ApplicationConsent, AuthenticationEvidence, AuditEvent, OAuthEvidence
 import hashlib
 
 
@@ -18,6 +18,28 @@ class OrganizationValidator(OAuth2Validator):
     def validate_scopes(self, client_id, scopes, client, request, *args, **kwargs):
         return "openid" in scopes and super().validate_scopes(client_id, scopes, client, request, *args, **kwargs)
 
+    def validate_silent_login(self, request):
+        evidence = AuthenticationEvidence.objects.select_related("user").filter(
+            pk=request.headers.get("core_authentication_evidence") or None).first()
+        if not evidence:
+            return False
+        request.user = evidence.user
+        request.authentication_evidence = evidence
+        request.authentication_purpose = request.headers.get("core_purpose_code", "")
+        return bool(membership_for(request.user, request.client.service) and self.client_access(request, request.client))
+
+    def validate_silent_authorization(self, request):
+        from .consent import canonical_scope, registration_fingerprint
+        import json
+        claims = request.claims
+        if isinstance(claims, str):
+            claims = json.loads(claims)
+        return bool(getattr(request, "approval_prompt", None) != "force" and ApplicationConsent.objects.filter(
+            user=request.user, application=request.client, revoked_at__isnull=True,
+            scope=canonical_scope(request.scopes),
+            registration_fingerprint=registration_fingerprint(request.client, request.redirect_uri, claims),
+        ).exists())
+
     def _check_and_set_request_resource(self, request):
         if getattr(request, "resource", None):
             raise CustomOAuth2Error(error="invalid_target", description="The token audience is fixed by the registered service.", request=request)
@@ -32,6 +54,13 @@ class OrganizationValidator(OAuth2Validator):
     def client_access(self, request, client):
         principal = Principal(user=request.user, evidence=request.authentication_evidence, purpose=request.authentication_purpose,
                               request_id=request.headers.get("core_request_id") or None, application=client)
+        # Missing rows preserve existing credentials. A revoked approval is a
+        # live denial, including tokens minted by an already in-flight refresh.
+        consent = ApplicationConsent.objects.filter(user=request.user, application=client).first()
+        request.core_consent_granted_at = consent.granted_at if consent else None
+        if consent and consent.revoked_at:
+            record_decision(principal, client, "oauth.client_access", False, "consent_revoked", [])
+            return False
         allowed, reason, tags = decision(principal, client)
         if tags or not allowed:
             record_decision(principal, client, "oauth.client_access", allowed, reason, tags)
@@ -64,6 +93,11 @@ class OrganizationValidator(OAuth2Validator):
                                          purpose_code=request.headers.get("core_purpose_code", ""))
 
     def _save_bearer_token(self, token, request, *args, **kwargs):
+        # DOT calls this inside its token-write transaction. Order this lock
+        # before token/family locks, just as the user revoke endpoint does.
+        consent = ApplicationConsent.objects.select_for_update().filter(user=request.user, application=request.client).first()
+        if consent and (consent.revoked_at or consent.granted_at != getattr(request, "core_consent_granted_at", None)):
+            raise InvalidGrantError(request=request)
         super()._save_bearer_token(token, request, *args, **kwargs)
         evidence = getattr(request, "authentication_evidence", None)
         if evidence:
@@ -81,10 +115,14 @@ class OrganizationValidator(OAuth2Validator):
         claims = {
             "email": request.user.email,
             "name": request.user.get_full_name(),
+            "given_name": request.user.first_name,
+            "family_name": request.user.last_name,
             "organization_id": str(service.organization_id),
             "service_id": str(service.pk),
             "identity_name": service.organization.brand,
         }
+        if request.user.avatar_url:
+            claims["picture"] = request.user.avatar_url
         deployment = getattr(request.client, 'deployment', None)
         if deployment and deployment.environment_id:
             claims.update({'environment': deployment.environment.name, 'deployment_id': str(deployment.pk)})
@@ -99,4 +137,4 @@ class OrganizationValidator(OAuth2Validator):
         return claims
 
     def get_discovery_claims(self, request):
-        return ["sub", "name", "email", "organization_id", "service_id", "identity_name", "roles", "permissions", "amr", "acr", "auth_time", 'environment', 'deployment_id']
+        return ["sub", "name", "given_name", "family_name", "picture", "email", "organization_id", "service_id", "identity_name", "roles", "permissions", "amr", "acr", "auth_time", 'environment', 'deployment_id']

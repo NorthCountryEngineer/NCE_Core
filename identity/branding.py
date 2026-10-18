@@ -15,7 +15,7 @@ def context(request):
         if organization and memberships.filter(organization=organization).exists():
             request.session['header_organization'] = str(organization.pk)
             header_organization = organization
-        elif getattr(request, 'resolver_match', None) and request.resolver_match.url_name in {'home', 'password_change'}:
+        elif getattr(request, 'resolver_match', None) and request.resolver_match.url_name in {'home', 'password_change', 'profile'}:
             selected = memberships.filter(organization_id=request.session.get('header_organization')).select_related('organization').first() if request.session.get('header_organization') else None
             if selected is None and memberships.count() == 1:
                 selected = memberships.select_related('organization').first()

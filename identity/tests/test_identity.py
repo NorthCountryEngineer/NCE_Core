@@ -146,11 +146,8 @@ class IdentityTests(TestCase):
 
     def test_missing_pkce_rejected(self):
         response, _, _ = self.start_flow(code_challenge="", code_challenge_method="")
-        self.assertIn(response.status_code, [200, 302])
-        if response.status_code == 302:
-            self.assertIn("error=", response["Location"])
-        else:
-            self.assertContains(response, "code_challenge")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_request")
 
     def test_plain_pkce_rejected(self):
         response, _, _ = self.start_flow(code_challenge_method="plain")

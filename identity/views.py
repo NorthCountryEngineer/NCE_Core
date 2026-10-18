@@ -18,16 +18,17 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 from oauth2_provider.models import get_access_token_model
-from oauth2_provider.views import AuthorizationView, ConnectDiscoveryInfoView
+from oauth2_provider.views import ConnectDiscoveryInfoView
 
 from .forms import (
     AcceptInvitationForm, ApplicationForm, BrandingForm, InvitationForm, MembershipForm,
-    PermissionForm, RoleForm, ServiceForm,
+    PermissionForm, ProfileForm, RoleForm, ServiceForm,
 )
 from .client_credentials import resource_client_secrets
-from .models import Application, AuditEvent, Invitation, Membership, Organization, Role, Service, ServicePermission, User
+from .consent import RememberedConsentAuthorizationView
+from .models import Application, ApplicationConsent, AuditEvent, Invitation, Membership, Organization, Role, Service, ServicePermission, User
 from .policy import authorization_for, membership_for
 from .policy_evaluation import policy_evaluation
 
@@ -73,6 +74,28 @@ def home(request):
         organization.can_administer = request.user.is_superuser or organization.pk in admin_ids
         organization.access_purpose = request.session.get("access_purposes", {}).get(str(organization.pk), "")
     return render(request, "identity/home.html", {"organizations": organizations})
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET", "POST"])
+def profile(request):
+    # Keep a failed form's unvalidated URL out of the image preview. ModelForm
+    # constructs its instance before all validation errors have been resolved.
+    saved_avatar_url = request.user.avatar_url
+    form = ProfileForm(request.POST if request.method == "POST" else None, instance=request.user)
+    if request.method == "POST" and form.is_valid():
+        user = form.save(commit=False)
+        # Persist only owner-editable metadata; a stale request cannot overwrite
+        # a concurrent operator change to email, password, status, or privileges.
+        user.save(update_fields=ProfileForm._meta.fields)
+        messages.success(request, "Your profile has been saved.")
+        return redirect("profile")
+    return render(request, "identity/profile.html", {
+        "form": form, "title": "Your profile", "saved_avatar_url": saved_avatar_url,
+        "application_consents": request.user.application_consents.filter(revoked_at__isnull=True).select_related(
+            "application__service__organization").order_by("application__name"),
+    })
 
 
 @organization_admin
@@ -298,7 +321,7 @@ def rotate_client_secret(request, organization, service_pk, pk):
     })
 
 
-class TenantAuthorizationView(AuthorizationView):
+class TenantAuthorizationView(RememberedConsentAuthorizationView):
     def dispatch(self, request, *args, **kwargs):
         client_id = request.POST.get("client_id") if request.method == "POST" else request.GET.get("client_id")
         application = Application.objects.select_related("service__organization").filter(client_id=client_id).first()
@@ -382,8 +405,11 @@ def token_claims(raw, resource_client, purpose="", request_id=None):
             return None
     if (token_deployment.environment_id if token_deployment else None) != (client_deployment.environment_id if client_deployment else None):
         return None
-    from .access import Principal, require_access, evidence_for
+    from .access import Principal, require_access, evidence_for, record_decision
     principal = Principal(user=token.user, evidence=evidence_for(raw), purpose=purpose, request_id=request_id, application=token.application)
+    if ApplicationConsent.objects.filter(user=token.user, application=token.application, revoked_at__isnull=False).exists():
+        record_decision(principal, token.application, "oauth.introspection", False, "consent_revoked", [])
+        return None
     try:
         require_access(principal, token.application, "oauth.introspection")
     except PermissionDenied:

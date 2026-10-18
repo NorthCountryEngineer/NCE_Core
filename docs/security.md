@@ -105,6 +105,17 @@ live authorization: an already-issued signed ID token cannot be recalled from
 an application that only validates it offline. Tokens issued before evidence
 binding was introduced require a new sign-in to refresh.
 
+Application consent is recorded independently of token and session lifetimes.
+Explicit approval is reused only for the same user, registered client, exact
+scope set, callback, requested claims, and registration/placement fingerprint.
+The authorization endpoint still evaluates current membership, authentication
+assurance, tags, and environment policy before reusing approval; consent never
+grants service roles or access tags. A user can revoke an approval from their
+profile. This removes the app's outstanding codes and token records for that user,
+and live token/code/refresh validation also denies the revoked approval to cover
+in-flight issuance. Missing consent rows preserve existing token validation,
+but cannot silently approve a new authorization. See [app authentication](app-authentication.md).
+
 Upstream account disablement is not polled on each resource request. Disable the
 Core membership/link/provider for immediate Core revocation and use suitable
 session lifetimes. Direct upstream back-channel logout and SCIM provisioning are

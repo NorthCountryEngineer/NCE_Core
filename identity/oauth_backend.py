@@ -3,6 +3,13 @@ from .access import request_principal, session_evidence
 
 
 class EvidenceOAuthLibCore(OAuthLibCore):
+    def create_token_response(self, request):
+        uri, headers, body, status = super().create_token_response(request)
+        # oauthlib errors raised during token persistence use the exception's
+        # protocol headers; keep those errors JSON just like validation errors.
+        headers.setdefault("Content-Type", "application/json")
+        return uri, headers, body, status
+
     def extract_headers(self, request):
         headers = super().extract_headers(request)
         # Always replace this internal attribute; a caller's headers cannot supply assurance.

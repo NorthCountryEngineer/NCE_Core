@@ -6,6 +6,7 @@
 {% else %}<h1>{% if app_auth %}Continue to {{ app_auth.name }}?{% else %}Authorize {{ application.name }}?{% endif %}</h1>
 <p>{% if app_auth %}Use your shared account to sign in to {{ app_auth.name }}. Your assigned app permissions still apply.{% else %}You are signing in to an application for {{ application.service.organization.name }} through {{ product_name }}.{% endif %}</p>
 <ul>{% for scope in scopes_descriptions %}<li>{{ scope }}</li>{% endfor %}</ul>
+<p>Your approval is remembered for this app and requested access. You can revoke it in <a href="{% url 'profile' %}">your profile</a>.</p>
 <form method="post">{% csrf_token %}{% for field in form %}{% if field.is_hidden %}{{ field }}{% endif %}{% endfor %}
 {{ form.errors }}{{ form.non_field_errors }}
 <button type="submit" name="allow" value="true">Authorize</button> <button type="submit">Cancel</button>

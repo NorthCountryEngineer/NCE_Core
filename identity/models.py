@@ -10,6 +10,8 @@ from django.db import models
 from django.utils import timezone
 from oauth2_provider.models import AbstractApplication
 
+from .validators import validate_avatar_url
+
 
 class TaggedResource(models.Model):
     permission_tags = models.ManyToManyField("identity.PermissionTag", blank=True,
@@ -43,6 +45,8 @@ class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     username = None
     email = models.EmailField(unique=True)
+    avatar_url = models.URLField(max_length=2048, blank=True, default="", db_default="", validators=[validate_avatar_url],
+        help_text="Optional public HTTPS image URL. Core stores the URL without downloading the image.")
     is_developer = models.BooleanField(default=False, help_text="Operator-approved access to organization onboarding")
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []
@@ -178,6 +182,19 @@ class Application(AbstractApplication, TaggedResource):
                     self.redirect_uris != deployment.endpoint + callback or
                     self.allowed_origins != (deployment.endpoint if browser else '')):
                 raise ValidationError('An external application’s service, client type, callback, and origin are fixed by its registered deployment.')
+
+
+class ApplicationConsent(models.Model):
+    """An explicit approval, separate from authentication and live access grants."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="application_consents")
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="user_consents")
+    scope = models.CharField(max_length=1000)
+    registration_fingerprint = models.CharField(max_length=64)
+    granted_at = models.DateTimeField(default=timezone.now)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "application"], name="unique_user_application_consent")]
 
 
 class Invitation(TaggedResource):

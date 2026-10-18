@@ -1,4 +1,5 @@
 from datetime import timedelta
+from importlib import import_module
 import copy
 import json
 import secrets
@@ -342,6 +343,37 @@ class DocumentationTests(TestCase):
         page.refresh_from_db()
         self.assertEqual(page.markdown, 'Local onboarding steps')
         self.assertEqual(page.revision, 2)
+
+    def test_profile_guide_migration_is_repeatable_and_preserves_edits_and_source_pins(self):
+        page = self.core.documentation_pages.get(slug='user-profile')
+        pinned_source = page.source
+        page.mode, page.markdown = 'extend', 'Organization-reviewed profile instructions'
+        save_page(page, self.principal, page.revision)
+        replacement = DocumentationSource(package=pinned_source.package, version=pinned_source.version,
+            slug=pinned_source.slug, title=pinned_source.title, summary=pinned_source.summary,
+            category=pinned_source.category, audience=pinned_source.audience,
+            markdown=pinned_source.markdown + '\n\nReviewed publisher revision.', revision=pinned_source.revision + 1)
+        replacement.full_clean()
+        replacement.save()
+        missing = self.other.documentation_pages.get(installation__package__slug='core-platform', slug='user-profile')
+        installation = missing.installation
+        missing.revisions.all().delete()
+        missing.delete()
+        counts = (DocumentationSource.objects.count(), DocumentationPage.objects.count())
+        seed = import_module('platform_services.migrations.0040_user_profile_documentation').seed
+        seed(apps, None)
+        seed(apps, None)
+        self.assertEqual(DocumentationSource.objects.count(), counts[0])
+        self.assertEqual(DocumentationPage.objects.count(), counts[1] + 1)
+        page.refresh_from_db()
+        self.assertEqual(page.source_id, pinned_source.pk)
+        self.assertEqual(page.mode, 'extend')
+        self.assertEqual(page.markdown, 'Organization-reviewed profile instructions')
+        self.assertEqual(page.revision, 2)
+        inherited = installation.documentation_pages.get(slug='user-profile')
+        self.assertEqual(inherited.source_id, replacement.pk)
+        self.assertEqual(inherited.revisions.count(), 1)
+        self.assertEqual(inherited.source.digest, source_digest(replacement))
 
     def test_search_pagination_bounds_and_live_export_metadata(self):
         result = self.api(query={'limit': '1'})
