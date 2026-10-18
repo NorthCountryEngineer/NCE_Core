@@ -76,3 +76,29 @@ def fargate_backend(backend, approved=None):
         if approved and image.rsplit('@', 1)[0] != approved[repository_key]:
             raise ContractError('Fargate image is outside the approved application repository.')
     return backend
+
+
+def academy_fargate_applications(config, account, region, repositories, prefix=None):
+    """Academy has one API image and no browser execution authority."""
+    apps = config.get('academy_fargate_apps', {})
+    if not isinstance(apps, dict) or len(apps) > 20:
+        raise ContractError('Academy resources must be a bounded repository map.')
+    keys = {'image_repository', 'runtime_secret_arn', 'certificate_arn', 'api_host'}
+    for values in apps.values():
+        if (not isinstance(values, dict) or set(values) - {'allow_live_models'} != keys
+                or not isinstance(values.get('allow_live_models', False), bool)):
+            raise ContractError('Academy resources require one ECR repository and approved runtime references.')
+    normalized = {repository: {**{key: item for key, item in values.items() if key != 'allow_live_models'},
+                              'browser_image_repository': values['image_repository']}
+                  for repository, values in apps.items()}
+    fargate_applications({'fargate_apps': normalized}, account, region, repositories, prefix)
+    return apps
+
+
+def academy_fargate_backend(backend, approved=None):
+    if not isinstance(backend, dict) or set(backend) != {'image'}:
+        raise ContractError('Academy backend requires one immutable API image only.')
+    normalized = {'image': backend['image'], 'browser_image': backend['image']}
+    approval = ({**approved, 'browser_image_repository': approved['image_repository']} if approved else None)
+    fargate_backend(normalized, approval)
+    return backend

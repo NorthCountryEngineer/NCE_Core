@@ -31,8 +31,10 @@ Python dependencies must already be vendored inside the source directory; native
 binaries and arbitrary build/deploy commands are not supported by this recipe.
 The starter normalizes the documented HTTP API Lambda proxy event formats 1.0
 and 2.0; custom handlers must support the QuickCreate integration's event shape.
-There is no Fargate recipe yet. A future recipe needs an isolated image builder
-and an explicit migration-before-traffic procedure before it can be enabled.
+The fixed `amplify-fargate` recipe serves Proposal Studio. The separate
+`amplify-academy-fargate` recipe serves NCAcademy with one API and PostgreSQL;
+see `docs/cloud-deployments.md` for its bounded contract. Both consume audited
+immutable ECR digests and perform explicit migration before traffic.
 
 The privileged runner rejects extra manifest fields, path escapes, symbolic
 links in Lambda code, and infrastructure changes that remove or replace any

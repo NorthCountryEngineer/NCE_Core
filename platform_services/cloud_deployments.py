@@ -163,7 +163,7 @@ def prepare_release(app, principal):
         purpose=principal.purpose, snapshot=snapshot, digest=digest(snapshot), steps=[
             {'label': 'Create or update AWS hosting', 'status': 'pending', 'description':
                 'Manual Amplify app and branch.' + (' Python Lambda, HTTP API, two on-demand DynamoDB tables, and a private media bucket.' if app.archetype == 'amplify-serverless' else
-                ' Fargate API, database-backed worker, isolated browser service, private PostgreSQL and document storage; use approved immutable images and stop services for controlled migration.' if app.archetype == 'amplify-fargate' else '')},
+                ' Academy API and private PostgreSQL; use an approved immutable image and stop services for controlled migration.' if app.archetype == 'amplify-academy-fargate' else (' Fargate API, database-backed worker, isolated browser service, private PostgreSQL and document storage; use approved immutable images and stop services for controlled migration.' if app.archetype == 'amplify-fargate' else ''))},
             {'label': 'Register the application with Core', 'status': 'pending', 'description': 'Central user identity, app-branded sign-in, and explicit app roles. API credentials go to SSM SecureString.'},
             {'label': 'Build the reviewed commit', 'status': 'pending', 'description': 'Run the frontend build in a separate project with no deployment permissions.'},
             {'label': 'Publish and confirm hosting', 'status': 'pending', 'description': 'Deploy the compiled ZIP and wait for Amplify publication. Retain application data.'}])
@@ -229,7 +229,7 @@ def _register(release, outputs):
     app = CloudApplication.objects.select_for_update().get(pk=release.application_id)
     identity = {'callback_path': '/oauth/callback', 'permissions': [
         {'codename': 'app-read', 'name': 'Read application'}, {'codename': 'app-write', 'name': 'Write application'}]}
-    if app.archetype == 'amplify-fargate':
+    if app.archetype in ('amplify-fargate', 'amplify-academy-fargate'):
         from .cloud_contract import ContractError, identity_contract
         try:
             identity = identity_contract(json.loads(outputs.get('identity', 'null')))
@@ -245,7 +245,7 @@ def _register(release, outputs):
         service = app.installation.service
         service.auth_name = app.name
         service.save(update_fields=['auth_name'])
-    elif app.archetype == 'amplify-fargate' and any(app.installation.manifest.get(key) != value for key, value in identity.items()):
+    elif app.archetype in ('amplify-fargate', 'amplify-academy-fargate') and any(app.installation.manifest.get(key) != value for key, value in identity.items()):
         raise ValidationError('The reviewed identity contract differs from the installed application. Review an explicit package upgrade first.')
     origin = app.public_origin or outputs.get('origin')
     if not origin:
@@ -255,7 +255,7 @@ def _register(release, outputs):
     variables = {'VITE_CORE_ISSUER': public['issuer'], 'VITE_CORE_ORGANIZATION_ID': public['organization_id'],
         'VITE_CORE_SERVICE_ID': public['service_id'], 'VITE_CORE_BROWSER_CLIENT_ID': public['browser_client_id'],
         'VITE_APPLICATION_ORIGIN': origin, 'VITE_API_URL': outputs.get('api_url', '')}
-    if app.archetype == 'amplify-fargate':
+    if app.archetype in ('amplify-fargate', 'amplify-academy-fargate'):
         variables.update(VITE_CORE_REDIRECT_URI=public['redirect_uri'], VITE_CORE_DEPLOYMENT_ID=public['deployment_id'])
     return variables, external_resource_credentials(deployment), deployment
 
@@ -294,12 +294,17 @@ def process_one():
             # Simulation never imports the provider SDK, executes repository code, or creates cloud resources.
             if phase == 'provision':
                 outputs.update(origin=f'https://{release.application.slug}.example.test', api_url='', commit=working['commit'])
-                if working['archetype'] == 'amplify-fargate':
+                if working['archetype'] in ('amplify-fargate', 'amplify-academy-fargate'):
                     # Simulation never downloads application source or images.
                     outputs['identity'] = json.dumps({'callback_path': '/api/auth/core/callback', 'permissions': [
                         {'codename': 'app-read', 'name': 'Read application'},
                         {'codename': 'app-write', 'name': 'Write application'},
                         {'codename': 'app-admin', 'name': 'Administer application'}]})
+                    if working['archetype'] == 'amplify-academy-fargate':
+                        outputs['identity'] = json.dumps({'callback_path': '/api/auth/core/callback', 'permissions': [
+                            {'codename': 'academy-use', 'name': 'Use NCAcademy'},
+                            {'codename': 'academy-teach', 'name': 'Teach and manage assigned courses'},
+                            {'codename': 'academy-audit', 'name': 'Review assigned student sessions'}]})
                 variables, _, _ = _register(release, outputs)
                 state = {'phase': 'release', 'public_config': variables}
                 release.steps[0]['status'] = release.steps[1]['status'] = 'succeeded'
@@ -333,7 +338,7 @@ def process_one():
                 if result['status'] == 'succeeded':
                     if phase == 'provision':
                         variables, credentials, _ = _register(release, outputs)
-                        if working['archetype'] in {'amplify-serverless', 'amplify-fargate'}:
+                        if working['archetype'] in {'amplify-serverless', 'amplify-fargate', 'amplify-academy-fargate'}:
                             if not CloudRelease.objects.filter(pk=release.pk, lease_owner=owner, status='running', lease_until__gt=timezone.now()).exists():
                                 return True
                             store_credentials(platform, working['secret_parameter'], credentials)

@@ -585,3 +585,56 @@ Other deployment providers can use the same settings and reviewed release
 lifecycle after their adapter and security onboarding are implemented. This
 version offers only AWS static and serverless recipes, not an arbitrary hosting
 or container deployment claim.
+
+
+## Academy container recipe
+
+The `amplify-academy-fargate` recipe is a separate fixed trusted recipe for
+NCAcademy. It uses the reviewed container network, HTTPS edge and retained private
+PostgreSQL structure with one API and a migration task. It provisions no browser,
+worker, object bucket or application task role. Application source cannot select
+commands, ports, roles, templates or secret values. Its root manifest declares
+`backend.image` as an immutable approved private ECR digest, frontend directory
+and output, and the `/api/auth/core/callback` identity contract.
+
+Operator-owned platform `academy_fargate_apps` maps each approved repository to
+`image_repository`, `runtime_secret_arn`, `certificate_arn` and `api_host`.
+Optional boolean `allow_live_models` defaults to false and controls the runtime
+provider gate. Application manifests cannot enable live model processing. The
+existing Fargate CloudFormation role/permission boundary is reused by this recipe;
+separate application and migration execution roles can pull only the approved API
+repository, inject their assigned deployment secrets and Core parameter, and write
+application logs. Their names remain inside the existing pass-role and secret
+namespaces; no platform policy expansion is required.
+
+The retained `DatabaseSecret` owns PostgreSQL and is injected only into the
+one-shot migration. The separate retained `DatabaseRuntimeSecret` holds the
+`academy_runtime` login injected into the API. Migration receives that target
+login as `ACADEMY_RUNTIME_DB_USERNAME` and `ACADEMY_RUNTIME_DB_PASSWORD`, creates
+or rotates it after schema preparation, and grants only the application's table
+operations. API access to audit events is SELECT/INSERT only; schema ownership
+and audit UPDATE/DELETE remain unavailable. The API execution role cannot read
+the database owner secret. The migration task definition selects its dedicated
+execution role; neither task receives an application AWS task role.
+
+The ARM64 API command is `python -m academy.runtime api`, migration is
+`python -m academy.migrate`, and readiness is `/api/ready` on port 8000. Core first
+provisions zero desired tasks, registers the public PKCE client and confidential
+resource client, injects secrets, drains the API, runs migration and only starts
+the API after exit code zero. A failed migration leaves the API stopped. Runtime
+root filesystems are read-only with nonroot UID 10001 and temporary scratch
+volumes. Database connections require verify-full TLS and the RDS trust bundle.
+
+Application permissions are `academy-use`, `academy-teach` and `academy-audit`;
+Core's reserved `admin` remains separate. The exact source repository is planned
+as `NorthCountryEngineer/NCAcademy`; CI admission requires its exact SHA's successful
+push run of `.github/workflows/ci.yml` with `NCAcademy required checks`. A different
+repository requires a separate reviewed Core CI policy change.
+
+Operators must review/migrate/test this change, pin a new trusted Core runner
+commit and enable the recipe in platform settings before preparing deployment.
+Retained database backups, a stable external vault bootstrap, matching API/frontend
+images and an independently tested restore are required before production.
+An independent retained audit checkpoint destination remains required before
+admitting real student records; database append-only grants alone cannot protect
+against database administrators.

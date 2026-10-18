@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from typing import Callable
-from .cloud_contract import ContractError, fargate_applications, identity_contract
+from .cloud_contract import ContractError, fargate_applications, academy_fargate_applications, identity_contract
 from platform_services.github_ci import CIGateError, POLICIES, verify_deployment
 
 
@@ -23,7 +23,7 @@ REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 COMMIT = re.compile(r"[a-f0-9]{40}\Z")
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,31}\Z")
 IDENTIFIER = re.compile(r"[a-zA-Z0-9-]{1,64}\Z")
-ARCHETYPES = ("amplify-static", "amplify-serverless", "amplify-fargate")
+ARCHETYPES = ("amplify-static", "amplify-serverless", "amplify-fargate", "amplify-academy-fargate")
 APP_PERMISSIONS = [
     {"codename": "app-read", "name": "Read application data"},
     {"codename": "app-write", "name": "Write application data"},
@@ -47,7 +47,7 @@ def configuration(platform, snapshot=None):
     config = dict(_value(platform, "config", {}) or {})
     approved_keys = {"runner_repository", "runner_commit", "build_project", "artifact_bucket",
                      "cloudformation_role_arn", "permissions_boundary_arn", "archetypes", "environment_ids",
-                     "credentials_kms_key_arn", "fargate_apps", "fargate_cloudformation_role_arn"}
+                     "credentials_kms_key_arn", "fargate_apps", "fargate_cloudformation_role_arn", "academy_fargate_apps"}
     if set(config) - approved_keys:
         raise AWSAdapterError("Platform configuration contains unsupported fields.")
     if snapshot and snapshot.get("platform_config") != config:
@@ -80,11 +80,12 @@ def configuration(platform, snapshot=None):
         raise AWSAdapterError("Only the static, serverless and Fargate AWS archetypes are supported.")
     try:
         fargate_applications(config, account, region, repositories, prefix)
+        academy_fargate_applications(config, account, region, repositories, prefix)
     except ContractError as error:
         raise AWSAdapterError(str(error)) from None
-    if config.get('fargate_cloudformation_role_arn') or config.get('fargate_apps'):
+    if config.get('fargate_cloudformation_role_arn') or (config.get('fargate_apps') or config.get('academy_fargate_apps')):
         _required(config.get('fargate_cloudformation_role_arn'), rf'arn:aws:iam::{account}:role/[A-Za-z0-9+=,.@_/-]+', 'Fargate CloudFormation execution role')
-    if config.get('fargate_apps') and len(prefix) > 10:
+    if (config.get('fargate_apps') or config.get('academy_fargate_apps')) and len(prefix) > 10:
         raise AWSAdapterError('Fargate platform prefixes use at most 10 characters to fit load-balancer names.')
     return {"account_id": account, "region": region, "prefix": prefix, "role_arn": role,
             "connection_arn": connection, "runner_project": runner, "allowed_repositories": repositories,
@@ -104,7 +105,7 @@ def _snapshot(platform, snapshot):
         raise AWSAdapterError("Invalid application branch.")
     if snapshot.get("archetype") not in settings["config"].get("archetypes", ARCHETYPES):
         raise AWSAdapterError("Application archetype is not approved for this platform.")
-    if snapshot.get('archetype') == 'amplify-fargate' and snapshot['repository'] not in settings['config'].get('fargate_apps', {}):
+    if snapshot.get('archetype') in ('amplify-fargate', 'amplify-academy-fargate') and snapshot['repository'] not in settings['config'].get('academy_fargate_apps' if snapshot['archetype'] == 'amplify-academy-fargate' else 'fargate_apps', {}):
         raise AWSAdapterError('Approve this repository’s Fargate resource references in platform settings first.')
     if snapshot.get("action", "provision") not in {"provision", "release"}:
         raise AWSAdapterError("Invalid deployment phase.")
@@ -313,8 +314,8 @@ def poll_run(platform, snapshot, provider_state, *, client_factory=None):
         # links, or arbitrary runner messages to the browser.
         outputs = {key: value for key, value in result.get("outputs", {}).items()
                    if key in PUBLIC_OUTPUTS and isinstance(value, str) and len(value) <= (8192 if key == 'identity' else 2048)}
-        if snapshot['archetype'] == 'amplify-fargate':
-            approved = settings['config']['fargate_apps'][snapshot['repository']]
+        if snapshot['archetype'] in ('amplify-fargate', 'amplify-academy-fargate'):
+            approved = settings['config']['academy_fargate_apps' if snapshot['archetype'] == 'amplify-academy-fargate' else 'fargate_apps'][snapshot['repository']]
             if outputs.get('api_url') != 'https://' + approved['api_host']:
                 raise AWSAdapterError('Fargate API output does not match the approved host.')
             try:
@@ -326,7 +327,7 @@ def poll_run(platform, snapshot, provider_state, *, client_factory=None):
         if (not re.fullmatch(r"https://[a-z0-9-]+\.d[a-z0-9]+\.amplifyapp\.com", outputs.get("origin", ""))
                 or not re.fullmatch(r"d[a-z0-9]{3,30}", outputs.get("amplify_app_id", ""))
                 or not re.fullmatch(re.escape(settings["prefix"]) + r"-[a-f0-9]{12}-[a-f0-9]{8}", outputs.get("stack_name", ""))
-                or (snapshot['archetype'] != 'amplify-fargate' and outputs.get("api_url") and not re.fullmatch(r"https://[a-z0-9]+\.execute-api\." + re.escape(settings["region"]) + r"\.amazonaws\.com", outputs["api_url"]))):
+                or (snapshot['archetype'] not in ('amplify-fargate', 'amplify-academy-fargate') and outputs.get("api_url") and not re.fullmatch(r"https://[a-z0-9]+\.execute-api\." + re.escape(settings["region"]) + r"\.amazonaws\.com", outputs["api_url"]))):
             raise AWSAdapterError("AWS returned an invalid public deployment output.")
         for name in result.get("completed_steps", []):
             if name in {"source-verified", "backend-provisioned", "backend-configured", "frontend-built", "frontend-published", 'database-migrated', 'services-healthy'}:
