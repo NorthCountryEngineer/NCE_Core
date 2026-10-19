@@ -4,6 +4,7 @@
 <h1>{{ organization.name }} administration</h1>
 <a href="{% url 'platform_dashboard' organization.slug %}">Central admin panel</a>
 <a href="{% url 'security' organization.slug %}">Identity providers and permission tags</a>
+<a href="{% url 'directory_people' organization.slug %}">People and reporting relationships</a>
 <a href="{% url 'chat' organization.slug %}">Chat</a>
 <a href="{% url 'ai' organization.slug %}">Core AI</a>
 <p>Manage access to {{ product_name }} and applications in this organization.</p>

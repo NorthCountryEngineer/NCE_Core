@@ -41,7 +41,8 @@ def access_purpose(request, slug):
 def resource_types():
     from . import models as identity
     from platform_services import models as core
-    names = ["Organization", "Membership", "Role", "Service", "ServicePermission", "Application", "Invitation", "IdentityProvider", "ProtectedResource"]
+    names = ["Organization", "Membership", "Role", "Service", "ServicePermission", "Application", "Invitation", "IdentityProvider", "ProtectedResource",
+        "EmployeeProfile", "ReportingAssignment", "ExternalPersonLink"]
     result = {name.lower(): getattr(identity, name) for name in names}
     result.update({name.lower(): getattr(core, name) for name in ["OrganizationProfile", "BillingProfile", "DeploymentConfiguration",
         "Installation", "RuntimeNode", "Deployment", "WorkloadCredential", "Dataset", "Pipeline", "AgentDefinition", "Workflow", "WorkflowRun",
@@ -84,6 +85,7 @@ def enforce_portal_access(request, organization, view_name, kwargs):
     principal = request_principal(request)
     require_access(principal, organization, "administration.access")
     mapping = {
+        "directory_person": "employeeprofile",
         "membership_edit": "membership", "role_edit": "role", "service_detail": "service", "service_edit": "service",
         "permission_add": "service", "application_edit": "application", "rotate_client_secret": "application",
         "revoke_invitation": "invitation", "installation_settings": "installation", "upgrade": "installation",

@@ -1,5 +1,13 @@
 # Identity providers and permission tags
 
+[Employee profiles and reporting relationships](employee-directory.md) are
+organization-owned personnel records. Directory administration requires current
+organization-administrator authority and the existing tag/MFA/purpose checks.
+Managers remain ordinary organization members unless separately assigned roles;
+reporting links and external HR identifiers confer no application, billing, or
+administrator authority. Account linking requires a deliberately bound invitation
+or an explicit administrator selection of an existing organization membership.
+
 Non-human agents use [separate accounts and service-role approvals](agent-accounts.md),
 including live tag enforcement, resource restrictions, and expiring UAT task scopes.
 

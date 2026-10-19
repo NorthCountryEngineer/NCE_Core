@@ -35,6 +35,13 @@ access tokens, private keys, or sensitive customer records into documentation or
 
 ## Chat, AI, and data
 
+Organization administrators define employee profiles and manager assignments in
+**Users and permissions → People**. A manager may also report to another manager.
+Reporting relationships are separate from application permissions; assigned managers
+do not automatically gain access to employees' private application records. See
+[Employees and reporting relationships](employee-directory.md) for account setup
+and future HR integration boundaries.
+
 Applications can consume centralized chat, approved agent workflows, synthetic training,
 and selected data-fabric agreements. These features need explicit application and agent grants.
 Federated data sharing requires approval from administrators of both platform deployments.

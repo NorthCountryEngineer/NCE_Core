@@ -99,7 +99,7 @@ class ExternalApplicationTests(TestCase):
         self.assertEqual(self.browser.allowed_origins, 'https://axolotl.example.test')
         self.assertTrue(check_password(self.credentials['client_secret'], self.resource.client_secret))
         public = external_public_configuration(self.deployment)
-        self.assertEqual(public['permissions'], ['posts-write', 'posts-publish'])
+        self.assertEqual(public['permissions'], ['posts-write', 'posts-publish', 'accounts-manage', 'agents-manage'])
         self.assertNotIn('client_secret', json.dumps(public))
         self.assertNotIn(self.credentials['client_secret'], json.dumps(public))
         self.assertEqual(self.membership.roles.count(), 1)

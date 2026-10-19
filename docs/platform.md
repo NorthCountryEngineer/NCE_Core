@@ -48,6 +48,11 @@ model calls are created by this application.
 
 ## Marketplace and permissions
 
+The [employee directory](employee-directory.md) adds organization-owned people and
+reporting relationships under **Users and permissions → People**. A directory person
+can precede their account invitation. Manager assignments never replace explicitly
+granted organization roles, service permissions, or resource tags.
+
 Core Data Fabric is a marketplace service for [administrator-approved federation](data-fabric.md)
 of selected data across independent deployments, with consumable application/agent APIs.
 

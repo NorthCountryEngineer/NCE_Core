@@ -1,7 +1,7 @@
 {
   "slug": "axolotl-news",
   "name": "Axolotl News",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "An AWS-native family axolotl publication with a visual editor, image/video/PDF uploads, newsletters, invitation-only Core login, live editing and publishing permissions, and anonymous public reading. Hosting is managed in AWS Amplify; installing this package registers Core identity and does not deploy infrastructure.",
   "kind": "application",
   "manifest": {
@@ -19,6 +19,44 @@
       {
         "codename": "posts-publish",
         "name": "Publish and unpublish posts"
+      },
+      {
+        "codename": "accounts-manage",
+        "name": "Manage Axolotl News accounts and invitations"
+      },
+      {
+        "codename": "agents-manage",
+        "name": "Configure Axolotl News agents, models, and workflows"
+      }
+    ],
+    "account_roles": [
+      {
+        "id": "editor",
+        "name": "Editor",
+        "description": "Create and edit stories and use configured assistants.",
+        "permissions": [
+          "posts-write"
+        ]
+      },
+      {
+        "id": "publisher",
+        "name": "Publisher",
+        "description": "Edit, publish, duplicate, and remove newsroom content.",
+        "permissions": [
+          "posts-write",
+          "posts-publish"
+        ]
+      },
+      {
+        "id": "administrator",
+        "name": "Administrator",
+        "description": "Manage newsroom content, assistants, accounts, and invitations.",
+        "permissions": [
+          "posts-write",
+          "posts-publish",
+          "accounts-manage",
+          "agents-manage"
+        ]
       }
     ]
   }

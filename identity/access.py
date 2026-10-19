@@ -106,6 +106,18 @@ def _resource_chain(resource):
             return
         seen.add(key)
         result.append(item)
+        # Personnel links inherit their current endpoints' policy, including
+        # central tag editors and the ordinary pending-invitation list.
+        directory_parents = {
+            'identity.employeeprofile': ('membership',),
+            'identity.reportingassignment': ('manager', 'employee'),
+            'identity.externalpersonlink': ('profile',),
+            'identity.invitation': ('employee_profile',),
+        }
+        for field in directory_parents.get(item._meta.label_lower, ()):
+            parent = getattr(item, field, None)
+            if parent is not None:
+                visit(parent)
         if item._meta.label_lower in {'platform_services.cloudapplication', 'platform_services.cloudrelease'}:
             for field in ['platform', 'application']:
                 parent = getattr(item, field, None)

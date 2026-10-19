@@ -23,6 +23,12 @@ Core validates the client, callback, organization, invitation expiry/use, and co
 
 Open registration, email delivery, and automatic permission grants are not enabled. To add another app, register its own service/browser client/callback and assign access explicitly; the person continues to use the same Core account.
 
+The [employee directory](employee-directory.md) can bind an invitation to one pending
+person. Acceptance attaches only that explicit record after verifying its current
+organization, email, status and resource access. Other records with the same email
+are not linked. Organization-first locking serializes directory and invitation
+changes; failures roll back account creation and invitation consumption together.
+
 ## Remembered application approval
 
 After a user chooses **Authorize**, Core saves that approval separately from the five-minute OAuth access token and the browser session. The same user can sign in again to the same registered client, exact callback, and exact set of scopes without another approval screen, including after token expiry or signing out of Core. Scope ordering does not matter. A different user, client, scope set, requested claims, recipient registration, or deployment/environment placement requires approval again. Existing tokens are not migrated into approvals: the first sign-in after this upgrade asks once.
@@ -43,3 +49,5 @@ Users manage approvals in **Your profile → Approved applications**. **Revoke a
 ```
 
 Tests exercise invitation → central account → consent → PKCE token exchange → stable user UUID, existing-account reuse, durable approval across expiry/logout, scope/client isolation, forced consent, revocation, CSRF, invitation replay/expiry, cross-organization denial, callback validation, and absence of implicit role/access-tag grants. Local tests do not establish that the new image has been deployed.
+
+Applications that publish explicit account roles can expose Core-backed account invitations inside their own administration pages. See [Application account administration](app-accounts.md) for exact per-deployment grants, permission checks, invitation handling and the existing-installation upgrade. Ordinary invitations created through Core's organization UI retain the existing behavior above; they do not automatically assign application roles.

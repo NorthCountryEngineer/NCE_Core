@@ -1,0 +1,33 @@
+{% extends "identity/base.html" %}
+{% block title %}{{ person.display_name }} · People · {{ organization.name }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'directory_people' organization.slug %}">All people</a></p>
+<h1>{{ person.display_name }}</h1><p>{{ person.get_status_display }}{% if person.is_manager %} · Manager{% endif %} · Revision {{ person.revision }}</p>
+<p>Directory status and reporting assignments grant no sign-in, administrator, billing or application permissions.</p>
+<p><a href="{% url 'resource_tags' organization.slug 'employeeprofile' person.pk %}">People record tags and grants</a></p>
+<section><h2>Employee profile</h2><form method="post">{% csrf_token %}<input type="hidden" name="action" value="profile">{{ forms.profile.as_p }}<button type="submit">Save profile</button></form></section>
+<section><h2>Reporting relationships</h2>
+  <ul>{% for assignment in assignments %}<li><a href="{% url 'directory_person' organization.slug assignment.manager.pk %}">{{ assignment.manager.display_name }}</a>{% if assignment.is_primary %} · Primary manager{% endif %} · <a href="{% url 'resource_tags' organization.slug 'reportingassignment' assignment.pk %}">Relationship tags and grants</a></li>{% empty %}<li>No visible managers assigned.</li>{% endfor %}</ul>
+  <form method="get"><label for="manager-search">Find managers</label><input id="manager-search" type="search" name="manager_q" value="{{ manager_query }}" maxlength="160"><button type="submit">Search managers</button></form>
+  <p>Current assignments stay included when searching. Clear the search to browse available managers.</p>
+  {% if not manager_choices_complete %}<p role="status">The manager list is incomplete. Narrow the search before saving; current assignments are preserved.</p>{% endif %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="managers"><input type="hidden" name="manager_q" value="{{ manager_query }}">{{ forms.managers.as_p }}<button type="submit"{% if not manager_choices_complete %} disabled{% endif %}>Save managers</button></form>
+</section>
+<section><h2>Direct reports</h2>
+  <ul>{% for assignment in direct_reports %}<li><a href="{% url 'directory_person' organization.slug assignment.employee.pk %}">{{ assignment.employee.display_name }}</a>{% if assignment.is_primary %} · Primary reporting relationship{% endif %}</li>{% empty %}<li>No visible active direct reports.</li>{% endfor %}</ul>
+  {% if direct_reports.truncated %}<p role="status">Showing a bounded list of direct reports. Find another person through the directory search.</p>{% endif %}
+</section>
+<section><h2>Sign-in account</h2>
+  {% if linked_membership %}<p>Linked to {{ linked_membership.user.email }} · {% if linked_membership.active and linked_membership.user.is_active %}Sign-in membership active{% else %}Sign-in membership disabled{% endif %}.</p><p><a href="{% url 'membership' organization.slug linked_membership.pk %}">Manage membership access and roles</a></p>{% else %}<p>No visible linked account. Creating a directory record does not create credentials.</p>{% endif %}
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="membership">{{ forms.membership.as_p }}<button type="submit">Save account link</button></form>
+  {% if not person.membership_id %}<h3>Invite this person</h3><p>Create a single-use setup link for the work email above. The person chooses their password; administrators cannot view it. No email service is used.</p><form method="post">{% csrf_token %}<input type="hidden" name="action" value="invite">{{ forms.invite.as_p }}<button type="submit">Create secure invitation link</button></form>{% endif %}
+</section>
+<section><h2>External system references</h2><p>References prepare this record for future integrations. They do not connect, import, synchronize, create external accounts or change access.</p>
+  <ul>{% for reference in external_references %}<li>{{ reference.source_namespace }} · {{ reference.object_type }} · {{ reference.external_id }}{% if reference.source_revision %} · Revision {{ reference.source_revision }}{% endif %} · <a href="{% url 'resource_tags' organization.slug 'externalpersonlink' reference.pk %}">Reference tags and grants</a></li>{% empty %}<li>No visible external references.</li>{% endfor %}</ul>
+  <form method="post">{% csrf_token %}<input type="hidden" name="action" value="external">{{ forms.external.as_p }}<button type="submit">Add reference</button></form>
+</section>
+<section><h2>People record history</h2><p>Up to 30 recent recorded changes and 1,000 current or previous reporting relationships. Activity records identify the action and revision; they do not contain a full copy of every previous profile.</p>
+  <ul>{% for event in history %}<li>{{ event.created }} · {{ event.action }} · Record revision <code>{{ event.target }}</code> · Actor <code>{{ event.actor_subject|default:event.principal_id }}</code></li>{% empty %}<li>No recorded changes available.</li>{% endfor %}</ul>
+  <h3>Previous manager assignments</h3><ul>{% for assignment in historical_assignments %}<li>{{ assignment.manager.display_name }}{% if assignment.is_primary %} · Previously primary{% endif %} · Last changed {{ assignment.updated_at }}</li>{% empty %}<li>No visible previous manager assignments.</li>{% endfor %}</ul>
+</section>
+{% endblock %}

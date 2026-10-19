@@ -23,6 +23,10 @@ def authorization_for(membership, service, principal=None):
     permissions = set(service.permissions.filter(
         roles__in=roles, roles__organization_id=service.organization_id,
     ).values_list("codename", flat=True))
+    from .app_accounts import application_grants
+    app_permissions, app_roles = application_grants(membership, principal) if principal and principal.application and principal.application.service_id == service.pk else (set(), set())
+    if app_permissions:
+        permissions.update(app_permissions & set(service.permissions.values_list('codename', flat=True)))
     if administrator:
         permissions = set(service.permissions.values_list("codename", flat=True)) | {"admin"}
     # The reserved capability is only granted by the built-in organization role.
@@ -45,5 +49,5 @@ def authorization_for(membership, service, principal=None):
                 if allowed:
                     filtered.add(name)
             permissions = filtered
-    return {"roles": sorted({membership.kind, *roles.values_list("slug", flat=True)}),
+    return {"roles": sorted({membership.kind, *roles.values_list("slug", flat=True), *app_roles}),
             "permissions": sorted(permissions)}

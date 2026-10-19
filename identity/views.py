@@ -159,7 +159,9 @@ def invite(request, organization):
 @require_POST
 def revoke_invitation(request, organization, pk):
     with transaction.atomic():
-        invitation = get_object_or_404(organization.invitations, pk=pk)
+        # Match acceptance and directory edits before SET_NULL can lock a person.
+        Organization.objects.select_for_update().get(pk=organization.pk)
+        invitation = get_object_or_404(organization.invitations.select_for_update(), pk=pk)
         invitation.delete()
         audit(request, "invitation.revoked", pk)
     return redirect("organization", slug=organization.slug)
@@ -172,9 +174,16 @@ def accept_invitation(request, token):
     app_context = authorization_context(request, continuation) if continuation else None
     if continuation and not app_context:
         return HttpResponse("Start account creation again from the application.", status=400)
+    invitation_organization = get_object_or_404(
+        Invitation.objects.only("organization_id"), token_hash=Invitation.digest(token),
+    ).organization_id
     with transaction.atomic():
+        # Directory and membership mutations share this lock order: organization,
+        # then invitation/person. Revalidate the token after acquiring the lock.
+        Organization.objects.select_for_update().get(pk=invitation_organization)
         invitation = get_object_or_404(
-            Invitation.objects.select_for_update().select_related("organization"), token_hash=Invitation.digest(token),
+            Invitation.objects.select_for_update().select_related("organization"),
+            token_hash=Invitation.digest(token), organization_id=invitation_organization,
         )
         if not invitation.usable:
             return HttpResponse("This invitation has expired or has already been used.", status=410)
@@ -204,8 +213,6 @@ def accept_invitation(request, token):
                     form.add_error(None, "This account now exists. Sign in before accepting the invitation.")
                     valid = False
             if valid:
-                # Serialize all membership changes, including invitation acceptance.
-                Organization.objects.select_for_update().get(pk=invitation.organization_id)
                 membership, created = Membership.objects.get_or_create(
                     organization=invitation.organization, user=user,
                     defaults={"kind": invitation.kind},
@@ -213,6 +220,20 @@ def accept_invitation(request, token):
                 # An invitation never silently overwrites an existing membership or reactivates it.
                 if not membership.active:
                     raise PermissionDenied("Ask an organization administrator to reactivate your membership.")
+                from .access import Principal, request_principal
+                from .directory import link_accepted_invitation
+                if request.user.is_authenticated and request.user.pk == user.pk:
+                    acceptance_principal = request_principal(request)
+                else:
+                    selected_purpose = request.session.get("access_purposes", {}).get(str(invitation.organization_id), "")
+                    purpose = (request.headers.get("X-Core-Purpose", "") or request.POST.get("purpose_code", "") or
+                        request.GET.get("purpose_code", "") or selected_purpose)
+                    acceptance_principal = Principal(user=user, purpose=purpose,
+                        request_id=getattr(request, "security_request_id", None))
+                link_accepted_invitation(invitation, membership, principal=acceptance_principal)
+                from .app_accounts import accept_application_invitation
+                account_origin = accept_application_invitation(invitation, membership,
+                    app_context["application"] if app_context else None)
                 invitation.accepted = True
                 invitation.save(update_fields=["accepted"])
                 AuditEvent.objects.create(organization=invitation.organization, actor=user,
@@ -221,9 +242,13 @@ def accept_invitation(request, token):
                     login(request, user)
                 if app_context:
                     from .access import decision, request_principal
-                    if decision(request_principal(request), app_context["application"])[0]:
+                    principal = request_principal(request)
+                    principal.application = app_context["application"]
+                    if decision(principal, app_context["application"])[0]:
                         return redirect(app_context["next"])
                     return redirect(app_context["home"] + "/?account=created")
+                if account_origin:
+                    return redirect(account_origin + "/studio?account=created")
                 return redirect("home")
         response = render(request, "identity/accept_invitation.html", {"form": form, "invitation": invitation, "next": continuation})
     response["Referrer-Policy"] = "same-origin"
@@ -331,7 +356,9 @@ class TenantAuthorizationView(RememberedConsentAuthorizationView):
                 raise PermissionDenied("You do not have an active membership for this application.")
             if request.user.is_authenticated:
                 from .access import request_principal, require_access
-                require_access(request_principal(request), application, "oauth.authorize")
+                principal = request_principal(request)
+                principal.application = application
+                require_access(principal, application, "oauth.authorize")
         # Tokens are audience-bound by registration. Arbitrary resource indicators are not accepted.
         if request.GET.get("resource") or request.POST.get("resource"):
             return JsonResponse({"error": "invalid_target"}, status=400)

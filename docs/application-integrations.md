@@ -16,6 +16,13 @@ service, calls a model, or grants consumption automatically.
 
 ## Choose where configuration lives
 
+The [employee directory](employee-directory.md#future-hr-integrations) maintains
+namespaced external person references for future HR adapters. Those references are
+data mappings, not authentication identities or permission grants. Saving a mapping
+does not connect to Greenhouse or another provider. A later adapter must use this
+integration framework's current connection and credential checks, bounded/idempotent
+processing, and explicit provisioning/offboarding policy.
+
 | Mode | Configuration and credential authority | Failure behavior |
 | --- | --- | --- |
 | Standalone | The application's own settings, authorization, and vault | No Core dependency |

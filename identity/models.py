@@ -214,6 +214,26 @@ class Invitation(TaggedResource):
         return not self.accepted and self.expires > timezone.now() and self.organization.active
 
 
+class ApplicationAccountAccess(models.Model):
+    """A human's roles for one application deployment; never organization roles."""
+    membership = models.ForeignKey(Membership, on_delete=models.CASCADE, related_name="application_accounts")
+    deployment = models.ForeignKey("platform_services.Deployment", on_delete=models.CASCADE, related_name="account_access")
+    role_ids = models.JSONField(default=list)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["membership", "deployment"], name="unique_application_account")]
+
+
+class ApplicationAccountInvitation(models.Model):
+    invitation = models.OneToOneField(Invitation, on_delete=models.CASCADE, related_name="application_account")
+    deployment = models.ForeignKey("platform_services.Deployment", on_delete=models.CASCADE, related_name="account_invitations")
+    role_ids = models.JSONField(default=list)
+    name = models.CharField(max_length=160, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+
 class ProtectedResource(TaggedResource):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="protected_resources")
@@ -386,3 +406,7 @@ class OAuthEvidence(models.Model):
     evidence = models.ForeignKey(AuthenticationEvidence, on_delete=models.CASCADE)
     purpose_code = models.SlugField(max_length=80, blank=True)
     created = models.DateTimeField(default=timezone.now)
+
+
+# Employment metadata remains separate from the global account and live roles.
+from .directory_models import EmployeeProfile, ExternalPersonLink, ReportingAssignment  # noqa: E402,F401

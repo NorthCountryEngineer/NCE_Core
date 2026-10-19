@@ -1,8 +1,13 @@
 from django.urls import path
 from . import views
 from . import security_portal
+from . import directory_views
+from . import app_accounts
 
 urlpatterns = [
+    path("api/v1/application-accounts/", app_accounts.application_accounts, name="application_accounts"),
+    path("organizations/<slug:slug>/people/", directory_views.directory_people, name="directory_people"),
+    path("organizations/<slug:slug>/people/<uuid:pk>/", directory_views.directory_person, name="directory_person"),
     path("accounts/profile/", views.profile, name="profile"),
     path("organizations/<slug:slug>/access-purpose/", security_portal.access_purpose, name="access_purpose"),
     path("organizations/<slug:slug>/services/<uuid:service_pk>/resources/new/", security_portal.protected_resource_edit, name="protected_resource_add"),

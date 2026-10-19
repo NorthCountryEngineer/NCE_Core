@@ -18,6 +18,11 @@ OIDC registration, and workload credentials automatically.
 
 [App-branded authentication](docs/app-authentication.md) gives each registered app a Core-hosted sign-in and invitation-only account-creation experience. People keep one Core account; application roles and environment access are granted independently.
 
+The [employee directory](docs/employee-directory.md) provides organization-managed
+people, account invitations, and manager/employee nesting. Reporting relationships
+and namespaced HR references remain separate from login identities and service
+permissions. No HR provider connection or subscription is enabled automatically.
+
 ## AWS deployment with Amplify
 
 The [two-application AWS runbook](https://github.com/NorthCountryEngineer/Axolotl_News/blob/main/docs/AWS_DEPLOYMENT.md)
@@ -311,3 +316,5 @@ existing Core deployment. Supported recipes include Amplify static hosting,
 Amplify with a serverless Python API, and the fixed [Amplify + Fargate container
 recipe](docs/cloud-fargate.md) for an API, workers and private PostgreSQL/document
 storage. Live deployment is disabled by default.
+
+Application administrators can manage invitation-only Core accounts through the [app-scoped account API](docs/app-accounts.md), using published application roles without organization-wide grants.

@@ -1,0 +1,22 @@
+{% extends "identity/base.html" %}
+{% block title %}People · {{ organization.name }}{% endblock %}
+{% block content %}
+<div class="workspace-heading"><div><h1>People</h1><p>Employees, managers and reporting relationships for {{ organization.name }}.</p></div><a href="{% url 'organization' organization.slug %}">Organization administration</a></div>
+<section>
+  <h2>Directory</h2>
+  <p>People records describe employment. Sign-in, organization roles and application permissions are managed separately.</p>
+  <form method="get" class="actions" aria-label="Filter people">
+    <label for="directory-search">Search people</label><input id="directory-search" name="q" value="{{ search }}" maxlength="160" type="search" placeholder="Name, email, department or reference">
+    <label for="directory-role">People type</label><select id="directory-role" name="role"><option value="">All people</option><option value="manager"{% if role == 'manager' %} selected{% endif %}>Managers</option><option value="employee"{% if role == 'employee' %} selected{% endif %}>Employees without manager designation</option></select>
+    <label for="directory-status">Directory status</label><select id="directory-status" name="status"><option value="">All statuses</option>{% for value,label in status_choices %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+    <button type="submit">Filter</button><a href="{% url 'directory_people' organization.slug %}">Clear filters</a>
+  </form>
+  {% if truncated %}<p role="status">Showing the first 200 matching people. Narrow the search to find another person.</p>{% endif %}
+  <div class="table-scroll" role="region" aria-label="Organization people" tabindex="0"><table><caption class="sr-only">Organization people</caption><thead><tr><th scope="col">Person</th><th scope="col">Work email</th><th scope="col">Role and department</th><th scope="col">Directory status</th></tr></thead><tbody>
+  {% for person in people %}<tr><td><a href="{% url 'directory_person' organization.slug person.pk %}">{{ person.display_name }}</a>{% if person.is_manager %} · Manager{% endif %}</td><td>{{ person.work_email|default:'—' }}</td><td>{{ person.title|default:'—' }}{% if person.department %} · {{ person.department }}{% endif %}</td><td>{{ person.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">No matching people.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+<section id="create-person"><h2>Add person</h2><p>Create an employee record with optional manager designation. A manager can also report to another manager.</p>
+  <form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Create person</button></form>
+</section>
+{% endblock %}
