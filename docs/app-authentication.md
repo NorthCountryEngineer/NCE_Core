@@ -43,3 +43,5 @@ Users manage approvals in **Your profile → Approved applications**. **Revoke a
 ```
 
 Tests exercise invitation → central account → consent → PKCE token exchange → stable user UUID, existing-account reuse, durable approval across expiry/logout, scope/client isolation, forced consent, revocation, CSRF, invitation replay/expiry, cross-organization denial, callback validation, and absence of implicit role/access-tag grants. Local tests do not establish that the new image has been deployed.
+
+Applications that publish explicit account roles can expose Core-backed account invitations inside their own administration pages. See [Application account administration](app-accounts.md) for exact per-deployment grants, permission checks, invitation handling and the existing-installation upgrade. Ordinary invitations created through Core's organization UI retain the existing behavior above; they do not automatically assign application roles.

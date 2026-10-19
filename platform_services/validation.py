@@ -40,7 +40,7 @@ def validate_endpoint(url):
 
 
 def validate_manifest(manifest):
-    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload', 'external_runtime', 'permissions'}:
+    if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload', 'external_runtime', 'permissions', 'account_roles'}:
         raise ValidationError("Unsupported manifest fields.")
     if 'external_runtime' in manifest:
         if manifest['external_runtime'] != 'aws-amplify' or any(field in manifest for field in ['image', 'existing_workload', 'port']):
@@ -56,6 +56,22 @@ def validate_manifest(manifest):
                 not isinstance(permission['name'], str) or not permission['name'].strip() or len(permission['name']) > 160):
             raise ValidationError('Application permissions require unique nonreserved codenames and display names.')
         names.add(permission['codename'])
+    account_roles = manifest.get('account_roles', [])
+    if not isinstance(account_roles, list) or len(account_roles) > 20:
+        raise ValidationError('Declare at most 20 application account roles.')
+    role_ids = set()
+    for role in account_roles:
+        if (not isinstance(role, dict) or set(role) != {'id', 'name', 'description', 'permissions'} or
+                not isinstance(role['id'], str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,49}', role['id']) or role['id'] in role_ids or
+                not isinstance(role['name'], str) or not 1 <= len(role['name']) <= 160 or
+                not isinstance(role['description'], str) or len(role['description']) > 300 or
+                not isinstance(role['permissions'], list) or not role['permissions'] or
+                any(not isinstance(name, str) or name not in names for name in role['permissions']) or
+                len(set(role['permissions'])) != len(role['permissions'])):
+            raise ValidationError('Account roles require unique IDs and only this application’s declared permissions.')
+        role_ids.add(role['id'])
+    if account_roles and manifest.get('external_runtime') != 'aws-amplify':
+        raise ValidationError('Account roles require a registered external application.')
     if 'existing_workload' in manifest and manifest['existing_workload'] is not True:
         raise ValidationError('Existing workloads must explicitly use adoption mode.')
     capabilities = manifest.get("capabilities", [])
