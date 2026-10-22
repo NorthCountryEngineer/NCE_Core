@@ -39,15 +39,7 @@
   {% endif %}{% endblock %}
   {% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
   {% include 'identity/form_errors.html' %}
-  {% block access_controls %}{% if user.is_authenticated and brand_organization %}
-  <details class="access-control"><summary>Access purpose{% if access_purpose %}: <span class="mono">{{ access_purpose }}</span>{% endif %}</summary>
-  <form method="post" action="{% url 'access_purpose' brand_organization.slug %}">{% csrf_token %}
-    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-    <label for="access-purpose">Access purpose</label><input id="access-purpose" name="purpose_code" value="{{ access_purpose }}" maxlength="80" placeholder="Configured purpose code">
-    <button type="submit">Set purpose</button>
-  </form>
-  </details>
-  {% endif %}{% endblock %}
+  {% block access_controls %}{% endblock %}
   {% block content %}{% endblock %}
 </main>
 <script>{% include 'identity/accessibility.js.html' %}</script>
