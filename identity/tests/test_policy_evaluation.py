@@ -54,7 +54,7 @@ class LivePolicyEvaluationTests(TestCase):
     def test_read_queries_remain_bounded_as_granted_permissions_grow(self):
         tokens = self.exchange()
         counts = []
-        for administrator, extra, expected in [(False, 0, 1), (True, 0, 4), (True, 20, 24)]:
+        for administrator, extra, expected in [(False, 0, 1), (True, 0, 6), (True, 20, 26)]:
             Membership.objects.filter(pk=self.membership.pk).update(kind="administrator" if administrator else "member")
             for index in range(extra):
                 ServicePermission.objects.create(service=self.installation.service,

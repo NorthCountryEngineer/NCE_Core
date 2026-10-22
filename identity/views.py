@@ -172,9 +172,13 @@ def accept_invitation(request, token):
     app_context = authorization_context(request, continuation) if continuation else None
     if continuation and not app_context:
         return HttpResponse("Start account creation again from the application.", status=400)
+    invitation_organization = get_object_or_404(Invitation.objects.only("organization_id"),
+        token_hash=Invitation.digest(token)).organization_id
     with transaction.atomic():
+        Organization.objects.select_for_update().get(pk=invitation_organization)
         invitation = get_object_or_404(
             Invitation.objects.select_for_update().select_related("organization"), token_hash=Invitation.digest(token),
+            organization_id=invitation_organization,
         )
         if not invitation.usable:
             return HttpResponse("This invitation has expired or has already been used.", status=410)
@@ -213,6 +217,9 @@ def accept_invitation(request, token):
                 # An invitation never silently overwrites an existing membership or reactivates it.
                 if not membership.active:
                     raise PermissionDenied("Ask an organization administrator to reactivate your membership.")
+                from .app_accounts import accept_application_invitation
+                account_origin = accept_application_invitation(invitation, membership,
+                    app_context['application'] if app_context else None)
                 invitation.accepted = True
                 invitation.save(update_fields=["accepted"])
                 AuditEvent.objects.create(organization=invitation.organization, actor=user,
@@ -221,9 +228,13 @@ def accept_invitation(request, token):
                     login(request, user)
                 if app_context:
                     from .access import decision, request_principal
-                    if decision(request_principal(request), app_context["application"])[0]:
+                    principal = request_principal(request)
+                    principal.application = app_context["application"]
+                    if decision(principal, app_context["application"])[0]:
                         return redirect(app_context["next"])
                     return redirect(app_context["home"] + "/?account=created")
+                if account_origin:
+                    return redirect(account_origin + '/studio?account=created')
                 return redirect("home")
         response = render(request, "identity/accept_invitation.html", {"form": form, "invitation": invitation, "next": continuation})
     response["Referrer-Policy"] = "same-origin"
@@ -331,7 +342,9 @@ class TenantAuthorizationView(RememberedConsentAuthorizationView):
                 raise PermissionDenied("You do not have an active membership for this application.")
             if request.user.is_authenticated:
                 from .access import request_principal, require_access
-                require_access(request_principal(request), application, "oauth.authorize")
+                principal = request_principal(request)
+                principal.application = application
+                require_access(principal, application, "oauth.authorize")
         # Tokens are audience-bound by registration. Arbitrary resource indicators are not accepted.
         if request.GET.get("resource") or request.POST.get("resource"):
             return JsonResponse({"error": "invalid_target"}, status=400)

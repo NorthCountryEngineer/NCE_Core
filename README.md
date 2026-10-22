@@ -311,3 +311,5 @@ existing Core deployment. Supported recipes include Amplify static hosting,
 Amplify with a serverless Python API, and the fixed [Amplify + Fargate container
 recipe](docs/cloud-fargate.md) for an API, workers and private PostgreSQL/document
 storage. Live deployment is disabled by default.
+
+Application administrators can manage invitation-only Core accounts through the [app-scoped account API](docs/app-accounts.md), using published application roles without organization-wide grants.

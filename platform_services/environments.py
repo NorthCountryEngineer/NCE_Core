@@ -77,7 +77,9 @@ def boundary_decision(principal, organization, chain, tags):
         from identity.policy import active_membership
         membership = active_membership(principal.user, organization) if principal.user and not principal.user.is_superuser else None
         admin = principal.user and (principal.user.is_superuser or membership and membership.kind == 'administrator')
-        return None, {env.boundary_tag_id for env in tag_environments} if admin else set()
+        from identity.app_accounts import application_boundary_grants
+        app_grants = application_boundary_grants(membership, principal, deployment, chain, tags) if membership else set()
+        return None, {env.boundary_tag_id for env in tag_environments} if admin else app_grants
     source_environment = None
     if principal.credential:
         from .models import WorkloadCredential
