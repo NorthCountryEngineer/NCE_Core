@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-22 — Transient empty CI indexes
+
+The exact-commit gate can reread a genuinely empty repository index up to three
+times with fresh public cache keys. Final consistency checks also use a fresh
+key. Nonempty, failed, pending, malformed and inaccessible results retain their
+immediate refusal behavior; successful parent and exact-attempt job checks are
+still required. Application and runner admission share a 40-second, 20-read
+allowance. Offline tests cover transient and persistent emptiness, final-check
+races, strict refusal, transport budgets and the shared two-source allowance.
+No new CI runs, cloud resources, schema changes or model calls are introduced.
+
 ## 2026-10-22 — Exact-commit CI lookup compatibility
 
 When GitHub's workflow-specific run index is empty, Core can verify the same

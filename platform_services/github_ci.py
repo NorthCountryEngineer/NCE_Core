@@ -12,7 +12,9 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import sys
+import time
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
@@ -35,6 +37,9 @@ POLICIES = (
 )
 SHA = re.compile(r'[a-f0-9]{40}\Z')
 MAX_RESPONSE = 2 * 1024 * 1024
+ADMISSION_SECONDS = 40.0
+MAX_REQUESTS = 20
+EMPTY_RETRIES = 3
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -56,19 +61,35 @@ def _token():
         raise CIGateError('The operator GitHub CI credential file is unavailable or invalid.') from None
 
 
-def _read_json(path, *, token):
+def _read_json(path, *, token, timeout=10):
     headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
-               'User-Agent': 'NCE-Core-CI-Gate'}
+               'User-Agent': 'NCE-Core-CI-Gate', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache'}
     if token:
         headers['Authorization'] = 'Bearer ' + token
     # No environment proxy, .netrc credential fallback, response URL, or log output.
     opener = build_opener(ProxyHandler({}), _NoRedirect())
     try:
-        with opener.open(Request('https://api.github.com' + path, headers=headers), timeout=10) as response:
+        deadline = time.monotonic() + timeout
+        with opener.open(Request('https://api.github.com' + path, headers=headers), timeout=timeout) as response:
             if response.status != 200:
                 raise ValueError
-            raw = response.read(MAX_RESPONSE + 1)
-            if len(raw) > MAX_RESPONSE:
+            raw = bytearray()
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ValueError
+                # HTTPResponse.read1 makes at most one underlying body read.
+                # Recheck the decision deadline between bounded body chunks;
+                # transport inactivity retains the request's socket timeout.
+                chunk = response.read1(min(65536, MAX_RESPONSE + 1 - len(raw)))
+                if time.monotonic() >= deadline:
+                    raise ValueError
+                if not chunk:
+                    break
+                raw.extend(chunk)
+                if len(raw) > MAX_RESPONSE:
+                    raise ValueError
+            if time.monotonic() >= deadline:
                 raise ValueError
         document = json.loads(raw)
         if not isinstance(document, dict):
@@ -78,6 +99,35 @@ def _read_json(path, *, token):
         raise
     except Exception:
         raise CIGateError('GitHub CI verification is unavailable. Private repositories require an operator credential with Actions read access; retry after checking GitHub access or rate limits.') from None
+
+
+class _AdmissionReader:
+    """One request/time allowance shared by both protected release sources."""
+
+    def __init__(self, token, read_json):
+        self.token, self.read_json = token, read_json
+        self.deadline, self.requests = time.monotonic() + ADMISSION_SECONDS, 0
+
+    def __call__(self, path, *, fresh=False):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0 or self.requests >= MAX_REQUESTS:
+            raise CIGateError('GitHub CI verification exceeded its bounded request or time budget.')
+        if fresh:
+            # A distinct public query key requests another view of an index;
+            # exact SHA/event/page filters and the fixed GitHub host stay intact.
+            path += ('&' if '?' in path else '?') + '_nonce=' + secrets.token_hex(16)
+        self.requests += 1
+        if self.read_json is None:
+            token = _token() if self.token is None else self.token
+            if token and (not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_]{20,512}', token)):
+                raise CIGateError('The operator GitHub CI credential is invalid.')
+            self.token = token
+            document = _read_json(path, token=token, timeout=min(10, remaining))
+        else:
+            document = self.read_json(path)
+        if time.monotonic() >= self.deadline:
+            raise CIGateError('GitHub CI verification exceeded its bounded request or time budget.')
+        return document
 
 
 def _positive(value):
@@ -98,6 +148,8 @@ def _stamp(value):
 
 
 def _latest(document, policy, commit, workflow_id):
+    if not isinstance(document, dict):
+        raise CIGateError('No bounded, complete GitHub push CI result exists for this exact commit.')
     runs = document.get('workflow_runs')
     total = document.get('total_count')
     if not isinstance(runs, list) or not isinstance(total, int) or isinstance(total, bool) or total != len(runs) or not 1 <= total <= 100:
@@ -121,6 +173,8 @@ def _latest(document, policy, commit, workflow_id):
 
 def _repository_workflow_runs(document, policy, commit, workflow_id):
     """Validate a complete repository index before narrowing to the trusted workflow."""
+    if not isinstance(document, dict):
+        raise CIGateError('No bounded, complete GitHub push CI result exists for this exact commit.')
     runs, total = document.get('workflow_runs'), document.get('total_count')
     if (not isinstance(runs, list) or not isinstance(total, int) or isinstance(total, bool)
             or total != len(runs) or not 1 <= total <= 100):
@@ -146,17 +200,26 @@ def _repository_workflow_runs(document, policy, commit, workflow_id):
     return {'total_count': len(matching), 'workflow_runs': matching}
 
 
-def _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id, *, repository_mode=False):
+def _empty(document):
+    return (isinstance(document, dict) and isinstance(document.get('total_count'), int)
+            and not isinstance(document['total_count'], bool) and document['total_count'] == 0
+            and isinstance(document.get('workflow_runs'), list) and not document['workflow_runs'])
+
+
+def _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id, *, repository_mode=False, fresh=False):
     if not repository_mode:
-        document = get(listing)
+        document = get(listing, fresh=fresh)
         # GitHub can expose an empty workflow index while its repository index
         # already contains the exact push run. Only an honest empty page enables
         # this alternate index; malformed, truncated and failed reads stay denied.
-        total, runs = document.get('total_count'), document.get('workflow_runs')
-        repository_mode = isinstance(total, int) and not isinstance(total, bool) and total == 0 and isinstance(runs, list) and not runs
+        repository_mode = _empty(document)
         if not repository_mode:
             return _latest(document, policy, commit, workflow_id), False
-    document = _repository_workflow_runs(get(repository_listing), policy, commit, workflow_id)
+    for attempt in range(EMPTY_RETRIES + 1):
+        document = get(repository_listing, fresh=fresh or attempt > 0)
+        if not _empty(document):
+            break
+    document = _repository_workflow_runs(document, policy, commit, workflow_id)
     return _latest(document, policy, commit, workflow_id), True
 
 
@@ -171,11 +234,7 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
         return None
     if not isinstance(commit, str) or not SHA.fullmatch(commit):
         raise CIGateError('GitHub CI admission requires the exact 40-character source commit.')
-    if read_json is None:
-        token = _token() if token is None else token
-        if token and (not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_]{20,512}', token)):
-            raise CIGateError('The operator GitHub CI credential is invalid.')
-    get = read_json or (lambda path: _read_json(path, token=token))
+    get = read_json if isinstance(read_json, _AdmissionReader) else _AdmissionReader(token, read_json)
     prefix = '/repos/' + policy.repository
     workflow = get(prefix + '/actions/workflows/' + quote(policy.workflow.rsplit('/', 1)[-1], safe=''))
     workflow_id = workflow.get('id')
@@ -201,7 +260,7 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
     # Once the alternate index was needed, recheck that full index. Switching
     # back to a lagging workflow index could hide a newly queued trusted run.
     refreshed, _ = _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id,
-                                  repository_mode=repository_mode)
+                                  repository_mode=repository_mode, fresh=True)
     if any(refreshed.get(key) != run.get(key) for key in ('id', 'run_attempt', 'updated_at')):
         raise CIGateError('GitHub CI changed during verification. Verify the latest completed attempt again.')
     return {'repository': policy.repository, 'commit': commit, 'workflow': policy.workflow,
@@ -213,8 +272,9 @@ def verify_deployment(repository, commit, runner_repository, runner_commit, *, t
     if protected and (not isinstance(runner_repository, str) or runner_repository.casefold() != 'northcountryengineer/nce_core'):
         raise CIGateError('Protected application releases require the CI-verified Core runner repository.')
     receipts = []
+    get = read_json if isinstance(read_json, _AdmissionReader) else _AdmissionReader(token, read_json)
     for source in dict.fromkeys(((repository, commit), (runner_repository, runner_commit))):
-        receipt = verify_repository(*source, token=token, read_json=read_json)
+        receipt = verify_repository(*source, token=token, read_json=get)
         if receipt:
             receipts.append(receipt)
     return receipts

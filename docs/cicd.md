@@ -25,10 +25,11 @@ builds independently of this repository; disable those until approved.
 ## Exact-commit deployment admission
 
 `platform_services/github_ci.py` is the shared, fail-closed GitHub Actions gate.
-Core source defines two policies: `NorthCountryEngineer/NCE_Core` requires
+Core source defines three policies: `NorthCountryEngineer/NCE_Core` requires
 `.github/workflows/verify.yml` / **Core required checks**;
 `NorthCountryEngineer/Proposal_Studio` requires `.github/workflows/ci.yml` /
-**Proposal Studio required checks**. Application manifests and browser input
+**Proposal Studio required checks**; `NorthCountryEngineer/NCAcademy` requires
+`.github/workflows/ci.yml` / **NCAcademy required checks**. Application manifests and browser input
 cannot disable or replace these policies.
 
 A deployment requires a successful **push** run for each exact 40-character source
@@ -50,8 +51,21 @@ success or hide a newer pending or failed attempt of the required workflow.
 The workflow itself must still be completed successfully, followed by the exact
 attempt's required successful aggregate job. The final consistency check stays
 on the repository index once it was needed; it never switches to an index that
-may omit newer runs. Empty results from both indexes, malformed/truncated data,
-access errors and any non-successful trusted result continue to block release.
+may omit newer runs. A well-formed empty repository result permits at most three
+additional fresh reads of that same exact filtered index. Each fresh read has a
+unique public cache key; requests also send `Cache-Control: no-cache`. The final
+consistency check always uses a fresh key. Any nonempty response is validated
+immediately: pending or failed runs, malformed/truncated data and access errors
+never trigger a retry or fall back to an earlier success. Persistently empty
+indexes still block release.
+
+Both application and Core-runner checks share one allowance of at most 20 reads
+and a 40-second admission decision budget. Each request receives a socket
+inactivity timeout of at most ten seconds, reduced to the remaining allowance.
+Bounded body chunks check elapsed time between reads, and responses received
+after the deadline are refused. The decision budget is not an absolute
+slow-header transport timeout. No receipt is cached across deployment stages. The gate
+does not start, cancel or rerun CI to repair an index.
 This performs bounded read-only GitHub requests and creates no CI or cloud jobs.
 
 The cloud console checks during release preparation, approval, and immediately

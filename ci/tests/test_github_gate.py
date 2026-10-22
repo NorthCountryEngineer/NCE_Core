@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from platform_services import github_ci as gate
 
@@ -38,6 +39,21 @@ def fallback_documents(runs=None):
     return [values[0], {'total_count':0,'workflow_runs':[]}, copy.deepcopy(listing), values[2], copy.deepcopy(listing)]
 
 
+def without_nonce(path):
+    part = urlsplit(path)
+    return part.path + ('?' + urlencode([(key,value) for key,value in parse_qsl(part.query) if key != '_nonce']) if part.query else '')
+
+
+def core_documents():
+    values = documents()
+    values[0].update(id=8,path='.github/workflows/verify.yml')
+    for value in (values[1],values[3]):
+        value['workflow_runs'] = [run(id=112,workflow_id=8,head_sha='b'*40,path='.github/workflows/verify.yml',
+            repository={'full_name':'NorthCountryEngineer/NCE_Core'},head_repository={'full_name':'NorthCountryEngineer/NCE_Core'})]
+    values[2]['jobs'][0].update(run_id=112,head_sha='b'*40,name='Core required checks')
+    return values
+
+
 class GitHubGateTests(unittest.TestCase):
     def test_academy_requires_its_own_exact_repository_and_job(self):
         values = documents()
@@ -66,7 +82,8 @@ class GitHubGateTests(unittest.TestCase):
         self.assertIn('event=push', paths[1])
         self.assertNotIn('status=success', paths[1])
         self.assertIn('/attempts/2/jobs?', paths[2])
-        self.assertEqual(paths[1], paths[3])
+        self.assertEqual(paths[1], without_nonce(paths[3]))
+        self.assertIn('_nonce=', paths[3])
 
     def test_empty_workflow_index_uses_bounded_repository_lookup_and_stays_on_that_index(self):
         other = run(id=40,workflow_id=8,path='.github/workflows/other.yml',run_number=8,
@@ -77,7 +94,7 @@ class GitHubGateTests(unittest.TestCase):
         self.assertEqual(len(paths),5)
         self.assertIn('/actions/workflows/7/runs?',paths[1])
         self.assertIn('/actions/runs?head_sha='+SHA+'&event=push&per_page=100&page=1',paths[2])
-        self.assertEqual(paths[2],paths[4])  # Recheck the complete repository index.
+        self.assertEqual(paths[2],without_nonce(paths[4]))  # Recheck the complete repository index.
         self.assertNotIn('status=success',paths[2])
 
     def test_only_well_formed_empty_workflow_listing_can_trigger_fallback(self):
@@ -139,6 +156,118 @@ class GitHubGateTests(unittest.TestCase):
             values[3]['jobs'][0].update(changes)
             with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
                 self.verify(values)
+
+    def test_empty_repository_index_can_recover_on_third_fresh_read_then_requires_fresh_consistency(self):
+        values = documents()
+        empty = {'total_count':0,'workflow_runs':[]}
+        receipt,get = self.verify([values[0],empty,empty,empty,empty,values[1],values[2],values[3]])
+        self.assertEqual(receipt['run_id'],12)
+        paths = [call.args[0] for call in get.call_args_list]
+        self.assertEqual(len(paths),8)
+        fresh = [path for path in paths if '_nonce=' in path]
+        self.assertEqual(len(fresh),4)
+        nonces = []
+        for path in fresh:
+            query = dict(parse_qsl(urlsplit(path).query))
+            self.assertEqual(query['head_sha'],SHA)
+            self.assertEqual(query['event'],'push')
+            self.assertEqual(query['page'],'1')
+            self.assertEqual(query['per_page'],'100')
+            self.assertRegex(query['_nonce'],r'^[a-f0-9]{32}$')
+            nonces.append(query['_nonce'])
+            self.assertIn('/actions/runs?',path)
+        self.assertEqual(len(set(nonces)),4)
+
+    def test_persistent_empty_is_refused_after_exactly_three_fresh_rereads(self):
+        empty = {'total_count':0,'workflow_runs':[]}
+        get = Mock(side_effect=[documents()[0],empty,empty,empty,empty,empty])
+        with self.assertRaisesRegex(gate.CIGateError,'No bounded, complete'):
+            gate.verify_repository(REPOSITORY,SHA,read_json=get)
+        self.assertEqual(get.call_count,6)
+        paths = [call.args[0] for call in get.call_args_list]
+        self.assertEqual(sum('_nonce=' in path for path in paths),3)
+        self.assertFalse(any('/jobs?' in path for path in paths))
+
+    def test_final_empty_recheck_recovers_without_reusing_the_initial_success(self):
+        values = fallback_documents()
+        empty = {'total_count':0,'workflow_runs':[]}
+        receipt,get = self.verify(values[:4]+[empty,empty,values[4]])
+        self.assertEqual(receipt['run_id'],12)
+        self.assertEqual(get.call_count,7)
+        self.assertTrue(all('_nonce=' in call.args[0] and '/actions/runs?' in call.args[0]
+                            for call in get.call_args_list[4:]))
+        get = Mock(side_effect=values[:4]+[empty]*4)
+        with self.assertRaisesRegex(gate.CIGateError,'No bounded, complete'):
+            gate.verify_repository(REPOSITORY,SHA,read_json=get)
+        self.assertEqual(get.call_count,8)
+
+    def test_empty_then_nonempty_pending_failed_malformed_or_transport_error_is_never_retried(self):
+        empty = {'total_count':0,'workflow_runs':[]}
+        failures = [None,[],{'total_count':False,'workflow_runs':[]},{'total_count':2,'workflow_runs':[run()]},
+                    {'total_count':1,'workflow_runs':[run(status='queued',conclusion=None)]},
+                    {'total_count':1,'workflow_runs':[run(conclusion='failure')]},
+                    gate.CIGateError('transport unavailable')]
+        for response in failures:
+            get = Mock(side_effect=[documents()[0],empty,empty,response])
+            with self.subTest(response=response),self.assertRaises(gate.CIGateError):
+                gate.verify_repository(REPOSITORY,SHA,read_json=get)
+            self.assertEqual(get.call_count,4)
+
+    def test_empty_final_recheck_cannot_hide_a_new_pending_run_or_changed_attempt(self):
+        values = fallback_documents()
+        empty = {'total_count':0,'workflow_runs':[]}
+        for changes in [{'status':'queued','conclusion':None},{'conclusion':'failure'},
+                        {'run_attempt':3},{'id':13,'run_number':5},{'updated_at':'2026-10-16T13:00:00Z'}]:
+            latest = {'total_count':1,'workflow_runs':[run(**changes)]}
+            get = Mock(side_effect=values[:4]+[empty,latest])
+            with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
+                gate.verify_repository(REPOSITORY,SHA,read_json=get)
+            self.assertEqual(get.call_count,6)
+
+    def test_two_source_admission_shares_one_forty_second_deadline(self):
+        values = documents()+core_documents()
+        clock = [0.0]
+        def read(path):
+            clock[0] += 6
+            return values.pop(0)
+        get = Mock(side_effect=read)
+        with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),self.assertRaisesRegex(gate.CIGateError,'time budget'):
+            gate.verify_deployment(REPOSITORY,SHA,'NorthCountryEngineer/NCE_Core','b'*40,read_json=get)
+        self.assertEqual(get.call_count,7)
+        self.assertEqual(clock[0],42)
+
+    def test_two_source_admission_never_exceeds_twenty_requests(self):
+        empty = {'total_count':0,'workflow_runs':[]}
+        def worst(values):
+            return [values[0],empty,empty,empty,empty,values[1],values[2],empty,empty,empty,values[3]]
+        get = Mock(side_effect=worst(documents())+worst(core_documents()))
+        with self.assertRaisesRegex(gate.CIGateError,'request or time budget'):
+            gate.verify_deployment(REPOSITORY,SHA,'NorthCountryEngineer/NCE_Core','b'*40,read_json=get)
+        self.assertEqual(get.call_count,20)
+
+    def test_transport_timeout_uses_the_remaining_admission_budget_and_no_late_response_is_accepted(self):
+        values = documents()
+        clock = [0.0]
+        def read(path,**kwargs):
+            clock[0] += 12
+            return values.pop(0)
+        get = Mock(side_effect=read)
+        with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate,'_read_json',get),self.assertRaisesRegex(gate.CIGateError,'time budget'):
+            gate.verify_repository(REPOSITORY,SHA,token='ghp_'+'x'*40)
+        self.assertEqual([call.kwargs['timeout'] for call in get.call_args_list],[10,10,10,4])
+
+    def test_expired_budget_prevents_a_new_read_and_ordinary_two_source_admission_passes(self):
+        clock = [0.0]
+        get = Mock(side_effect=documents()+core_documents())
+        with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]):
+            reader = gate._AdmissionReader(None,get)
+            clock[0] = 40.0
+            with self.assertRaisesRegex(gate.CIGateError,'time budget'):
+                reader('/fixed/path')
+        get.assert_not_called()
+        receipts = gate.verify_deployment(REPOSITORY,SHA,'NorthCountryEngineer/NCE_Core','b'*40,
+                                           read_json=Mock(side_effect=documents()+core_documents()))
+        self.assertEqual([row['repository'] for row in receipts],[REPOSITORY,'NorthCountryEngineer/NCE_Core'])
 
     def test_unknown_application_does_not_silently_inherit_our_policy_or_read_credentials(self):
         with patch.object(gate, '_token', side_effect=AssertionError('No credential read')), patch.object(gate, '_read_json') as get:
@@ -247,7 +376,7 @@ class GitHubGateTests(unittest.TestCase):
 
     def test_transport_is_fixed_host_authenticated_bounded_no_redirect_or_proxy_and_closed(self):
         raw = io.BytesIO(b'{"id": 7}')
-        response = Mock(status=200, read=raw.read)
+        response = Mock(status=200, read1=raw.read)
         response.__enter__ = Mock(return_value=response)
         response.__exit__ = Mock(return_value=False)
         opener = Mock()
@@ -257,6 +386,8 @@ class GitHubGateTests(unittest.TestCase):
         request = opener.open.call_args.args[0]
         self.assertTrue(request.full_url.startswith('https://api.github.com/repos/'))
         self.assertEqual(request.get_header('Authorization'), 'Bearer token')
+        self.assertEqual(request.get_header('Cache-control'),'no-cache')
+        self.assertEqual(request.get_header('Pragma'),'no-cache')
         self.assertEqual(opener.open.call_args.kwargs['timeout'], 10)
         self.assertEqual(build.call_args.args[0].proxies, {})
         self.assertIsInstance(build.call_args.args[1], gate._NoRedirect)
@@ -266,7 +397,7 @@ class GitHubGateTests(unittest.TestCase):
 
     def test_transport_failures_and_response_bodies_never_echo_secrets(self):
         for raw in [b'invalid response hidden-key', b'[]', b' ' * (gate.MAX_RESPONSE + 1)]:
-            response = Mock(status=200, read=Mock(return_value=raw))
+            response = Mock(status=200, read1=Mock(side_effect=[raw,b'']))
             response.__enter__ = Mock(return_value=response)
             response.__exit__ = Mock(return_value=False)
             opener = Mock()
@@ -279,3 +410,20 @@ class GitHubGateTests(unittest.TestCase):
         with patch.object(gate, 'build_opener', return_value=opener), self.assertRaises(gate.CIGateError) as error:
             gate._read_json('/fixed/path', token='credential-hidden')
         self.assertNotIn('credential-hidden', str(error.exception))
+
+    def test_transport_checks_deadline_between_body_chunks_and_refuses_a_late_response(self):
+        clock = [0.0]
+        chunks = [b'{"id":',b'7}',b'']
+        def read(size):
+            self.assertLessEqual(size,65536)
+            clock[0] += 4
+            return chunks.pop(0)
+        response = Mock(status=200,read1=Mock(side_effect=read))
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=False)
+        opener = Mock();opener.open.return_value = response
+        with patch.object(gate.time,'monotonic',side_effect=lambda:clock[0]),patch.object(gate,'build_opener',return_value=opener),self.assertRaises(gate.CIGateError):
+            gate._read_json('/fixed/path',token='secret-hidden',timeout=6)
+        self.assertEqual(response.read1.call_count,2)
+        self.assertEqual(opener.open.call_args.kwargs['timeout'],6)
+        response.__exit__.assert_called_once()
