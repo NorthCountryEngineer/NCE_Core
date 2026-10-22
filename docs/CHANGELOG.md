@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-22 — Exact-commit CI lookup compatibility
+
+When GitHub's workflow-specific run index is empty, Core can verify the same
+exact push commit through the complete bounded repository index. All run
+provenance, trusted workflow, latest attempt, completed-success parent, required
+job and deployment-stage rechecks remain enforced. Unrelated workflows never
+authorize release. See [CI/CD admission](cicd.md#exact-commit-deployment-admission).
+Offline regressions cover empty versus malformed indexes, unrelated workflows,
+duplicate IDs, pending/failed attempts and changes during verification. No
+publication, new CI execution, cloud resources or provider calls are performed
+by the lookup itself.
+
 ## 2026-10-19 — Organization employee directory
 
 Added local administrator-managed employee profiles and manager assignments in Core,

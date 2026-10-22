@@ -119,6 +119,47 @@ def _latest(document, policy, commit, workflow_id):
     return latest
 
 
+def _repository_workflow_runs(document, policy, commit, workflow_id):
+    """Validate a complete repository index before narrowing to the trusted workflow."""
+    runs, total = document.get('workflow_runs'), document.get('total_count')
+    if (not isinstance(runs, list) or not isinstance(total, int) or isinstance(total, bool)
+            or total != len(runs) or not 1 <= total <= 100):
+        raise CIGateError('No bounded, complete GitHub push CI result exists for this exact commit.')
+    matching, seen = [], set()
+    for run in runs:
+        if (not isinstance(run, dict) or run.get('head_sha') != commit or run.get('event') != 'push'
+                or not _repo(run.get('repository'), policy.repository) or not _repo(run.get('head_repository'), policy.repository)
+                or not all(_positive(run.get(key)) for key in ('id', 'workflow_id', 'run_number', 'run_attempt'))
+                or not isinstance(run.get('path'), str) or not 1 <= len(run['path']) <= 4096
+                or run['id'] in seen):
+            raise CIGateError('GitHub CI repository results have invalid or ambiguous exact-commit provenance.')
+        try:
+            _stamp(run.get('updated_at'))
+        except (ValueError, TypeError):
+            raise CIGateError('GitHub CI returned invalid workflow run metadata.') from None
+        seen.add(run['id'])
+        trusted_id, trusted_path = run['workflow_id'] == workflow_id, run['path'] == policy.workflow
+        if trusted_id != trusted_path:
+            raise CIGateError('GitHub CI result does not match the trusted workflow identity and path.')
+        if trusted_id:
+            matching.append(run)
+    return {'total_count': len(matching), 'workflow_runs': matching}
+
+
+def _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id, *, repository_mode=False):
+    if not repository_mode:
+        document = get(listing)
+        # GitHub can expose an empty workflow index while its repository index
+        # already contains the exact push run. Only an honest empty page enables
+        # this alternate index; malformed, truncated and failed reads stay denied.
+        total, runs = document.get('total_count'), document.get('workflow_runs')
+        repository_mode = isinstance(total, int) and not isinstance(total, bool) and total == 0 and isinstance(runs, list) and not runs
+        if not repository_mode:
+            return _latest(document, policy, commit, workflow_id), False
+    document = _repository_workflow_runs(get(repository_listing), policy, commit, workflow_id)
+    return _latest(document, policy, commit, workflow_id), True
+
+
 def verify_repository(repository, commit, *, token=None, read_json=None):
     """Verify known deployment policies; unrelated applications keep their policy.
 
@@ -142,7 +183,8 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
         raise CIGateError('The required GitHub Actions workflow is missing, disabled, or has changed identity.')
     query = urlencode({'head_sha': commit, 'event': 'push', 'per_page': 100, 'page': 1})
     listing = prefix + f'/actions/workflows/{workflow_id}/runs?' + query
-    run = _latest(get(listing), policy, commit, workflow_id)
+    repository_listing = prefix + '/actions/runs?' + query
+    run, repository_mode = _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id)
     jobs = get(prefix + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100&page=1")
     entries = jobs.get('jobs')
     total_jobs = jobs.get('total_count')
@@ -156,7 +198,10 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
     if (not _positive(job.get('run_id')) or job.get('run_id') != run['id'] or job.get('head_sha') != commit or job.get('status') != 'completed'
             or job.get('conclusion') != 'success'):
         raise CIGateError('The required GitHub CI aggregate job has not passed for this exact commit and run.')
-    refreshed = _latest(get(listing), policy, commit, workflow_id)
+    # Once the alternate index was needed, recheck that full index. Switching
+    # back to a lagging workflow index could hide a newly queued trusted run.
+    refreshed, _ = _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id,
+                                  repository_mode=repository_mode)
     if any(refreshed.get(key) != run.get(key) for key in ('id', 'run_attempt', 'updated_at')):
         raise CIGateError('GitHub CI changed during verification. Verify the latest completed attempt again.')
     return {'repository': policy.repository, 'commit': commit, 'workflow': policy.workflow,

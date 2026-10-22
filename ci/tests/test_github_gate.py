@@ -32,6 +32,12 @@ def documents():
     ]
 
 
+def fallback_documents(runs=None):
+    values = documents()
+    listing = {'total_count':len(runs or [run()]), 'workflow_runs':runs or [run()]}
+    return [values[0], {'total_count':0,'workflow_runs':[]}, copy.deepcopy(listing), values[2], copy.deepcopy(listing)]
+
+
 class GitHubGateTests(unittest.TestCase):
     def test_academy_requires_its_own_exact_repository_and_job(self):
         values = documents()
@@ -61,6 +67,78 @@ class GitHubGateTests(unittest.TestCase):
         self.assertNotIn('status=success', paths[1])
         self.assertIn('/attempts/2/jobs?', paths[2])
         self.assertEqual(paths[1], paths[3])
+
+    def test_empty_workflow_index_uses_bounded_repository_lookup_and_stays_on_that_index(self):
+        other = run(id=40,workflow_id=8,path='.github/workflows/other.yml',run_number=8,
+                    status='in_progress',conclusion=None,updated_at='2026-10-16T13:00:00Z')
+        receipt, get = self.verify(fallback_documents([other,run()]))
+        self.assertEqual(receipt['run_id'],12)
+        paths = [call.args[0] for call in get.call_args_list]
+        self.assertEqual(len(paths),5)
+        self.assertIn('/actions/workflows/7/runs?',paths[1])
+        self.assertIn('/actions/runs?head_sha='+SHA+'&event=push&per_page=100&page=1',paths[2])
+        self.assertEqual(paths[2],paths[4])  # Recheck the complete repository index.
+        self.assertNotIn('status=success',paths[2])
+
+    def test_only_well_formed_empty_workflow_listing_can_trigger_fallback(self):
+        for invalid in [{'total_count':False,'workflow_runs':[]}, {'total_count':0,'workflow_runs':[run()]},
+                        {'total_count':1,'workflow_runs':[]}, {'workflow_runs':[]},
+                        {'total_count':0,'workflow_runs':None}]:
+            get = Mock(side_effect=[documents()[0],invalid])
+            with self.subTest(invalid=invalid),self.assertRaises(gate.CIGateError):
+                gate.verify_repository(REPOSITORY,SHA,read_json=get)
+            self.assertEqual(get.call_count,2)
+
+    def test_fallback_validates_every_row_before_ignoring_other_workflows(self):
+        other = run(id=40,workflow_id=8,path='.github/workflows/other.yml')
+        for changes in [{'head_sha':'b'*40}, {'event':'pull_request'},
+                        {'repository':{'full_name':'Other/app'}}, {'head_repository':{'full_name':'Attacker/app'}},
+                        {'id':False}, {'workflow_id':0}, {'run_attempt':0}, {'run_number':0},
+                        {'path':''}, {'updated_at':'invalid'}, {'updated_at':'2026-10-16T12:00:00'}]:
+            with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
+                self.verify(fallback_documents([run(),{**other,**changes}]))
+
+    def test_fallback_rejects_trusted_workflow_identity_crossovers(self):
+        for changes in [{'path':'.github/workflows/other.yml'}, {'workflow_id':8}]:
+            with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
+                self.verify(fallback_documents([run(),run(id=40,**changes)]))
+
+    def test_fallback_unrelated_success_cannot_mask_newer_pending_or_failed_trusted_run(self):
+        other = run(id=40,workflow_id=8,path='.github/workflows/other.yml',run_number=8,
+                    updated_at='2026-10-16T14:00:00Z')
+        for status,conclusion in [('queued',None),('in_progress',None),('completed','failure'),
+                                  ('completed','cancelled'),('completed','skipped')]:
+            latest = run(id=13,run_number=5,status=status,conclusion=conclusion,
+                         updated_at='2026-10-16T13:00:00Z')
+            with self.subTest(status=status,conclusion=conclusion),self.assertRaises(gate.CIGateError):
+                self.verify(fallback_documents([run(),other,latest]))
+
+    def test_fallback_requires_trusted_workflow_and_rejects_duplicate_ids_or_incomplete_listing(self):
+        other = run(id=40,workflow_id=8,path='.github/workflows/other.yml')
+        for runs in [[other], [run(),run()], [run(),run(conclusion='failure')]]:
+            with self.subTest(runs=runs),self.assertRaises(gate.CIGateError):
+                self.verify(fallback_documents(runs))
+        for total in [False,0,2,101]:
+            values = fallback_documents()
+            values[2]['total_count'] = total
+            with self.subTest(total=total),self.assertRaises(gate.CIGateError):
+                self.verify(values)
+
+    def test_fallback_recheck_sees_new_pending_run_and_changed_attempt(self):
+        for changes in [{'id':13,'run_number':5,'status':'in_progress','conclusion':None},
+                        {'run_attempt':3}, {'updated_at':'2026-10-16T13:00:00Z'}]:
+            values = fallback_documents()
+            values[4] = {'total_count':2,'workflow_runs':[run(),run(**changes)]}
+            with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
+                self.verify(values)
+
+    def test_fallback_still_requires_successful_aggregate_for_exact_run_and_sha(self):
+        for changes in [{'head_sha':'b'*40}, {'run_id':13}, {'name':'Other checks'},
+                        {'status':'in_progress'}, {'conclusion':'failure'}, {'conclusion':'skipped'}]:
+            values = fallback_documents()
+            values[3]['jobs'][0].update(changes)
+            with self.subTest(changes=changes),self.assertRaises(gate.CIGateError):
+                self.verify(values)
 
     def test_unknown_application_does_not_silently_inherit_our_policy_or_read_credentials(self):
         with patch.object(gate, '_token', side_effect=AssertionError('No credential read')), patch.object(gate, '_read_json') as get:

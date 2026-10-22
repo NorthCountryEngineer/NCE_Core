@@ -40,6 +40,20 @@ It checks again after reading the attempt's jobs. A pending, failed, cancelled,
 skipped, missing, ambiguous, or inaccessible result blocks deployment; an old
 success does not override a newer failed rerun.
 
+If GitHub's workflow-specific index returns a well-formed empty result for the
+exact push commit, Core reads the repository-wide index with the same SHA and
+event filters. This alternate index must be complete within 100 runs. Core
+checks every returned run's repository, source repository, commit, event, IDs and
+timestamp before selecting the exact trusted workflow ID and path. Duplicate IDs
+and crossed workflow identities are refused. Other workflows cannot supply a
+success or hide a newer pending or failed attempt of the required workflow.
+The workflow itself must still be completed successfully, followed by the exact
+attempt's required successful aggregate job. The final consistency check stays
+on the repository index once it was needed; it never switches to an index that
+may omit newer runs. Empty results from both indexes, malformed/truncated data,
+access errors and any non-successful trusted result continue to block release.
+This performs bounded read-only GitHub requests and creates no CI or cloud jobs.
+
 The cloud console checks during release preparation, approval, and immediately
 before acquiring AWS credentials or starting each CodeBuild phase. A refusal
 before StartBuild never creates or recovers a billable AWS build. The pinned
