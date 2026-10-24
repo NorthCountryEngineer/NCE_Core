@@ -8,8 +8,8 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -60,6 +60,31 @@ _DISPATCH_STEPS = (
     'Verify shared registry source', 'Run npm run build:preview',
     'Build production with synthetic public registration',
 )
+
+
+@dataclass(frozen=True)
+class OneReleaseBrokerPolicy:
+    # Public immutable Game Studio application revision; not a credential.
+    app_commit: str = '55450955f8acfe88171289ec262b15f17e1c5e84'  # pragma: allowlist secret
+    repository: str = 'NorthCountryEngineer/NCE_Core'
+    repository_id: int = 1412449668
+    branch: str = 'codex/game-studio-onboarding'
+    workflow: str = '.github/workflows/game-studio-release-checks.yml'
+    required_job: str = 'Game Studio one-release required checks'
+    # Public digest of the reviewed literal-checkout workflow.
+    workflow_sha256: str = '3d8e4a2dc12bff65407900b63c5ebe82d8300af7215c13341018c32aebaab44d'  # pragma: allowlist secret
+    workflow_id: int | None = None
+    approved_after: str | None = None
+    expires_at: str | None = None
+
+
+# Owner approved this fixed-source, <=24-hour broker at the recorded UTC cutoff.
+# The numeric workflow identity remains unset until this publication registers it.
+# Admission stays denied until that exact identity is reviewed and pinned.
+ONE_RELEASE_BROKER = OneReleaseBrokerPolicy(
+    approved_after='2026-10-24T15:06:30Z', expires_at='2026-10-25T15:06:30Z',
+)
+BROKER_MAX_REQUESTS = 32
 
 
 @dataclass(frozen=True)
@@ -144,13 +169,14 @@ def _read_json(path, *, token, timeout=10):
 class _AdmissionReader:
     """One request/time allowance shared by both protected release sources."""
 
-    def __init__(self, token, read_json):
+    def __init__(self, token, read_json, *, max_requests=MAX_REQUESTS):
         self.token, self.read_json = token, read_json
+        self.max_requests = max_requests
         self.deadline, self.requests = time.monotonic() + ADMISSION_SECONDS, 0
 
     def __call__(self, path, *, fresh=False):
         remaining = self.deadline - time.monotonic()
-        if remaining <= 0 or self.requests >= MAX_REQUESTS:
+        if remaining <= 0 or self.requests >= self.max_requests:
             raise CIGateError('GitHub CI verification exceeded its bounded request or time budget.')
         if fresh:
             # A distinct public query key requests another view of an index;
@@ -280,7 +306,7 @@ def _dispatch_head(document, approved, commit):
         raise CIGateError('Owner-dispatched CI must test the current exact default-branch commit.')
 
 
-def _dispatch_latest(document, policy, approved, commit):
+def _dispatch_latest(document, policy, approved, commit, *, expected_event='workflow_dispatch'):
     if not isinstance(document, dict):
         raise CIGateError('Owner-dispatched CI requires a complete exact-commit workflow index.')
     runs, total = document.get('workflow_runs'), document.get('total_count')
@@ -289,7 +315,7 @@ def _dispatch_latest(document, policy, approved, commit):
         raise CIGateError('Owner-dispatched CI requires a complete exact-commit workflow index.')
     seen = set()
     for row in runs:
-        if (not isinstance(row, dict) or row.get('head_sha') != commit or row.get('event') != 'workflow_dispatch'
+        if (not isinstance(row, dict) or row.get('head_sha') != commit or row.get('event') != expected_event
                 or not _positive(row.get('workflow_id')) or row.get('workflow_id') != approved.workflow_id or row.get('path') != policy.workflow
                 or not _repo(row.get('repository'), approved.repository) or not _repo(row.get('head_repository'), approved.repository)
                 or not _positive(row['repository'].get('id')) or not _positive(row['head_repository'].get('id'))
@@ -314,8 +340,9 @@ def _dispatch_latest(document, policy, approved, commit):
     return latest
 
 
-def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_listing):
-    approved = OWNER_DISPATCH_PROPOSAL
+def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_listing, *, approved=None, repository_default_branch=None, final_guard=None, expected_event='workflow_dispatch'):
+    approved = OWNER_DISPATCH_PROPOSAL if approved is None else approved
+    metadata = replace(approved, default_branch=repository_default_branch) if repository_default_branch else approved
     if (approved.approved_after is None or policy.repository != approved.repository
             or workflow_id != approved.workflow_id):
         raise CIGateError('No approved owner-dispatch CI policy exists for this repository and workflow.')
@@ -324,7 +351,7 @@ def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_lis
     except (ValueError, TypeError):
         raise CIGateError('The owner-dispatch policy approval timestamp is invalid.') from None
     prefix = '/repos/' + approved.repository
-    _dispatch_repository(get(prefix), approved)
+    _dispatch_repository(get(prefix), metadata)
     reference = prefix + '/git/ref/heads/' + quote(approved.default_branch, safe='')
     _dispatch_head(get(reference), approved, commit)
     blob = get(prefix + '/contents/' + quote(policy.workflow, safe='/') + '?ref=' + commit)
@@ -338,9 +365,9 @@ def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_lis
             raise ValueError
     except (ValueError, TypeError):
         raise CIGateError('The dispatched workflow differs from the exact reviewed workflow bytes.') from None
-    query = urlencode({'head_sha': commit, 'event': 'workflow_dispatch', 'per_page': 100, 'page': 1})
+    query = urlencode({'head_sha': commit, 'event': expected_event, 'per_page': 100, 'page': 1})
     listing = prefix + f'/actions/workflows/{workflow_id}/runs?' + query
-    run = _dispatch_latest(get(listing), policy, approved, commit)
+    run = _dispatch_latest(get(listing), policy, approved, commit, expected_event=expected_event)
     jobs = get(prefix + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100&page=1")
     entries = jobs.get('jobs') if isinstance(jobs, dict) else None
     if (not isinstance(entries, list) or type(jobs.get('total_count')) is not int
@@ -372,18 +399,20 @@ def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_lis
             or not isinstance(app, dict) or not _positive(app.get('id')) or app.get('id') != 15368 or app.get('slug') != 'github-actions'
             or not isinstance(app.get('owner'), dict) or not _positive(app['owner'].get('id')) or app['owner'].get('id') != 9919 or app['owner'].get('login') != 'github'):
         raise CIGateError('Dispatch CI required checks were not produced by the pinned GitHub Actions identity.')
-    refreshed = _dispatch_latest(get(listing, fresh=True), policy, approved, commit)
+    refreshed = _dispatch_latest(get(listing, fresh=True), policy, approved, commit, expected_event=expected_event)
     if any(refreshed.get(key) != run.get(key) for key in ('id', 'run_attempt', 'updated_at', 'check_suite_id')):
         raise CIGateError('Dispatch CI changed during verification; verify the newest exact attempt again.')
     _dispatch_head(get(reference, fresh=True), approved, commit)
-    _dispatch_repository(get(prefix, fresh=True), approved)
+    _dispatch_repository(get(prefix, fresh=True), metadata)
     # A new push run must return to the normal unchanged policy. No failed or
     # malformed push evidence may be bypassed by this alternate event.
-    if not _empty(get(repository_push_listing, fresh=True)):
+    if final_guard is not None:
+        final_guard()
+    elif not _empty(get(repository_push_listing, fresh=True)):
         raise CIGateError('Push evidence changed during dispatch verification; use the normal push policy.')
     return {'repository': policy.repository, 'commit': commit, 'workflow': policy.workflow,
             'run_id': run['id'], 'run_attempt': run['run_attempt'], 'required_job': policy.required_job,
-            'event': 'workflow_dispatch', 'policy': 'owner-dispatch-exact-workflow-v1',
+            'event': expected_event, 'policy': 'owner-dispatch-exact-workflow-v1',
             'owner_id': approved.owner_id, 'workflow_sha256': approved.workflow_sha256,
             'policy_approved_after': approved.approved_after}
 
@@ -438,12 +467,94 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
             'run_id': run['id'], 'run_attempt': run['run_attempt'], 'required_job': policy.required_job}
 
 
+def _broker_window(approved):
+    try:
+        after, expiry = _stamp(approved.approved_after), _stamp(approved.expires_at)
+        now = datetime.now(timezone.utc)
+        if not after < now < expiry or not timedelta(0) < expiry - after <= timedelta(hours=24):
+            raise ValueError
+    except (ValueError, TypeError):
+        raise CIGateError('The one-release broker has no active, bounded owner-approved window.') from None
+
+
+def _broker_native_evidence(get, commit, *, fresh=False):
+    """A queued, zero-job orphan is explicit eligibility, never a generic error."""
+    app = OWNER_DISPATCH_PROPOSAL
+    prefix = '/repos/' + app.repository
+    _dispatch_repository(get(prefix, fresh=fresh), app)
+    _dispatch_head(get(prefix + '/git/ref/heads/main', fresh=fresh), app, commit)
+    query = urlencode({'head_sha': commit, 'per_page': 100, 'page': 1})
+    document = get(prefix + '/actions/runs?' + query, fresh=fresh)
+    rows = document.get('workflow_runs') if isinstance(document, dict) else None
+    total = document.get('total_count') if isinstance(document, dict) else None
+    if not isinstance(rows, list) or type(total) is not int or total != len(rows) or not 0 <= total <= 2:
+        raise CIGateError('Broker eligibility requires a complete bounded native CI index.')
+    seen = set()
+    for row in rows:
+        if (not isinstance(row, dict) or row.get('event') != 'workflow_dispatch'
+                or row.get('head_sha') != commit or row.get('path') != '.github/workflows/ci.yml'
+                or type(row.get('workflow_id')) is not int or row['workflow_id'] != app.workflow_id
+                or not all(_positive(row.get(key)) for key in ('id', 'run_attempt', 'run_number', 'check_suite_id')) or row['id'] in seen
+                or row.get('head_branch') != 'main' or row.get('status') != 'queued' or row.get('conclusion') is not None
+                or any(not _repo(row.get(key), app.repository) or type(row[key].get('id')) is not int
+                       or row[key]['id'] != app.repository_id for key in ('repository', 'head_repository'))
+                or any(not isinstance(row.get(key), dict) or type(row[key].get('id')) is not int
+                       or row[key]['id'] != app.owner_id or row[key].get('type') != 'User' for key in ('actor', 'triggering_actor'))):
+            raise CIGateError('Native push, failed, started, foreign or malformed CI cannot use the broker.')
+        try:
+            if _stamp(row.get('updated_at')) < _stamp(row.get('created_at')):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise CIGateError('Native CI has malformed orphan-attempt metadata.') from None
+        seen.add(row['id'])
+        jobs = get(prefix + f"/actions/runs/{row['id']}/attempts/{row['run_attempt']}/jobs?per_page=100&page=1", fresh=fresh)
+        if not isinstance(jobs, dict) or type(jobs.get('total_count')) is not int or jobs['total_count'] != 0 or jobs.get('jobs') != []:
+            raise CIGateError('Only a queued native attempt with zero started jobs is broker-eligible.')
+
+
+def _verify_one_release_broker(get, repository, commit, runner_repository, runner_commit):
+    approved = ONE_RELEASE_BROKER
+    if (repository != OWNER_DISPATCH_PROPOSAL.repository or commit != approved.app_commit
+            or runner_repository != approved.repository or not isinstance(runner_commit, str) or not SHA.fullmatch(runner_commit)
+            or not _positive(approved.workflow_id)):
+        raise CIGateError('The one-release broker does not match the exact approved application and Core source.')
+    _broker_window(approved)
+    _broker_native_evidence(get, commit)
+    prefix = '/repos/' + approved.repository
+    workflow = get(prefix + '/actions/workflows/' + quote(approved.workflow.rsplit('/', 1)[-1], safe=''))
+    if (not isinstance(workflow, dict) or type(workflow.get('id')) is not int or workflow['id'] != approved.workflow_id
+            or workflow.get('path') != approved.workflow or workflow.get('state') != 'active'):
+        raise CIGateError('The exact approved broker workflow is unavailable.')
+    broker_identity = replace(OWNER_DISPATCH_PROPOSAL, repository=approved.repository,
+        repository_id=approved.repository_id, workflow_id=approved.workflow_id,
+        default_branch=approved.branch, workflow_sha256=approved.workflow_sha256,
+        approved_after=approved.approved_after)
+    policy = Policy(approved.repository, approved.workflow, approved.required_job)
+    def final_guard():
+        _broker_native_evidence(get, commit, fresh=True)
+        _broker_window(approved)
+    receipt = _verify_owner_dispatch(get, policy, runner_commit, approved.workflow_id, '',
+        approved=broker_identity, repository_default_branch='main', final_guard=final_guard, expected_event='push')
+    receipt.update(repository=repository, commit=commit, policy='one-release-core-broker-v1',
+                   execution_repository=approved.repository, execution_commit=runner_commit,
+                   policy_expires_at=approved.expires_at)
+    return receipt
+
+
 def verify_deployment(repository, commit, runner_repository, runner_commit, *, token=None, read_json=None):
     protected = any(isinstance(repository, str) and item.repository.casefold() == repository.casefold() for item in POLICIES)
     if protected and (not isinstance(runner_repository, str) or runner_repository.casefold() != 'northcountryengineer/nce_core'):
         raise CIGateError('Protected application releases require the CI-verified Core runner repository.')
     receipts = []
-    get = read_json if isinstance(read_json, _AdmissionReader) else _AdmissionReader(token, read_json)
+    broker = ONE_RELEASE_BROKER
+    use_broker = (broker.approved_after is not None and repository == OWNER_DISPATCH_PROPOSAL.repository and commit == broker.app_commit)
+    get = read_json if isinstance(read_json, _AdmissionReader) else _AdmissionReader(token, read_json, max_requests=BROKER_MAX_REQUESTS if use_broker else MAX_REQUESTS)
+    if use_broker:
+        receipts.append(_verify_one_release_broker(get, repository, commit, runner_repository, runner_commit))
+        receipts.append(verify_repository(runner_repository, runner_commit, token=token, read_json=get))
+        _broker_native_evidence(get, commit, fresh=True)
+        _broker_window(broker)
+        return receipts
     for source in dict.fromkeys(((repository, commit), (runner_repository, runner_commit))):
         receipt = verify_repository(*source, token=token, read_json=get)
         if receipt:
