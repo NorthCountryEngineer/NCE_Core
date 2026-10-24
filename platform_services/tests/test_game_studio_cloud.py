@@ -78,7 +78,7 @@ class GameStudioCloudContractTests(SimpleTestCase):
         for changes in [{'credentials': 'no'}, {'version': True}, {'hosts': [{'id': 'x', 'name': 'X', 'origin': '*', 'returnPath': '/'}]}]:
             with self.subTest(changes=changes), self.assertRaises(cloud_contract.ContractError):
                 cloud_contract.game_studio_configuration({**studio_config(), **changes})
-        for origin in ['https://*.example.test', 'http://example.test', 'https://user:pass@example.test', 'https://example.test/path', 'https://example.test?token=x', 'https://example.test#x', 'https://EXAMPLE.test', 'https://example.test:443', 'https://@example.test', 'https://example.test?', 'https://example.test#', 'https://0177.0.0.1', 'https://2130706433']:
+        for origin in ['https://*.example.test', 'http://example.test', 'https://user:pass@example.test', 'https://example.test/path', 'https://example.test?token=x', 'https://example.test#x', 'https://EXAMPLE.test', 'https://example.test:443', 'https://@example.test', 'https://example.test?', 'https://example.test#', 'https://0177.0.0.1', 'https://2130706433']:  # pragma: allowlist secret -- synthetic invalid-origin fixtures, never real credentials
             config = studio_config(); config['hosts'][0]['origin'] = origin
             with self.assertRaises(cloud_contract.ContractError): cloud_contract.game_studio_configuration(config)
         for path in ['//attacker.test', '/a?code=x', '/../x', '/%2f%2fattacker.test']:
