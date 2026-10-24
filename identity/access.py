@@ -122,6 +122,12 @@ def _resource_chain(resource):
             for field in ['platform', 'application']:
                 parent = getattr(item, field, None)
                 if parent is not None:
+                    if field == 'platform' and item.organization_id != parent.organization_id:
+                        from platform_services.cloud_models import hosted_assignment
+                        if hosted_assignment(item):
+                            # Provider policy is evaluated separately for deployment
+                            # mutations; it cannot confer cross-tenant tag authority.
+                            continue
                     visit(parent)
         for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
                 'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy', 'development_object', 'object_revision']:

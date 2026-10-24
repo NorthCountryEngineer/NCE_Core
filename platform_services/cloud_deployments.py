@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from identity.access import Principal, require_access, resource_organization
 from identity.models import AuditEvent, Membership, User
-from .cloud_models import CloudApplication, CloudPlatform, CloudRelease, digest
+from .cloud_models import CloudApplication, CloudPlatform, CloudRelease, digest, hosted_assignment
 from platform_services.github_ci import CIGateError
 
 logger = logging.getLogger(__name__)
@@ -33,9 +33,26 @@ def authorized(principal, resource, action='cloud.manage'):
     if isinstance(resource, CloudRelease):
         authorized(principal, resource.application, action)
     if isinstance(resource, CloudApplication):
-        require_access(principal, resource.platform, action)
+        assignment = hosted_assignment(resource)
+        if resource.organization_id != resource.platform.organization_id and not assignment:
+            raise PermissionDenied('The operator hosting assignment is unavailable.')
+        if not assignment or action != 'cloud.console_access':
+            if assignment and not (user.is_superuser or Membership.objects.filter(
+                    organization=resource.platform.organization, user=user, active=True, kind='administrator').exists()):
+                raise PermissionDenied('The hosting provider must authorize deployment changes.')
+            require_access(principal, resource.platform, action)
+            if assignment:
+                require_access(principal, assignment.provider_environment, action)
         require_access(principal, resource.environment, action)
     return resource
+
+
+def can_manage_hosting(principal, app):
+    try:
+        authorized(principal, app, 'cloud.application_configure')
+        return True
+    except PermissionDenied:
+        return False
 
 
 def _audit(resource, user, action):
@@ -132,11 +149,15 @@ def update_application(app, principal, **fields):
 
 
 def _snapshot(app):
-    return {'version': 1, 'app_identifier': str(app.pk), 'app_name': app.name, 'organization_id': str(app.organization_id),
+    result = {'version': 1, 'app_identifier': str(app.pk), 'app_name': app.name, 'organization_id': str(app.organization_id),
         'environment': app.environment.name, 'environment_id': str(app.environment_id), 'platform_id': str(app.platform_id),
         'platform_digest': app.platform.fingerprint(), 'platform_config': copy.deepcopy(app.platform.config),
         'repository': app.repository, 'branch': app.branch, 'commit': app.commit, 'archetype': app.archetype,
         'public_origin': app.public_origin, 'secret_parameter': f'/{app.platform.prefix}/apps/{app.pk}/core-resource-client'}
+    assignment = hosted_assignment(app)
+    if assignment:
+        result['hosting_assignment_digest'] = digest(assignment.descriptor())
+    return result
 
 
 def _require_ci(app, snapshot):

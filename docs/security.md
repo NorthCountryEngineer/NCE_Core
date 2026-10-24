@@ -205,6 +205,14 @@ application must supply the resource context for every protected record operatio
 and enforce its data-query boundaries; listing metadata or possessing a JWT is
 not a substitute for authorizing the operation.
 
+## External application ownership adoption
+
+An operator adoption is an explicit exception to ordinary immutable application placement. It moves one reviewed external application's ownership graph; it does not share a provider platform with another tenant or transfer unrelated organization resources. The operator must review an exact state-bound plan and resolve destination conflicts and unclassified dependencies before applying it. Application/service/deployment/client IDs and encrypted configuration stay stable. Historical release snapshots and audit events remain unchanged; both organizations receive new adoption evidence.
+
+A per-application hosting assignment permits the receiving organization to own and view that application while its infrastructure provider retains platform control. It grants no access to provider secrets, platform settings, other applications or arbitrary repositories. Deployment changes still require current administrator authority and policy access for both the application owner and its provider. Revoking the assignment or either current authority prevents later deployment steps. Ordinary application forms cannot create or alter this placement assignment.
+
+Transfer does not copy all source memberships or organization roles. Selected user mappings retain immutable user identity; only the reviewed application's permissions and policy tags can be remapped. Revoke the moved OAuth clients' tokens and authorization codes at cutover, retaining other clients' sessions. The application must rebind its own tenant storage explicitly and require fresh sign-in under the new organization; changing its environment value alone is not a data migration. Provider-neutral deployment configuration and customer-owned infrastructure remain supported. See [cloud adoption](cloud-deployments.md).
+
 ## Audit and compliance preparation
 
 Protected decisions and denials record organization, resource UUID, stable actor

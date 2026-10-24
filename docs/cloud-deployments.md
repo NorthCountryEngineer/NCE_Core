@@ -1,5 +1,41 @@
 # Deploy applications through Core
 
+## Transfer an existing hosted application to another organization
+
+An operator adoption can move an entire existing application to another Core
+organization while retaining the existing hosting platform. This is distinct
+from installing a new application or changing a shared platform's ownership.
+The operator reviews an exact adoption plan before applying its database changes.
+Ordinary application forms cannot change organization, hosting platform,
+environment, application identifier, service approach, or public origin.
+
+The adoption records an immutable `CloudHostingAssignment` for the exact
+application, provider organization/platform/environment, receiving
+organization/environment, repository, service approach, identifier and origin.
+Both environments must have the same environment name. The provider retains
+its deployment platform, credential vault, approved resource references and
+other applications. The receiving organization can read its application and
+completed release history, but this assignment does not grant access to the
+provider's settings, credentials, repositories or other applications.
+Deployment changes still require an active human administrator authorized in
+both organizations, or a platform administrator, with the provider's live policy
+checks. Hosting assignments are checked again at each release step; revocation
+or changed placement prevents a subsequent external operation.
+
+Physical AWS names remain bound to the original platform prefix, application
+UUID and environment name. For example, the resource prefix can retain a
+previous administrative label after ownership changes. Preserve those values,
+existing object/database namespaces, OAuth client/service/deployment IDs and
+the application's SSM credential path. Changing the organization slug does not
+rename AWS resources. No DNS or public-origin change is part of an adoption.
+The operator verifies the full application ownership graph and corresponding
+runtime tenant mapping before reopening access. Historical release snapshots
+and existing audit events retain their original provenance; new adoption
+events record the transfer in both organizations.
+
+Use the [operator adoption procedure](application-adoption.md) to review the
+exact plan, dependency checks, token revocation and application-side cutover.
+
 Core now has **Deployment platforms** in organization settings and an
 **Applications** console. Configure the destination once, verify it, and select
 only that destination's approved repository, service approach, and environment
@@ -25,6 +61,21 @@ by `nce-deploy.json`. See [exact-commit CI admission](cicd.md#exact-commit-deplo
 for the checked workflow identities and failure behavior. A pull-request result,
 local test receipt, old successful run, or same-named third-party status is not a
 substitute for the exact pushed source result.
+
+Game Studio also has a narrowly approved owner-dispatch evidence policy for a
+repeatedly complete empty push listing. It remains restricted to the fixed
+repository, owner, main branch, reviewed workflow bytes, post-approval run and
+required job/check identities. A failed or ambiguous push cannot use it. Adoption
+does not change or bypass either CI policy; the exact application and pinned
+Core runner revisions still require their approved evidence. See the
+[approved Game Studio CI policy](proposals/game-studio-owner-dispatch-ci.md).
+
+A separate, time-limited [one-release Core broker policy](proposals/game-studio-one-release-broker.md)
+can attest only its fixed Game Studio source during the approved window. It
+retains exact workflow, owner, application and Core source checks, including the
+normal Core checks. An adoption neither extends that expiry nor changes its
+source pins, native-evidence eligibility or request allowance. Proposal Studio
+and other application releases retain their existing policies.
 
 Proposal Studio is private. Before its first CI-gated release, enter a separate
 fine-grained GitHub credential under **Deployment platforms → Edit → GitHub CI

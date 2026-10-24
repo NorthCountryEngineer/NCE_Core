@@ -134,7 +134,9 @@ class CloudApplication(TaggedResource):
         constraints = [models.UniqueConstraint(fields=['organization', 'slug'], name='cloud_application_org_slug')]
 
     def clean(self):
-        if self.platform.organization_id != self.organization_id or self.environment.organization_id != self.organization_id:
+        assignment = hosted_assignment(self)
+        if self.environment.organization_id != self.organization_id or (
+                self.platform.organization_id != self.organization_id and not assignment):
             raise ValidationError('The platform and environment must belong to this organization.')
         if not re.fullmatch(r'[a-f0-9]{40}', self.commit):
             raise ValidationError('Use the exact 40-character GitHub commit SHA.')
@@ -143,7 +145,8 @@ class CloudApplication(TaggedResource):
             raise ValidationError('Invalid branch name.')
         if self.repository not in self.platform.allowed_repositories:
             raise ValidationError('Choose an approved repository.')
-        if (str(self.environment_id) not in self.platform.config.get('environment_ids', []) or
+        allowed_environment = assignment.provider_environment_id if assignment else self.environment_id
+        if (str(allowed_environment) not in self.platform.config.get('environment_ids', []) or
                 self.archetype not in self.platform.config.get('archetypes', [])):
             raise ValidationError('This environment or template is not configured for the platform.')
         if self.archetype in ('amplify-fargate', 'amplify-academy-fargate') and self.platform.mode == 'aws' and self.repository not in self.platform.config.get('academy_fargate_apps' if self.archetype == 'amplify-academy-fargate' else 'fargate_apps', {}):
@@ -162,6 +165,79 @@ class CloudApplication(TaggedResource):
 
     def __str__(self):
         return self.name
+
+
+class CloudHostingAssignment(models.Model):
+    """Operator-only adoption of one existing app; never a tenant platform grant."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    application = models.OneToOneField(CloudApplication, on_delete=models.PROTECT, related_name='hosting_assignment')
+    platform = models.ForeignKey(CloudPlatform, on_delete=models.PROTECT)
+    provider_organization = models.ForeignKey('identity.Organization', on_delete=models.PROTECT, related_name='+')
+    owner_organization = models.ForeignKey('identity.Organization', on_delete=models.PROTECT, related_name='+')
+    provider_environment = models.ForeignKey('platform_services.DeploymentEnvironment', on_delete=models.PROTECT, related_name='+')
+    owner_environment = models.ForeignKey('platform_services.DeploymentEnvironment', on_delete=models.PROTECT, related_name='+')
+    slug = models.SlugField(max_length=63)
+    repository = models.CharField(max_length=160)
+    archetype = models.CharField(max_length=30)
+    public_origin = models.URLField(blank=True)
+    actor = models.ForeignKey('identity.User', on_delete=models.PROTECT)
+    active = models.BooleanField(default=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    def matches(self, app):
+        platform = self.platform
+        return bool(self.active and self.application_id == app.pk and self.platform_id == app.platform_id and
+            self.provider_organization_id == platform.organization_id and
+            self.owner_organization_id == app.organization_id and self.owner_environment_id == app.environment_id and
+            self.provider_organization_id != self.owner_organization_id and
+            self.provider_environment.organization_id == self.provider_organization_id and
+            self.owner_environment.organization_id == self.owner_organization_id and
+            self.provider_environment.active and self.owner_environment.active and
+            self.provider_environment.name == self.owner_environment.name and
+            str(self.provider_environment_id) in platform.config.get('environment_ids', []) and
+            self.repository in platform.allowed_repositories and
+            self.archetype in platform.config.get('archetypes', []) and
+            all(getattr(self, key) == getattr(app, key) for key in ['slug', 'repository', 'archetype', 'public_origin']))
+
+    def descriptor(self):
+        return {key: str(getattr(self, key)) for key in ['id', 'application_id', 'platform_id',
+            'provider_organization_id', 'owner_organization_id', 'provider_environment_id', 'owner_environment_id',
+            'slug', 'repository', 'archetype', 'public_origin']}
+
+    def clean(self):
+        if not self.matches(self.application):
+            raise ValidationError('Hosting adoption must match this exact application, provider and owner placement.')
+        if not self.actor.is_active or not (self.actor.is_superuser or all(
+                organization.memberships.filter(user=self.actor, active=True, kind='administrator').exists()
+                for organization in [self.provider_organization, self.owner_organization])):
+            raise ValidationError('Hosting adoption requires an active administrator of both organizations.')
+        old = type(self).objects.filter(pk=self.pk).first()
+        fields = [field.attname for field in self._meta.fields if field.name != 'active']
+        if old and any(getattr(old, field) != getattr(self, field) for field in fields):
+            raise ValidationError('Hosting assignments are immutable. Review another operator adoption.')
+
+    def save(self, *args, **kwargs):
+        # Revocation is permitted; it must not require a still-active placement.
+        if not self.active and type(self).objects.filter(pk=self.pk).exists():
+            old = type(self).objects.get(pk=self.pk)
+            fields = [field.attname for field in self._meta.fields if field.name != 'active']
+            if any(getattr(old, field) != getattr(self, field) for field in fields):
+                raise ValidationError('Hosting assignments are immutable.')
+        else:
+            self.full_clean()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValidationError('Retain hosting adoption evidence; revoke the assignment instead.')
+
+
+def hosted_assignment(application):
+    """Read persisted authority afresh, including during a worker's next step."""
+    if not application.pk:
+        return None
+    assignment = CloudHostingAssignment.objects.select_related('platform', 'provider_environment',
+        'owner_environment').filter(application_id=application.pk, active=True).first()
+    return assignment if assignment and assignment.matches(application) else None
 
 
 class CloudRelease(TaggedResource):
