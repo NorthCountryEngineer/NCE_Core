@@ -110,6 +110,17 @@ for policy, action in [(resources['AppBoundary']['Properties']['PolicyDocument']
     require(grant['Condition']['StringLike']['kms:EncryptionContext:PARAMETER_ARN'] == {'Fn::Sub': 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client'}, 'SSM KMS grant escaped application credential path')
     require(grant['Condition']['ForAnyValue:StringEquals']['kms:ResourceAliases'] == ['alias/aws/ssm'] and grant['Condition']['Null']['kms:ResourceAliases'] == 'false', 'SSM KMS grant permits a customer-managed or unaliased key')
 cf_statements = statements('CloudFormationRole')
+# V2 TagResource uses a tags ARN wrapping the URL-encoded API ARN. The
+# provider's observed create authorization includes /v2/apis/* inside that ARN.
+http_api_tags = next(item for item in cf_statements if item.get('Sid') == 'TagHttpApiForCloudFormation')
+require(http_api_tags == {
+    'Sid': 'TagHttpApiForCloudFormation', 'Effect': 'Allow', 'Action': ['apigateway:POST'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn%3A${AWS::Partition}%3Aapigateway%3A${AWS::Region}%3A%3A%2Fv2%2Fapis%2F*'},
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}, 'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'}}},
+}, 'HTTP API tagging must remain POST-only on the observed encoded API ARN with same-region and platform request-tag conditions')
+http_api_grants = [item for item in cf_statements if any(action.startswith('apigateway:') for action in item['Action'])]
+require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation'}, 'HTTP API authority gained an unreviewed grant')
+require(body.count(b'"TagHttpApiForCloudFormation"') == 1, 'HTTP API tagging grant must belong only to its exact CloudFormation role')
 bucket_permissions = next(item for item in cf_statements if item['Sid'] == 'AppBuckets')
 require(bucket_permissions['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'CloudFormation bucket reads must remain within app names')
 require({'s3:ListBucket', 's3:GetBucketAcl', 's3:GetBucketLogging', 's3:GetBucketWebsite', 's3:GetReplicationConfiguration', 's3:GetBucketObjectLockConfiguration', 's3:GetBucketAbac', 's3:GetBucketMetadataTableConfiguration', 's3:ListTagsForResource'} <= set(bucket_permissions['Action']), 'CloudFormation S3 stabilization metadata permissions missing')
