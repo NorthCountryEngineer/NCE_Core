@@ -171,6 +171,52 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_explicit_game_http_api_children_create_only_under_tagged_parent_collections(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']
+        grant = next(item for item in statements if item.get('Sid') == 'CreateTaggedHttpApiChildren')
+        self.assertEqual(grant['Effect'], 'Allow')
+        self.assertEqual(grant['Action'], ['apigateway:POST'])
+        self.assertEqual(grant['Condition'], {'StringEquals': {
+            'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'},
+            'aws:RequestedRegion': {'Ref': 'AWS::Region'},
+        }})
+        expected = ['arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/' + name for name in ['integrations', 'routes', 'stages']]
+        self.assertEqual(grant['Resource'], [{'Fn::Sub': value} for value in expected])
+        patterns = [value.replace('${AWS::Partition}', 'aws').replace('${AWS::Region}', 'us-east-1') for value in expected]
+
+        def allowed(action, arn, context):
+            return (action in grant['Action'] and any(fnmatch.fnmatchcase(arn, pattern) for pattern in patterns)
+                    and context.get('aws:ResourceTag/nce:platform-prefix') == 'nce-tests'
+                    and context.get('aws:RequestedRegion') == 'us-east-1')
+
+        tagged = {'aws:ResourceTag/nce:platform-prefix': 'nce-tests', 'aws:RequestedRegion': 'us-east-1'}
+        for collection in ['integrations', 'routes', 'stages']:
+            arn = 'arn:aws:apigateway:us-east-1::/apis/example123/' + collection
+            with self.subTest(collection=collection):
+                self.assertTrue(allowed('apigateway:POST', arn, tagged))
+                for context in [{}, {'aws:RequestedRegion': 'us-east-1'},
+                                {'aws:ResourceTag/nce:platform-prefix': 'nce-tests'},
+                                {**tagged, 'aws:ResourceTag/nce:platform-prefix': 'other'},
+                                {**tagged, 'aws:RequestedRegion': 'eu-west-1'},
+                                {'aws:RequestTag/nce:platform-prefix': 'nce-tests', 'aws:RequestedRegion': 'us-east-1'}]:
+                    self.assertFalse(allowed('apigateway:POST', arn, context))
+                for action in ['apigateway:GET', 'apigateway:PUT', 'apigateway:PATCH', 'apigateway:DELETE', 'iam:PassRole']:
+                    self.assertFalse(allowed(action, arn, tagged))
+                self.assertFalse(allowed('apigateway:POST', arn + '/child-id', tagged))
+                self.assertFalse(allowed('apigateway:POST', arn.replace('us-east-1', 'eu-west-1'), tagged))
+        for path in ['authorizers', 'deployments', 'models', 'integrationresponses', 'routeresponses']:
+            self.assertFalse(allowed('apigateway:POST', 'arn:aws:apigateway:us-east-1::/apis/example123/' + path, tagged))
+        self.assertFalse(allowed('apigateway:POST', 'arn:aws:apigateway:us-east-1::/apis', tagged))
+        self.assertFalse(allowed('apigateway:POST', 'arn:aws:apigateway:us-east-1::/domainnames/example/stages', tagged))
+        game = json.loads((ROOT / 'game-studio.template.json').read_text())['Resources']
+        children = {item['Type'] for item in game.values() if item['Type'].startswith('AWS::ApiGatewayV2::') and item['Type'] != 'AWS::ApiGatewayV2::Api'}
+        self.assertEqual(children, {'AWS::ApiGatewayV2::Integration', 'AWS::ApiGatewayV2::Route', 'AWS::ApiGatewayV2::Stage'})
+        self.assertNotIn('CredentialsArn', game['ApiIntegration']['Properties'])
+        self.assertEqual(game['Api']['Properties']['Tags']['nce:platform-prefix'], {'Ref': 'PlatformPrefix'})
+        for name in ['ApiIntegration', 'ApiDefaultRoute', 'ApiDefaultStage']:
+            self.assertEqual(game[name]['Properties']['ApiId'], {'Ref': 'Api'})
+
     def test_http_api_tagging_matches_only_observed_encoded_api_arn_with_platform_request_tag(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']

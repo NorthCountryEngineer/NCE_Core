@@ -118,8 +118,16 @@ require(http_api_tags == {
     'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn%3A${AWS::Partition}%3Aapigateway%3A${AWS::Region}%3A%3A%2Fv2%2Fapis%2F*'},
     'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}, 'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'}}},
 }, 'HTTP API tagging must remain POST-only on the observed encoded API ARN with same-region and platform request-tag conditions')
+http_api_children = next(item for item in cf_statements if item.get('Sid') == 'CreateTaggedHttpApiChildren')
+require(http_api_children == {
+    'Sid': 'CreateTaggedHttpApiChildren', 'Effect': 'Allow', 'Action': ['apigateway:POST'],
+    'Resource': [{'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/' + name}
+                 for name in ['integrations', 'routes', 'stages']],
+    'Condition': {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}, 'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}, 'Explicit HTTP API children require POST on only three collections, a platform resource tag and this region; no untagged fallback')
+require(body.count(b'"CreateTaggedHttpApiChildren"') == 1, 'HTTP API child creation must belong only to its exact CloudFormation role')
 http_api_grants = [item for item in cf_statements if any(action.startswith('apigateway:') for action in item['Action'])]
-require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation'}, 'HTTP API authority gained an unreviewed grant')
+require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation', 'CreateTaggedHttpApiChildren'}, 'HTTP API authority gained an unreviewed grant')
 require(body.count(b'"TagHttpApiForCloudFormation"') == 1, 'HTTP API tagging grant must belong only to its exact CloudFormation role')
 bucket_permissions = next(item for item in cf_statements if item['Sid'] == 'AppBuckets')
 require(bucket_permissions['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'CloudFormation bucket reads must remain within app names')
