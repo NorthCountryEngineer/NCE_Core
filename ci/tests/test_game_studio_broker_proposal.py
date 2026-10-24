@@ -57,7 +57,7 @@ class BrokerProposalTests(unittest.TestCase):
         self.assertEqual(gate.ONE_RELEASE_BROKER.approved_after, '2026-10-24T15:06:30Z')
         self.assertEqual(gate.ONE_RELEASE_BROKER.expires_at, '2026-10-25T15:06:30Z')
         self.assertIn('ref: ' + gate.ONE_RELEASE_BROKER.app_commit, WORKFLOW.read_text())
-        self.assertIsNone(gate.ONE_RELEASE_BROKER.workflow_id)
+        self.assertEqual(gate.ONE_RELEASE_BROKER.workflow_id, 395195149)
 
     def test_unregistered_or_unapproved_policy_still_fails_closed(self):
         for changes in [{'workflow_id': None}, {'approved_after': None}, {'expires_at': None}]:

@@ -79,9 +79,10 @@ class OneReleaseBrokerPolicy:
 
 
 # Owner approved this fixed-source, <=24-hour broker at the recorded UTC cutoff.
-# The numeric workflow identity remains unset until this publication registers it.
-# Admission stays denied until that exact identity is reviewed and pinned.
+# GitHub registered the reviewed workflow as 395195149 after approved publication.
+# Only this pinned identity may attest the fixed application source until expiry.
 ONE_RELEASE_BROKER = OneReleaseBrokerPolicy(
+    workflow_id=395195149,
     approved_after='2026-10-24T15:06:30Z', expires_at='2026-10-25T15:06:30Z',
 )
 BROKER_MAX_REQUESTS = 32
