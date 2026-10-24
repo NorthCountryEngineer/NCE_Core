@@ -47,7 +47,8 @@ class OwnerDispatchPolicy:
 OWNER_DISPATCH_PROPOSAL = OwnerDispatchPolicy(
     repository='NorthCountryEngineer/Game_Studio', repository_id=1432213176,
     owner_id=132168834, workflow_id=395127780, default_branch='main',
-    workflow_sha256='cdcec9d0a51f3b37012e6b7f757c6d940ae808d010567b2668d4565fc6f22998',
+    # Public SHA256 of the reviewed GitHub workflow bytes; no credential.
+    workflow_sha256='3f0f05be8da896670a53642c3189b24a7bb81011745529720481842b8d7b75a2',  # pragma: allowlist secret
     approved_after='2026-10-24T14:42:20Z',
 )
 _DISPATCH_STEPS = (

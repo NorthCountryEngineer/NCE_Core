@@ -15,8 +15,8 @@ All existing push-event policies remain in force, including Game Studio's normal
 | Event | `workflow_dispatch` |
 | Default branch | `main` |
 | Requested deployment source | The exact 40-character commit, still current `refs/heads/main` |
-| Reviewed workflow SHA256 | `cdcec9d0a51f3b37012e6b7f757c6d940ae808d010567b2668d4565fc6f22998` |
-| Workflow review source | `60af8b3c19727f257f91ef935bd99e9cdafdbe6f`; bytes copied to `ci/fixtures/game-studio-dispatch-ci.yml` |
+| Reviewed workflow SHA256 | `3f0f05be8da896670a53642c3189b24a7bb81011745529720481842b8d7b75a2` |
+| Workflow review source | `6d94a22af0325d38c05998f202b22e956e7200c3` known-working event mapping, restored for the new release; bytes copied to `ci/fixtures/game-studio-dispatch-ci.yml` |
 | Required job | Exactly one `Game Studio required checks` job |
 | Check producer | GitHub Actions app ID `15368`, slug `github-actions`, GitHub owner ID `9919` |
 | Approval cutoff | `2026-10-24T14:42:20Z` |
@@ -27,7 +27,7 @@ The trusted release operator recorded the actual approval's UTC time in the revi
 
 The latest attempt for the exact source must be complete/successful; a newer failed, queued, skipped, cancelled, foreign-actor or otherwise invalid run blocks an older success. A complete bounded listing is required, with no duplicate run IDs or crossed repository/workflow identities. Foreign forks, events, paths and numeric repository IDs are rejected.
 
-The workflow bytes at the immutable source commit must match the exact reviewed SHA256. The reviewed required job and its checkout are unconditional; its checkout, setup and all verification/build commands must appear exactly once as successful completed steps. A missing or skipped required step fails even if a job reports success. Optional GitHub runner cleanup may be skipped; it cannot replace a required check. The attempt-specific job and GitHub Actions check run must agree on source SHA, job ID, status and check-suite identity.
+The workflow bytes at the immutable source commit must match the exact reviewed SHA256. The event header uses the known-working push/pull-request/workflow-dispatch mapping; every job, permission and check step is byte-for-byte identical to the previously reviewed workflow. The reviewed required job and its checkout are unconditional; its checkout, setup and all verification/build commands must appear exactly once as successful completed steps. A missing or skipped required step fails even if a job reports success. Optional GitHub runner cleanup may be skipped; it cannot replace a required check. The attempt-specific job and GitHub Actions check run must agree on source SHA, job ID, status and check-suite identity.
 
 The gate rereads the dispatch index, current main reference, repository default branch/owner and push index before releasing a receipt. A changed attempt, owner, default branch or main head fails. If push evidence appears during verification, the dispatch path refuses and requires the normal push policy. Receipts record the alternate event, workflow digest, pinned owner and approval cutoff for review.
 
