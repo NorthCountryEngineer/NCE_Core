@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-24 — External application ownership adoption
+
+Added an operator-only, exact-state plan/apply operation for moving an external application to another organization while retaining its service, deployment, OAuth clients and existing infrastructure identifiers. A per-application hosting assignment preserves the provider's separate platform authority; receiving administrators can view their application's history without gaining provider credentials, settings or unrelated applications. Unclassified dependencies and active releases prevent a partial move. Application tokens are revoked and both organizations retain migration audit evidence. See [cloud deployments](cloud-deployments.md) and [security](security.md#external-application-ownership-adoption).
+
+The operation does not provision infrastructure, change DNS, invoke models or send integration messages. Local disposable database and mocked cloud checks precede any publication or production cutover.
+
+This change retains the corrected Core templates without purpose inputs, Game Studio deployment recipe, and its separately approved [owner-dispatch CI policy](proposals/game-studio-owner-dispatch-ci.md). Adoption does not modify that policy or its exact source/workflow checks. The separately approved [one-release Core broker](proposals/game-studio-one-release-broker.md), its fixed Game Studio checkout and its bounded expiry remain unchanged.
+
 ## 2026-10-22 — Transient empty CI indexes
 
 The exact-commit gate can reread a genuinely empty repository index up to three

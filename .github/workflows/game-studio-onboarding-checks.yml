@@ -1,0 +1,66 @@
+name: Game Studio onboarding checks
+on:
+  push:
+    branches: [codex/game-studio-canonical-20261024]
+  workflow_dispatch:
+    inputs:
+      game_commit:
+        description: Immutable Game Studio commit to verify (40 lowercase hex characters)
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  required:
+    name: Game Studio onboarding required checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate immutable Game Studio source
+        id: source
+        shell: bash
+        env:
+          GAME_EVENT: ${{ github.event_name }}
+          REQUESTED_GAME_COMMIT: ${{ inputs.game_commit }}
+          # Public default source for push checks; not a credential.
+          DEFAULT_GAME_COMMIT: 7519dd9afc681cb88680b778ce56998f234f869b  # pragma: allowlist secret
+        run: |
+          if [[ "$GAME_EVENT" == "workflow_dispatch" ]]; then
+            game_commit="$REQUESTED_GAME_COMMIT"
+          elif [[ "$GAME_EVENT" == "push" ]]; then
+            game_commit="$DEFAULT_GAME_COMMIT"
+          else
+            echo 'Unsupported verification event.' >&2
+            exit 1
+          fi
+          if [[ ! "$game_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Game Studio source must be exactly 40 lowercase hexadecimal characters.' >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$game_commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: NorthCountryEngineer/Game_Studio
+          ref: ${{ steps.source.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: python3 -m unittest discover -s tests -p 'test_*.py'
+      - run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - run: python3 scripts/validate-deployment.py
+      - run: python3 scripts/package-api.py
+      - name: Verify shared registry source
+        run: cmp config/agent-framework.json backend/nce_api/agent-framework.json
+      - run: npm run build:preview
+      - name: Build production with synthetic public registration
+        env:
+          VITE_APP_MODE: nce
+          NCE_PUBLIC_CONFIG_JSON: '{"issuer":"https://core.example.invalid","organization_id":"11111111-1111-4111-8111-111111111111","service_id":"22222222-2222-4222-8222-222222222222","browser_client_id":"synthetic-public-client","redirect_uri":"https://games.example.invalid/oauth/callback","api_url":"https://api.example.invalid"}'
+          GAME_STUDIO_CONFIG_JSON: '{"version":1,"branding":{"appName":"Game Studio","badgeText":"Powered by Game Studio","accentColor":"#176a63"},"hosts":[]}'
+        run: npm run build

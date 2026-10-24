@@ -126,3 +126,37 @@ Official references: [CodeBuild start_build](https://docs.aws.amazon.com/boto3/l
 [Amplify manual create_deployment](https://docs.aws.amazon.com/boto3/latest/reference/services/amplify/client/create_deployment.html),
 [CloudFormation change sets](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-changesets.html).
 See also [DynamoDB encryption settings](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-dynamodb-table-ssespecification.html).
+
+## Independent Game Studio recipe
+
+`amplify-game-studio` selects the fixed Core-owned `game-studio.template.json`,
+fixed game capability vocabulary and invitation roles. It packages the Python
+handler without executing source, registers the tenant application with Core,
+then builds and publishes the frontend through the separate artifact-only
+builder. Operator-owned `game_studio_apps` settings define branding and exact
+embedding hosts; application metadata cannot supply IAM or infrastructure.
+See the Game Studio section in `docs/cloud-deployments.md` for onboarding,
+player/creator/admin roles, default-free guided design, optional exact-ARN
+Bedrock policies, and the top-level creator/public-player embedding boundary.
+
+The HTTP API uses both a `$default` stage and a `$default` route. Its additive
+`ApiDefaultInvoke` permission matches the exact `${Api}/$default/$default` execution
+ARN, with the owning account and function still bound. A method/path-shaped
+`/*/*/*` suffix does not match that default-route invocation and produces a
+gateway 500 before the handler executes. See AWS's
+[HTTP API Lambda troubleshooting example](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-troubleshooting-lambda.html).
+The legacy `ApiInvoke` permission remains unchanged because changing its
+`SourceArn` requires resource replacement. Adding the exact permission preserves
+the runner's existing rejection of replacements and removals.
+
+Game Studio's extensionless frontend routes use an explicit HTTP 200 rewrite to
+`/index.html`. The source expression `</^[^.]+$/>` covers direct creator, catalog,
+player, embed and OAuth callback navigation while leaving dotted SDK and asset
+paths to their normal responses. The earlier `404-200` rule could serve the app
+HTML with HTTP 404, so a valid response body alone does not establish route
+availability. Missing scripts, images, fonts and media must keep their real
+failure status. See the
+[Amplify SPA rewrite guidance](https://docs.aws.amazon.com/amplify/latest/userguide/redirect-rewrite-examples.html#redirects-for-single-page-web-apps-spa).
+Changing the Amplify app's `CustomRules` is an in-place CloudFormation update;
+an operator can review an app-only change set without rebuilding or replacing
+the API, publishing another frontend artifact, or modifying saved game data.

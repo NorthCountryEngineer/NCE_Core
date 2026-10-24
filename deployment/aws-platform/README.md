@@ -44,11 +44,43 @@ context. The control role can encrypt that credential path, and each app's
 inline role narrows decryption to its exact parameter. No KMS key is created;
 customer-managed credential keys require a separate reviewed extension.
 
-HTTP APIs use API Gateway QuickCreate with a Lambda target. The execution role
-has no broad write access to HTTP API routes/integrations, whose tags are not
-inherited from the parent HTTP API. Amplify applications and branches carry the
-platform prefix tag. Amplify's create API and CloudWatch log-group discovery
-require `Resource: "*"`; those statements use request-tag or region conditions.
+The generic serverless recipe uses API Gateway QuickCreate with a Lambda target.
+Game Studio instead declares an explicit payload-version-2 integration, default
+route and throttled default stage. Its execution role permits `apigateway:POST`
+only on `/apis/*/integrations`, `/apis/*/routes` and `/apis/*/stages`, requiring
+both `aws:ResourceTag/nce:platform-prefix` equal to this platform prefix and this
+AWS region. Missing tags or region deny access; there is no untagged fallback.
+It adds no create access to authorizers, deployments, models or other collections,
+and no new role-passing authority.
+
+The [API Gateway V2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_apigatewayv2.html#apigatewayv2-actions-as-permissions)
+explicitly lists the resource-tag condition for POST on these three collection
+resources. The [tagging guide](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-tagging-supported-resources.html)
+lists direct V2 taggable resources and documents inheritance for V1; that is not
+proof of physical tag inheritance by V2 child resources. The role uses the V2
+reference's documented authorization context and fails closed if it is absent.
+Offline policy tests verify this scope, while an authorized provider retry must
+verify the actual context before a release is accepted.
+
+Stage tag-on-create additionally needs the literal `apigateway:TagResource`
+action on `/apis/*/stages`. The dedicated grant requires the existing platform
+resource tag, the requested platform tag and this AWS region. It permits no
+stage-object tagging path, `PUT`, `UntagResource` or missing-tag fallback.
+This follows the current us-east-1 CloudFormation Stage provider schema, whose
+create permissions are `apigateway:POST` and `apigateway:TagResource`, and the
+observed tagged `CreateStage` denial. The schema is available through
+`aws cloudformation describe-type --type RESOURCE --type-name AWS::ApiGatewayV2::Stage`
+or the [AWS-published resource schema archive](https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip)
+(`aws-apigatewayv2-stage.json`). The authorization reference currently maps the
+`TagResource` operation to verb actions but omits this literal action. That
+documentation discrepancy does not justify widening the grant to all API
+Gateway writes; an authorized provider canary must verify these exact required
+conditions. The schema's update handler also lists `UntagResource`; this change
+does not authorize that operation or claim stage retagging support.
+
+Amplify applications and branches carry the platform prefix tag. Amplify's
+create API and CloudWatch log-group discovery require `Resource: "*"`; those
+statements use request-tag or region conditions.
 If manual frontend publication fails despite verified app/branch tags, the
 platform owner can optionally bind `FrontendAppId` and `FrontendBranch` to one
 verified app/branch after provisioning. Empty app ID disables the separate
@@ -79,3 +111,101 @@ architecture context. Local structure checks do not prove IAM or account-specifi
 service permissions. Run `aws cloudformation validate-template` before onboarding,
 and inspect the first change set. No AWS deployment was performed while creating
 these sources.
+
+
+### Game Studio manual frontend binding
+
+The observed Game Studio `CreateDeployment` denial names an internal
+`apps/<app>/branches/<branch>/deployments/*` resource even though app and branch
+ownership tags are present. The existing tag-conditioned wildcard already
+matches that path; adding another wildcard under the same tag condition cannot
+supply missing service tag context. The [Amplify authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amplify.html)
+lists branch tags for CreateDeployment/StartDeployment; the [API paths](https://docs.aws.amazon.com/amplify/latest/APIReference/API_CreateDeployment.html)
+and the actual denial identify the narrower deployment collection used here.
+
+After provisioning, the platform owner must verify the exact app and branch
+against the Game Studio stack outputs, account, region, and both
+`nce:platform-prefix` and `nce:application` tags. Set only
+`GameStudioFrontendAppId` and `GameStudioFrontendBranch` to those reviewed
+values. Empty app ID is the default and creates no policy. These parameters
+are operator inputs, never repository or release-manifest inputs. Preserve the
+existing `FrontendAppId`/`FrontendBranch` binding for other applications.
+
+The separate conditional policy attaches only to RunnerRole and grants only
+CreateDeployment and StartDeployment on that literal branch ARN and its
+`deployments/*` and `jobs/*` descendants in the platform account and region. Ownership is
+established by the verified exact binding because the observed internal
+resource does not supply the tag context used by the normal policy. The
+normal tag-conditioned read/publish policy remains unchanged. No untagged
+wildcard publishing authority is added. Clear GameStudioFrontendAppId to
+remove this optional grant. Runner source, Core runtime and CI policy need no
+change to apply this operator policy correction.
+
+StartDeployment uses the deployment API path and returns a job summary.
+The authorization reference also requires branch scope; the exact binding
+therefore includes that branch and only its deployment/job descendants for
+the two publish actions, preserving the earlier working owner-bound lifecycle. The existing GetJob/StopJob
+statement already covers the documented exact account/region
+`apps/*/branches/*/jobs/*` path; those job resources do not support resource-tag
+conditions in the authorization reference. This change adds no GetJob/StopJob actions or
+resource scope. Offline tests check wrong app, branch, account, region, missing
+region, and unrelated-action refusal. A real controlled publication must still
+verify AWS's context and complete CreateDeployment, upload, StartDeployment
+and GetJob success. Cancel any unstarted diagnostic job with StopJob and
+verify CANCELLED before another release; do not stop a real publication or
+another application's job.
+
+### Detailed role architecture context
+
+The following unchanged context was moved out of the inline template to keep
+it below CloudFormation's 51,200-byte body limit. Each resource retains a
+metadata reference to this section; policies, trust, retention and parameters
+retain their original semantics.
+
+#### AppBoundary architecture context
+
+Bound app runtime permissions, including conditional transaction checks, to platform namespaces.
+
+- CloudFormation must require this boundary on every new app role.
+- No IAM, STS, deployments, or account administration.
+- Container execution permissions stay inside named platform image, secret and log namespaces; runtime inline policies select exact app resources.
+- Paid Game Studio models require explicit exact model/profile ARNs; the default boundary grants none.
+
+#### FargateCloudFormationRole architecture context
+
+Container provisioning is separate from the existing serverless execution role; only pinned Core templates can use it.
+
+- Use platform-tagged network resources and named container/database resources.
+- New task and execution roles require the platform boundary.
+- No managed-policy attachment, boundary removal or application-code execution.
+- Application roles cannot invoke network or DNS control operations.
+- Private namespace support is separate; Cloud Map FAS zone lifecycle only, no record mutation.
+
+#### RunnerRole architecture context
+
+Only pinned Core runner may provision and publish; never execute application code here.
+
+- Fixed inline buildspec verifies Core Git commit before Python execution.
+- App source is data; builder executes it under a distinct role.
+- Migration task definitions and roles stay in the platform namespace; migration command is fixed by the pinned recipe.
+
+#### ControlRole architecture context
+
+Core receives short-lived control credentials; store only role identifiers in settings.
+
+- Trust exactly the existing Core runtime IAM role and deployment-specific external ID.
+- Core cannot modify IAM or CloudFormation directly.
+
+#### CoreAssumeControl architecture context
+
+Complete the two-sided assume-role grant on the existing Core runtime role.
+
+- Grant only this new control role and matching external ID.
+- Attach to task role, never task execution role or account root.
+
+#### SourceRole architecture context
+
+Application install/build commands are untrusted; isolate them from deployment credentials.
+
+- No CloudFormation, Lambda, SSM, IAM pass-role, or Amplify permissions.
+- Source role only writes source archives under builds/.

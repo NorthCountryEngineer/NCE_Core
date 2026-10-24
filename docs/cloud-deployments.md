@@ -1,5 +1,41 @@
 # Deploy applications through Core
 
+## Transfer an existing hosted application to another organization
+
+An operator adoption can move an entire existing application to another Core
+organization while retaining the existing hosting platform. This is distinct
+from installing a new application or changing a shared platform's ownership.
+The operator reviews an exact adoption plan before applying its database changes.
+Ordinary application forms cannot change organization, hosting platform,
+environment, application identifier, service approach, or public origin.
+
+The adoption records an immutable `CloudHostingAssignment` for the exact
+application, provider organization/platform/environment, receiving
+organization/environment, repository, service approach, identifier and origin.
+Both environments must have the same environment name. The provider retains
+its deployment platform, credential vault, approved resource references and
+other applications. The receiving organization can read its application and
+completed release history, but this assignment does not grant access to the
+provider's settings, credentials, repositories or other applications.
+Deployment changes still require an active human administrator authorized in
+both organizations, or a platform administrator, with the provider's live policy
+checks. Hosting assignments are checked again at each release step; revocation
+or changed placement prevents a subsequent external operation.
+
+Physical AWS names remain bound to the original platform prefix, application
+UUID and environment name. For example, the resource prefix can retain a
+previous administrative label after ownership changes. Preserve those values,
+existing object/database namespaces, OAuth client/service/deployment IDs and
+the application's SSM credential path. Changing the organization slug does not
+rename AWS resources. No DNS or public-origin change is part of an adoption.
+The operator verifies the full application ownership graph and corresponding
+runtime tenant mapping before reopening access. Historical release snapshots
+and existing audit events retain their original provenance; new adoption
+events record the transfer in both organizations.
+
+Use the [operator adoption procedure](application-adoption.md) to review the
+exact plan, dependency checks, token revocation and application-side cutover.
+
 Core now has **Deployment platforms** in organization settings and an
 **Applications** console. Configure the destination once, verify it, and select
 only that destination's approved repository, service approach, and environment
@@ -25,6 +61,21 @@ by `nce-deploy.json`. See [exact-commit CI admission](cicd.md#exact-commit-deplo
 for the checked workflow identities and failure behavior. A pull-request result,
 local test receipt, old successful run, or same-named third-party status is not a
 substitute for the exact pushed source result.
+
+Game Studio also has a narrowly approved owner-dispatch evidence policy for a
+repeatedly complete empty push listing. It remains restricted to the fixed
+repository, owner, main branch, reviewed workflow bytes, post-approval run and
+required job/check identities. A failed or ambiguous push cannot use it. Adoption
+does not change or bypass either CI policy; the exact application and pinned
+Core runner revisions still require their approved evidence. See the
+[approved Game Studio CI policy](proposals/game-studio-owner-dispatch-ci.md).
+
+A separate, time-limited [one-release Core broker policy](proposals/game-studio-one-release-broker.md)
+can attest only its fixed Game Studio source during the approved window. It
+retains exact workflow, owner, application and Core source checks, including the
+normal Core checks. An adoption neither extends that expiry nor changes its
+source pins, native-evidence eligibility or request allowance. Proposal Studio
+and other application releases retain their existing policies.
 
 Proposal Studio is private. Before its first CI-gated release, enter a separate
 fine-grained GitHub credential under **Deployment platforms → Edit → GitHub CI
@@ -709,3 +760,156 @@ and workload-compatible tags in Core, plus the exact local school/class placemen
 in Academy. Missing or denied authority fails closed. Human owner-only policy is
 not changed by this template. Enabling agent authentication never enables model
 inference, starts a model runner or issues a credential automatically.
+
+## Game Studio application archetype
+
+`amplify-game-studio` is a dedicated reviewed recipe for
+`NorthCountryEngineer/Game_Studio`. It deploys an independent tenant/environment
+installation: Amplify Hosting, one Python Lambda HTTP API, five retained
+on-demand DynamoDB tables (private compatibility context, public compatibility
+context, private agent state, private games/settings, and public game editions
+and boards), a private versioned media bucket, and bounded logs. This is separate
+from Axolotl News; it does not migrate, unpublish, or change existing games there.
+No application or model code runs on the Core host or privileged runner.
+
+The source repository must contain:
+
+```json
+{
+  "schema": 1,
+  "archetype": "amplify-game-studio",
+  "frontend": {"directory": ".", "output": "dist"},
+  "backend": {"directory": "backend/nce_api", "handler": "handler.handler"}
+}
+```
+
+`backend/nce_api/agent-framework.json` is required and packaged with the Python
+modules. Application manifests cannot provide identity, infrastructure, IAM,
+custom commands, or a different handler/directory for this archetype. The runner
+uses only its pinned `deployment/aws-apps/game-studio.template.json`.
+
+### Configure the platform once
+
+1. Review and install the Core revision containing this archetype and migration
+   `0042_game_studio_archetype`. Run the normal Core checks and migrations before
+   enabling it in an existing deployment console. This source change alone does
+   not deploy resources or change AWS permissions.
+2. Update the existing AWS platform onboarding stack to that same immutable Core
+   runner commit. Preserve the current account, region, resource prefix, role
+   bindings, approved existing repositories, connection and existing services.
+   Add `NorthCountryEngineer/Game_Studio` to the approved repository list and the
+   existing GitHub CodeConnection installation. The boundary adds only
+   `dynamodb:ConditionCheckItem` in the existing table namespace so transactional
+   game configuration, draft, edition and score guards can work. Review the
+   CloudFormation change set; do not replace the platform or recreate its data.
+3. Keep onboarding parameter `GameStudioModelArns` empty for the free guided
+   designer. Optional paid model onboarding is described below; no model calls
+   or new model resources occur during registration or simulation.
+4. In Core, open **Settings → Deployment platforms**, edit the existing verified
+   AWS platform, and approve the **Game Studio · Amplify + serverless API**
+   template for the intended tenant environments. Use **Approved Game Studio
+   integrations** to set an operator-owned repository map, for example:
+
+```json
+{
+  "NorthCountryEngineer/Game_Studio": {
+    "version": 1,
+    "branding": {
+      "appName": "Game Studio",
+      "badgeText": "Powered by Game Studio",
+      "accentColor": "#176a63"
+    },
+    "hosts": [
+      {
+        "id": "academy",
+        "name": "Academy lessons",
+        "origin": "https://academy.example.com",
+        "returnPath": "/lessons/games"
+      }
+    ],
+    "allow_paid_models": false,
+    "bedrock_model_arns": []
+  }
+}
+```
+
+Replace the example host with the application's actual canonical HTTPS origin,
+or use `"hosts": []` until integration is configured. Origins must use lowercase
+hostnames, omit a default `:443`, have no path, credentials, query or fragment,
+and be listed once. Return paths are ordinary same-origin paths without query,
+fragment, traversal or an external redirect. Labels are plain text. The public
+`version/branding/hosts` projection must fit 2048 UTF-8 bytes to leave room for
+other Lambda environment variables; model policy settings do not enter that
+public projection. Save and **Verify** the platform again after any change.
+
+### Create and release a tenant installation
+
+1. Open **Applications → Create application** in the intended Core organization.
+   Select only its verified AWS platform and configured environment.
+2. Choose repository `NorthCountryEngineer/Game_Studio`, the intended branch,
+   and **Game Studio · Amplify + serverless API**. Use an exact commit override
+   when required. Supply an existing HTTPS custom origin or leave it blank for
+   the generated Amplify origin. Core does not create a domain or DNS records.
+3. Prepare a release. The repository's exact pushed commit must have a successful
+   `.github/workflows/ci.yml` job named **Game Studio required checks**; the
+   trusted Core runner commit must independently pass **Core required checks**.
+4. Review the plan and its ongoing AWS costs. Only when deployment charges are
+   authorized, approve the release. Existing global and per-release cost gates
+   remain in force. Simulation runs the identity/orchestration flow without AWS
+   calls and does not prove cloud availability.
+5. Core provisions the independent backend, registers its browser and private
+   resource clients, writes the API credential directly to its own SSM
+   SecureString, configures the backend's exact Core binding, then builds and
+   publishes the frontend at that same reviewed commit. The isolated builder
+   receives only public `VITE_` configuration. The runner supplies the public
+   `GAME_STUDIO_CONFIG_JSON` build value through its trusted build entrypoint.
+6. On the resulting Game Studio page, sign in through the app-branded Core flow.
+   Assign explicit application accounts/roles through Core or Game Studio account
+   administration. `player` grants application membership for shared score
+   submission without creation or administration; `creator` grants private creation and playtesting;
+   `publisher` additionally grants publication; `administrator` additionally
+   manages content, creation settings, branding, agents and invitations. These
+   roles grant no organization administration or access to other applications.
+   Host-application administration does not imply Game Studio creation rights.
+7. Create a private game, test every level, mark that exact revision reviewed,
+   and publish it. Confirm its public player and optional shared score board.
+   Editing a draft leaves the previous public edition intact; republishing
+   resets that edition's board. Existing cleanup and optimistic revisions apply.
+
+Game creation and account sign-in always open in a top-level Game Studio page.
+Only a published game's `/embed/games/{id}` player is embeddable; private drafts,
+creator controls and authentication pages deny framing. The trusted runner
+replaces any repository-produced `customHttp.yml` in the final frontend ZIP
+with its own exact-host framing policy. Public `/sdk/**` modules intentionally
+allow cross-origin loading; they carry no credentials and confer no privileges.
+Host lists are changed only through reviewed platform settings and a release.
+Branding can subsequently be changed by the installation's `games-manage`
+administrator using the versioned integration API. See the Game Studio SDK
+contract for launch, publish selection and public player events.
+
+### Optional paid conversational models
+
+The default guided designer and all local tests invoke no paid provider. To
+permit Bedrock conversational design/progression, the operator must first add
+an explicit list of exact foundation-model/inference-profile ARNs to onboarding
+parameter `GameStudioModelArns` and review/apply that boundary update. Then set
+`allow_paid_models: true` and `bedrock_model_arns` for this repository in platform
+settings, using only a reviewed subset of the admitted ARNs. Wildcards and
+foreign-account inference profiles are rejected. Inference profiles can require
+both the profile ARN and underlying regional foundation-model ARNs; admit the
+complete intended set explicitly. Reverify and release the application.
+
+The Game Studio administrator must separately enable the chosen model, agent,
+mode, workflow and paid execution in its saved Agent settings. The runtime role
+allows `bedrock:InvokeModel` and `bedrock:GetInferenceProfile` only on its
+operator-supplied ARN list, and the platform boundary further limits that list.
+Changing a model target in the app cannot expand IAM or bypass either approval.
+Configuration and deployment do not invoke a model. Rekognition image/video ML
+permissions are not included in this first Core recipe; those optional media
+workflow operations require a separately reviewed provider extension. Do not
+claim them live-validated or enable them for students automatically.
+
+AWS documents transactional condition permissions in
+[Using IAM with DynamoDB transactions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html).
+The existing source-build isolation, account checks, immutable source admission,
+retention, recovery and charge-approval boundaries remain unchanged.

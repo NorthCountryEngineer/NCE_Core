@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from identity.access import request_principal, visible_resources
 from identity.views import audit, organization_admin
-from .cloud_models import CloudApplication, CloudPlatform, CloudRelease
+from .cloud_models import CloudApplication, CloudPlatform, CloudRelease, hosted_assignment
 from . import cloud_deployments as deployments
 from .models import DeploymentEnvironment
 
@@ -21,6 +21,7 @@ ARCHETYPES = [
     ('amplify-serverless', 'Website and serverless API · Amplify + Lambda'),
     ('amplify-fargate', 'Website, API and workers · Amplify + Fargate'),
     ('amplify-academy-fargate', 'Academy website and API · Amplify + Fargate'),
+    ('amplify-game-studio', 'Game Studio · Amplify + serverless API'),
 ]
 
 
@@ -52,6 +53,7 @@ class PlatformForm(forms.Form):
     runner_commit = forms.RegexField(r'^[0-9a-fA-F]{40}$', required=False, label='Approved runner commit', help_text='Pin the exact 40-character revision of the deployment runner.')
     academy_fargate_apps = forms.JSONField(required=False, widget=forms.Textarea(attrs={'rows': 6}), label='Approved Academy container resources', help_text='Repository map: image_repository, runtime_secret_arn, certificate_arn, api_host; optional allow_live_models and allow_agent_teachers booleans (both default false). Agent teachers additionally require approved Core workload/account/resource policy.')
     fargate_apps = forms.JSONField(required=False, widget=forms.Textarea(attrs={'rows': 8}), label='Approved container resources', help_text='Operator-reviewed repository map with ECR repository URLs, runtime secret ARN, certificate ARN and API hostname. Enter resource references only.')
+    game_studio_apps = forms.JSONField(required=False, widget=forms.Textarea(attrs={'rows': 8}), label='Approved Game Studio integrations', help_text='Operator-owned repository map: version 1, branding {appName, badgeText, accentColor, optional logoUrl}, and hosts [{id, name, origin, returnPath}]. HTTPS hosts only; each configuration at most 2048 UTF-8 bytes. Optional allow_paid_models defaults false; bedrock_model_arns is an exact model/profile ARN list also admitted in the platform IAM onboarding. Game creation and sign-in open top-level; only public games can be embedded.')
     prefix = forms.RegexField(r'^[a-z][a-z0-9-]{2,15}$', initial='nce', label='AWS resource prefix', help_text='Used to restrict which resources this platform can manage.')
     allowed_repositories = forms.CharField(widget=forms.Textarea(attrs={'rows': 4}), label='Approved GitHub repositories', help_text='One Owner/repository per line. Only these repositories appear when creating an app.')
     environments = forms.ModelMultipleChoiceField(queryset=DeploymentEnvironment.objects.none(), widget=forms.CheckboxSelectMultiple, label='Available environments')
@@ -70,6 +72,7 @@ class PlatformForm(forms.Form):
             initial['archetypes'] = instance.config.get('archetypes', [value for value, _ in ARCHETYPES])
             initial['fargate_apps'] = instance.config.get('fargate_apps', {})
             initial['academy_fargate_apps'] = instance.config.get('academy_fargate_apps', {})
+            initial['game_studio_apps'] = instance.config.get('game_studio_apps', {})
         else:
             initial.setdefault('archetypes', [value for value, _ in ARCHETYPES])
         super().__init__(*args, initial=initial, **kwargs)
@@ -126,6 +129,11 @@ class PlatformForm(forms.Form):
             platform.config['academy_fargate_apps'] = academy
         else:
             platform.config.pop('academy_fargate_apps', None)
+        studio = self.cleaned_data.get('game_studio_apps') or {}
+        if studio:
+            platform.config['game_studio_apps'] = studio
+        else:
+            platform.config.pop('game_studio_apps', None)
         approved = self.cleaned_data.get('fargate_apps') or {}
         if approved:
             platform.config['fargate_apps'] = approved
@@ -157,18 +165,32 @@ class ApplicationForm(forms.Form):
         super().__init__(*args, initial=initial, **kwargs)
         platforms = _visible(principal, CloudPlatform.objects.filter(organization=organization, active=True, verified_at__isnull=False))
         environments = _visible(principal, organization.environments.filter(active=True))
+        assignment = hosted_assignment(instance) if instance else None
+        if assignment:
+            # Only provider-authorized operators reach this form. Offer this
+            # app's fixed placement, never other provider destinations/repos.
+            deployments.authorized(principal, instance, 'cloud.application_configure')
+            platforms = [instance.platform]
+            environments = [instance.environment]
         self.platform_values = {str(value.pk): value for value in platforms}
         allowed_ids = set().union(*(_allowed_environments(value) for value in platforms)) if platforms else set()
+        if assignment:
+            allowed_ids = {str(instance.environment_id)}
         self.environment_values = {str(value.pk): value for value in environments if str(value.pk) in allowed_ids}
         self.fields['platform'].queryset = CloudPlatform.objects.filter(pk__in=[value.pk for value in platforms])
         self.fields['environment'].queryset = organization.environments.filter(pk__in=[value.pk for value in self.environment_values.values()])
         repositories = sorted(set(repo for value in platforms for repo in value.allowed_repositories), key=str.casefold)
+        if assignment:
+            repositories = [instance.repository]
         self.fields['repository'].choices = [('', 'Choose a repository')] + [(value, value) for value in repositories]
         if instance:
             for key in ['slug', 'platform', 'environment', 'archetype', 'public_origin']:
                 self.fields[key].disabled = True
                 self.fields[key].help_text = 'Fixed for this application. Create a separate application to use a different destination.'
         self.choice_map = {str(value.pk): {'repositories': value.allowed_repositories, 'environments': sorted(_allowed_environments(value) & set(self.environment_values)), 'archetypes': value.config.get('archetypes', [item for item, _ in ARCHETYPES])} for value in platforms}
+        if assignment:
+            self.choice_map = {str(instance.platform_id): {'repositories': [instance.repository],
+                'environments': [str(instance.environment_id)], 'archetypes': [instance.archetype]}}
 
     def clean_branch(self):
         branch = self.cleaned_data['branch']
@@ -190,7 +212,9 @@ class ApplicationForm(forms.Form):
             if values.get('repository') not in platform.allowed_repositories:
                 self.add_error('repository', 'Choose a repository approved for this platform.')
             environment = values.get('environment')
-            if environment and str(environment.pk) not in _allowed_environments(platform):
+            assignment = hosted_assignment(self.instance) if self.instance else None
+            allowed_environments = {str(self.instance.environment_id)} if assignment else _allowed_environments(platform)
+            if environment and str(environment.pk) not in allowed_environments:
                 self.add_error('environment', 'Choose an environment configured for this platform.')
             if values.get('archetype') not in platform.config.get('archetypes', [key for key, _ in ARCHETYPES]):
                 self.add_error('archetype', 'This service approach is unavailable on the selected platform.')
@@ -294,7 +318,8 @@ def application_add(request, organization, pk=None):
 def application(request, organization, pk):
     app = _resource(request, organization, CloudApplication, pk)
     releases = _visible(request_principal(request), CloudRelease.objects.filter(application=app).order_by('-created')[:50])
-    return render(request, 'platform_services/cloud_application.html', {'organization': organization, 'application': app, 'releases': releases, 'title': app.name})
+    return render(request, 'platform_services/cloud_application.html', {'organization': organization, 'application': app,
+        'releases': releases, 'can_manage_hosting': deployments.can_manage_hosting(request_principal(request), app), 'title': app.name})
 
 
 @organization_admin
@@ -310,7 +335,7 @@ def release_prepare(request, organization, pk):
     return redirect('cloud_release', slug=organization.slug, pk=release.pk)
 
 
-def _release_context(organization, release, form=None):
+def _release_context(organization, release, form=None, principal=None):
     # Raw provider state may contain signed URLs or credentials. It never reaches a template.
     public_outputs = []
     for key in ['origin', 'application_url', 'frontend_url', 'api_url', 'stack_name', 'amplify_app_id', 'build_id', 'recovery_token', 'commit']:
@@ -329,13 +354,14 @@ def _release_context(organization, release, form=None):
                 continue
             public_outputs.append({'name': key.replace('_', ' ').capitalize(), 'value': value, 'url': url})
     return {'organization': organization, 'release': release, 'application': release.application, 'form': form or ApprovalForm(release=release), 'public_outputs': public_outputs,
-            'live_enabled': settings.CORE_ENABLE_CLOUD_DEPLOYMENTS, 'title': 'Review release'}
+            'live_enabled': settings.CORE_ENABLE_CLOUD_DEPLOYMENTS,
+            'can_manage_hosting': bool(principal and deployments.can_manage_hosting(principal, release.application)), 'title': 'Review release'}
 
 
 @organization_admin
 def release(request, organization, pk):
     value = _resource(request, organization, CloudRelease, pk)
-    return render(request, 'platform_services/cloud_release.html', _release_context(organization, value))
+    return render(request, 'platform_services/cloud_release.html', _release_context(organization, value, principal=request_principal(request)))
 
 
 @organization_admin
@@ -352,7 +378,7 @@ def release_approve(request, organization, pk):
         else:
             messages.success(request, 'Release approved. The deployment worker will run the reviewed steps.')
             return redirect('cloud_release', slug=organization.slug, pk=value.pk)
-    return render(request, 'platform_services/cloud_release.html', _release_context(organization, value, form), status=400)
+    return render(request, 'platform_services/cloud_release.html', _release_context(organization, value, form, request_principal(request)), status=400)
 
 
 @organization_admin

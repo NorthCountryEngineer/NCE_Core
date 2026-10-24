@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from typing import Callable
-from .cloud_contract import ContractError, fargate_applications, academy_fargate_applications, identity_contract
+from .cloud_contract import ContractError, fargate_applications, academy_fargate_applications, identity_contract, game_studio_applications
 from platform_services.github_ci import CIGateError, POLICIES, verify_deployment
 
 
@@ -23,7 +23,7 @@ REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 COMMIT = re.compile(r"[a-f0-9]{40}\Z")
 SLUG = re.compile(r"[a-z][a-z0-9-]{0,31}\Z")
 IDENTIFIER = re.compile(r"[a-zA-Z0-9-]{1,64}\Z")
-ARCHETYPES = ("amplify-static", "amplify-serverless", "amplify-fargate", "amplify-academy-fargate")
+ARCHETYPES = ("amplify-static", "amplify-serverless", "amplify-fargate", "amplify-academy-fargate", "amplify-game-studio")
 APP_PERMISSIONS = [
     {"codename": "app-read", "name": "Read application data"},
     {"codename": "app-write", "name": "Write application data"},
@@ -47,7 +47,7 @@ def configuration(platform, snapshot=None):
     config = dict(_value(platform, "config", {}) or {})
     approved_keys = {"runner_repository", "runner_commit", "build_project", "artifact_bucket",
                      "cloudformation_role_arn", "permissions_boundary_arn", "archetypes", "environment_ids",
-                     "credentials_kms_key_arn", "fargate_apps", "fargate_cloudformation_role_arn", "academy_fargate_apps"}
+                     "credentials_kms_key_arn", "fargate_apps", "fargate_cloudformation_role_arn", "academy_fargate_apps", "game_studio_apps"}
     if set(config) - approved_keys:
         raise AWSAdapterError("Platform configuration contains unsupported fields.")
     if snapshot and snapshot.get("platform_config") != config:
@@ -77,10 +77,11 @@ def configuration(platform, snapshot=None):
         _required(repository, REPOSITORY, "approved repository")
     archetypes = config.get("archetypes", list(ARCHETYPES))
     if not isinstance(archetypes, list) or not archetypes or any(item not in ARCHETYPES for item in archetypes):
-        raise AWSAdapterError("Only the static, serverless and Fargate AWS archetypes are supported.")
+        raise AWSAdapterError("Only reviewed AWS application archetypes are supported.")
     try:
         fargate_applications(config, account, region, repositories, prefix)
         academy_fargate_applications(config, account, region, repositories, prefix)
+        game_studio_applications(config, repositories, account, region)
     except ContractError as error:
         raise AWSAdapterError(str(error)) from None
     if config.get('fargate_cloudformation_role_arn') or (config.get('fargate_apps') or config.get('academy_fargate_apps')):
@@ -107,6 +108,8 @@ def _snapshot(platform, snapshot):
         raise AWSAdapterError("Application archetype is not approved for this platform.")
     if snapshot.get('archetype') in ('amplify-fargate', 'amplify-academy-fargate') and snapshot['repository'] not in settings['config'].get('academy_fargate_apps' if snapshot['archetype'] == 'amplify-academy-fargate' else 'fargate_apps', {}):
         raise AWSAdapterError('Approve this repository’s Fargate resource references in platform settings first.')
+    if snapshot.get('archetype') == 'amplify-game-studio' and snapshot['repository'] not in settings['config'].get('game_studio_apps', {}):
+        raise AWSAdapterError('Approve this Game Studio repository’s branding and embedding hosts in platform settings first.')
     if snapshot.get("action", "provision") not in {"provision", "release"}:
         raise AWSAdapterError("Invalid deployment phase.")
     public = snapshot.get("public_config", {})

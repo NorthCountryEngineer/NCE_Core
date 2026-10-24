@@ -56,6 +56,16 @@ for name, entry in [('Runner', 'runner.py'), ('SourceBuilder', 'build_source.py'
 
 require(resources['Runner']['Properties']['ServiceRole'] != resources['SourceBuilder']['Properties']['ServiceRole'], 'source and deployment credentials must stay separate')
 require(resources['Runner']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_SMALL' and resources['SourceBuilder']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_MEDIUM', 'nested builder must use a separate concurrency quota from its waiting runner')
+app_table_boundary = next(item for item in resources['AppBoundary']['Properties']['PolicyDocument']['Statement'] if item.get('Sid') == 'AppTables')
+require('dynamodb:ConditionCheckItem' in app_table_boundary['Action'], 'Game Studio conditional transaction guards need ConditionCheckItem within the existing table boundary')
+model_parameter = template['Parameters']['GameStudioModelArns']
+require(model_parameter['Type'] == 'CommaDelimitedList' and model_parameter['Default'] == '', 'Game Studio model boundary must default to no admitted models')
+model_boundary = resources['AppBoundary']['Properties']['PolicyDocument']['Statement'][-1]['Fn::If']
+require(model_boundary == ['HasGameStudioModels', {'Sid': 'GameStudioModels', 'Effect': 'Allow', 'Action': ['bedrock:InvokeModel', 'bedrock:GetInferenceProfile'], 'Resource': {'Ref': 'GameStudioModelArns'}}, {'Ref': 'AWS::NoValue'}], 'Game Studio model boundary must grant only explicitly admitted exact model ARNs')
+for valid_arn in ['', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0', 'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.amazon.nova-micro-v1:0']:
+    require(re.fullmatch(model_parameter['AllowedPattern'], valid_arn) is not None, 'model boundary rejects a supported exact ARN')
+for invalid_arn in ['*', 'arn:aws:bedrock:*::foundation-model/*', 'arn:aws:iam::123456789012:role/anything']:
+    require(re.fullmatch(model_parameter['AllowedPattern'], invalid_arn) is None, 'model boundary accepts a wildcard or another service')
 source_actions = actions('SourceRole')
 require(not any(action.startswith(('iam:', 'ssm:', 'cloudformation:', 'amplify:', 'lambda:', 'sts:')) for action in source_actions), 'source builder received deployment/secret permissions')
 require(not any(action.startswith(('ecs:', 'ecr:', 'rds:', 'secretsmanager:', 'ec2:', 'servicediscovery:')) for action in source_actions), 'source builder received container or runtime-secret permissions')
@@ -82,6 +92,25 @@ require(frontend_policy['Properties']['PolicyDocument']['Statement'] == [{
 }], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch and its descendants')
 normal_publish = next(item for item in statements('RunnerRole') if item.get('Sid') == 'PublishOnlyTaggedFrontends')
 require(normal_publish['Action'] == ['amplify:CreateDeployment', 'amplify:StartDeployment', 'amplify:GetApp', 'amplify:GetBranch'] and normal_publish['Condition'] == {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}}, 'normal frontend publish/read tag authority must remain intact')
+game_app = template['Parameters']['GameStudioFrontendAppId']
+game_branch = template['Parameters']['GameStudioFrontendBranch']
+require(game_app['Default'] == '' and game_app['AllowedPattern'] == frontend_app['AllowedPattern'], 'Game Studio frontend binding must default disabled and reject wildcard/path injection')
+require(game_branch['Default'] == 'production' and game_branch['AllowedPattern'] == frontend_branch['AllowedPattern'], 'Game Studio frontend binding must select one literal branch independently of other apps')
+require(template['Conditions']['HasBoundGameStudioFrontend'] == {'Fn::Not': [{'Fn::Equals': [{'Ref': 'GameStudioFrontendAppId'}, '']}]}, 'Game Studio frontend publishing requires an explicit owner binding')
+game_publish = resources['GameStudioFrontendPublishPolicy']
+require(game_publish['Type'] == 'AWS::IAM::ManagedPolicy' and game_publish['Condition'] == 'HasBoundGameStudioFrontend', 'Game Studio frontend grant must be separately conditional')
+require(game_publish['Properties']['Roles'] == [{'Ref': 'RunnerRole'}], 'Game Studio frontend grant escaped the trusted runner')
+require(game_publish['Properties']['PolicyDocument']['Statement'] == [{
+    'Effect': 'Allow', 'Action': ['amplify:CreateDeployment', 'amplify:StartDeployment'],
+    'Resource': [{'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${GameStudioFrontendAppId}/branches/${GameStudioFrontendBranch}' + suffix}
+                 for suffix in ['', '/deployments/*', '/jobs/*']],
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}], 'Game Studio manual publishing must remain two actions on the exact owner-bound branch, deployment/job paths and region')
+job_read = next(item for item in statements('RunnerRole') if item.get('Sid') == 'ReadAndStopFrontendJobs')
+require(job_read == {
+    'Sid': 'ReadAndStopFrontendJobs', 'Effect': 'Allow', 'Action': ['amplify:GetJob', 'amplify:StopJob'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*/jobs/*'},
+}, 'frontend job read/stop must stay at the documented job path without new actions')
 
 for name, permitted in [('ControlRole', ['NCE_DEPLOYMENT', 'NCE_RESULT_KEY', 'NCE_RUN_TOKEN']), ('RunnerRole', ['NCE_BUILD_CONFIG', 'NCE_RUN_TOKEN'])]:
     condition = start_statement(name)['Condition']
@@ -100,6 +129,34 @@ for policy, action in [(resources['AppBoundary']['Properties']['PolicyDocument']
     require(grant['Condition']['StringLike']['kms:EncryptionContext:PARAMETER_ARN'] == {'Fn::Sub': 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/apps/*/core-resource-client'}, 'SSM KMS grant escaped application credential path')
     require(grant['Condition']['ForAnyValue:StringEquals']['kms:ResourceAliases'] == ['alias/aws/ssm'] and grant['Condition']['Null']['kms:ResourceAliases'] == 'false', 'SSM KMS grant permits a customer-managed or unaliased key')
 cf_statements = statements('CloudFormationRole')
+# V2 TagResource uses a tags ARN wrapping the URL-encoded API ARN. The
+# provider's observed create authorization includes /v2/apis/* inside that ARN.
+http_api_tags = next(item for item in cf_statements if item.get('Sid') == 'TagHttpApiForCloudFormation')
+require(http_api_tags == {
+    'Sid': 'TagHttpApiForCloudFormation', 'Effect': 'Allow', 'Action': ['apigateway:POST'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/tags/arn%3A${AWS::Partition}%3Aapigateway%3A${AWS::Region}%3A%3A%2Fv2%2Fapis%2F*'},
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}, 'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'}}},
+}, 'HTTP API tagging must remain POST-only on the observed encoded API ARN with same-region and platform request-tag conditions')
+http_api_children = next(item for item in cf_statements if item.get('Sid') == 'CreateTaggedHttpApiChildren')
+require(http_api_children == {
+    'Sid': 'CreateTaggedHttpApiChildren', 'Effect': 'Allow', 'Action': ['apigateway:POST'],
+    'Resource': [{'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/' + name}
+                 for name in ['integrations', 'routes', 'stages']],
+    'Condition': {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}, 'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}, 'Explicit HTTP API children require POST on only three collections, a platform resource tag and this region; no untagged fallback')
+require(body.count(b'"CreateTaggedHttpApiChildren"') == 1, 'HTTP API child creation must belong only to its exact CloudFormation role')
+stage_tags = next(item for item in cf_statements if item.get('Sid') == 'TagHttpApiStages')
+require(stage_tags == {
+    'Sid': 'TagHttpApiStages', 'Effect': 'Allow', 'Action': ['apigateway:TagResource'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/stages'},
+    'Condition': {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                                 'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                                 'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}, 'Stage tagging requires the exact collection, existing and requested platform tags, and this region; no untagged fallback')
+require(body.count(b'"TagHttpApiStages"') == body.count(b'"apigateway:TagResource"') == 1, 'Stage tagging must belong only to its exact CloudFormation role')
+http_api_grants = [item for item in cf_statements if any(action.startswith('apigateway:') for action in item['Action'])]
+require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation', 'CreateTaggedHttpApiChildren', 'TagHttpApiStages'}, 'HTTP API authority gained an unreviewed grant')
+require(body.count(b'"TagHttpApiForCloudFormation"') == 1, 'HTTP API tagging grant must belong only to its exact CloudFormation role')
 bucket_permissions = next(item for item in cf_statements if item['Sid'] == 'AppBuckets')
 require(bucket_permissions['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'CloudFormation bucket reads must remain within app names')
 require({'s3:ListBucket', 's3:GetBucketAcl', 's3:GetBucketLogging', 's3:GetBucketWebsite', 's3:GetReplicationConfiguration', 's3:GetBucketObjectLockConfiguration', 's3:GetBucketAbac', 's3:GetBucketMetadataTableConfiguration', 's3:ListTagsForResource'} <= set(bucket_permissions['Action']), 'CloudFormation S3 stabilization metadata permissions missing')
