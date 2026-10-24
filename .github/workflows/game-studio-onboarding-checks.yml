@@ -2,6 +2,12 @@ name: Game Studio onboarding checks
 on:
   push:
     branches: [codex/game-studio-canonical-20261024]
+  workflow_dispatch:
+    inputs:
+      game_commit:
+        description: Immutable Game Studio commit to verify (40 lowercase hex characters)
+        required: true
+        type: string
 permissions:
   contents: read
 jobs:
@@ -9,11 +15,32 @@ jobs:
     name: Game Studio onboarding required checks
     runs-on: ubuntu-latest
     steps:
+      - name: Validate immutable Game Studio source
+        id: source
+        shell: bash
+        env:
+          GAME_EVENT: ${{ github.event_name }}
+          REQUESTED_GAME_COMMIT: ${{ inputs.game_commit }}
+          # Public default source for push checks; not a credential.
+          DEFAULT_GAME_COMMIT: 7519dd9afc681cb88680b778ce56998f234f869b  # pragma: allowlist secret
+        run: |
+          if [[ "$GAME_EVENT" == "workflow_dispatch" ]]; then
+            game_commit="$REQUESTED_GAME_COMMIT"
+          elif [[ "$GAME_EVENT" == "push" ]]; then
+            game_commit="$DEFAULT_GAME_COMMIT"
+          else
+            echo 'Unsupported verification event.' >&2
+            exit 1
+          fi
+          if [[ ! "$game_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'Game Studio source must be exactly 40 lowercase hexadecimal characters.' >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$game_commit" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: NorthCountryEngineer/Game_Studio
-          # Public immutable application commit; not a credential.
-          ref: 7519dd9afc681cb88680b778ce56998f234f869b  # pragma: allowlist secret
+          ref: ${{ steps.source.outputs.commit }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
