@@ -111,3 +111,101 @@ architecture context. Local structure checks do not prove IAM or account-specifi
 service permissions. Run `aws cloudformation validate-template` before onboarding,
 and inspect the first change set. No AWS deployment was performed while creating
 these sources.
+
+
+### Game Studio manual frontend binding
+
+The observed Game Studio `CreateDeployment` denial names an internal
+`apps/<app>/branches/<branch>/deployments/*` resource even though app and branch
+ownership tags are present. The existing tag-conditioned wildcard already
+matches that path; adding another wildcard under the same tag condition cannot
+supply missing service tag context. The [Amplify authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amplify.html)
+lists branch tags for CreateDeployment/StartDeployment; the [API paths](https://docs.aws.amazon.com/amplify/latest/APIReference/API_CreateDeployment.html)
+and the actual denial identify the narrower deployment collection used here.
+
+After provisioning, the platform owner must verify the exact app and branch
+against the Game Studio stack outputs, account, region, and both
+`nce:platform-prefix` and `nce:application` tags. Set only
+`GameStudioFrontendAppId` and `GameStudioFrontendBranch` to those reviewed
+values. Empty app ID is the default and creates no policy. These parameters
+are operator inputs, never repository or release-manifest inputs. Preserve the
+existing `FrontendAppId`/`FrontendBranch` binding for other applications.
+
+The separate conditional policy attaches only to RunnerRole and grants only
+CreateDeployment and StartDeployment on that literal branch ARN and its
+`deployments/*` and `jobs/*` descendants in the platform account and region. Ownership is
+established by the verified exact binding because the observed internal
+resource does not supply the tag context used by the normal policy. The
+normal tag-conditioned read/publish policy remains unchanged. No untagged
+wildcard publishing authority is added. Clear GameStudioFrontendAppId to
+remove this optional grant. Runner source, Core runtime and CI policy need no
+change to apply this operator policy correction.
+
+StartDeployment uses the deployment API path and returns a job summary.
+The authorization reference also requires branch scope; the exact binding
+therefore includes that branch and only its deployment/job descendants for
+the two publish actions, preserving the earlier working owner-bound lifecycle. The existing GetJob/StopJob
+statement already covers the documented exact account/region
+`apps/*/branches/*/jobs/*` path; those job resources do not support resource-tag
+conditions in the authorization reference. This change adds no GetJob/StopJob actions or
+resource scope. Offline tests check wrong app, branch, account, region, missing
+region, and unrelated-action refusal. A real controlled publication must still
+verify AWS's context and complete CreateDeployment, upload, StartDeployment
+and GetJob success. Cancel any unstarted diagnostic job with StopJob and
+verify CANCELLED before another release; do not stop a real publication or
+another application's job.
+
+### Detailed role architecture context
+
+The following unchanged context was moved out of the inline template to keep
+it below CloudFormation's 51,200-byte body limit. Each resource retains a
+metadata reference to this section; policies, trust, retention and parameters
+retain their original semantics.
+
+#### AppBoundary architecture context
+
+Bound app runtime permissions, including conditional transaction checks, to platform namespaces.
+
+- CloudFormation must require this boundary on every new app role.
+- No IAM, STS, deployments, or account administration.
+- Container execution permissions stay inside named platform image, secret and log namespaces; runtime inline policies select exact app resources.
+- Paid Game Studio models require explicit exact model/profile ARNs; the default boundary grants none.
+
+#### FargateCloudFormationRole architecture context
+
+Container provisioning is separate from the existing serverless execution role; only pinned Core templates can use it.
+
+- Use platform-tagged network resources and named container/database resources.
+- New task and execution roles require the platform boundary.
+- No managed-policy attachment, boundary removal or application-code execution.
+- Application roles cannot invoke network or DNS control operations.
+- Private namespace support is separate; Cloud Map FAS zone lifecycle only, no record mutation.
+
+#### RunnerRole architecture context
+
+Only pinned Core runner may provision and publish; never execute application code here.
+
+- Fixed inline buildspec verifies Core Git commit before Python execution.
+- App source is data; builder executes it under a distinct role.
+- Migration task definitions and roles stay in the platform namespace; migration command is fixed by the pinned recipe.
+
+#### ControlRole architecture context
+
+Core receives short-lived control credentials; store only role identifiers in settings.
+
+- Trust exactly the existing Core runtime IAM role and deployment-specific external ID.
+- Core cannot modify IAM or CloudFormation directly.
+
+#### CoreAssumeControl architecture context
+
+Complete the two-sided assume-role grant on the existing Core runtime role.
+
+- Grant only this new control role and matching external ID.
+- Attach to task role, never task execution role or account root.
+
+#### SourceRole architecture context
+
+Application install/build commands are untrusted; isolate them from deployment credentials.
+
+- No CloudFormation, Lambda, SSM, IAM pass-role, or Amplify permissions.
+- Source role only writes source archives under builds/.

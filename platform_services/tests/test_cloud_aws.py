@@ -4,6 +4,7 @@ import fnmatch
 import importlib.util
 import io
 import json
+import re
 import tempfile
 import sys
 from pathlib import Path
@@ -171,6 +172,52 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_game_frontend_binding_only_admits_approved_deployment_descendants(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        self.assertEqual(document['Parameters']['GameStudioFrontendAppId']['Default'], '')
+        self.assertEqual(document['Conditions']['HasBoundGameStudioFrontend'],
+                         {'Fn::Not': [{'Fn::Equals': [{'Ref': 'GameStudioFrontendAppId'}, '']}]})
+        for name, valid, invalid in [
+            ('GameStudioFrontendAppId', ['', 'dexample123'], ['*', 'dexample/branches/other', 'arn:aws:amplify:us-east-1:123456789012:apps/dexample']),
+            ('GameStudioFrontendBranch', ['production', 'lesson-preview'], ['*', 'production/deployments/*', '../other']),
+        ]:
+            pattern = document['Parameters'][name]['AllowedPattern']
+            for value in valid: self.assertIsNotNone(re.fullmatch(pattern, value))
+            for value in invalid: self.assertIsNone(re.fullmatch(pattern, value))
+        policy = document['Resources']['GameStudioFrontendPublishPolicy']
+        self.assertEqual(policy['Condition'], 'HasBoundGameStudioFrontend')
+        self.assertEqual(policy['Properties']['Roles'], [{'Ref': 'RunnerRole'}])
+        grants = policy['Properties']['PolicyDocument']['Statement']
+        self.assertEqual(len(grants), 1)
+        grant = grants[0]
+        self.assertEqual(grant['Action'], ['amplify:CreateDeployment', 'amplify:StartDeployment'])
+        self.assertEqual(grant['Condition'], {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}})
+        patterns = [item['Fn::Sub'] for item in grant['Resource']]
+        self.assertEqual(patterns, ['arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${GameStudioFrontendAppId}/branches/${GameStudioFrontendBranch}' + suffix
+                                    for suffix in ['', '/deployments/*', '/jobs/*']])
+        for name, value in {'AWS::Partition': 'aws', 'AWS::Region': 'us-east-1', 'AWS::AccountId': '123456789012',
+                            'GameStudioFrontendAppId': 'dexample123', 'GameStudioFrontendBranch': 'production'}.items():
+            patterns = [pattern.replace('${' + name + '}', value) for pattern in patterns]
+
+        def allowed(action, arn, context):
+            return (action in grant['Action'] and any(fnmatch.fnmatchcase(arn, pattern) for pattern in patterns)
+                    and context.get('aws:RequestedRegion') == 'us-east-1')
+
+        arn = 'arn:aws:amplify:us-east-1:123456789012:apps/dexample123/branches/production/deployments/*'
+        for action in grant['Action']:
+            self.assertTrue(allowed(action, arn, {'aws:RequestedRegion': 'us-east-1'}))
+            self.assertTrue(allowed(action, arn.removesuffix('*') + 'start', {'aws:RequestedRegion': 'us-east-1'}))
+            self.assertTrue(allowed(action, arn.removesuffix('/deployments/*'), {'aws:RequestedRegion': 'us-east-1'}))
+            self.assertTrue(allowed(action, arn.replace('/deployments/*', '/jobs/1'), {'aws:RequestedRegion': 'us-east-1'}))
+            self.assertFalse(allowed(action, arn, {}))
+            self.assertFalse(allowed(action, arn, {'aws:RequestedRegion': 'eu-west-1'}))
+            for changed in [arn.replace('dexample123', 'dother'), arn.replace('production', 'preview'),
+                            arn.replace('123456789012', '999999999999'), arn.replace('us-east-1', 'eu-west-1'),
+                            arn.replace('/deployments/*', '/domains/example.invalid'), arn.replace('/deployments/*', '/webhooks/1')]:
+                self.assertFalse(allowed(action, changed, {'aws:RequestedRegion': 'us-east-1'}))
+        for action in ['amplify:GetApp', 'amplify:UpdateApp', 'amplify:DeleteApp', 'amplify:GetJob', 'amplify:StopJob', 'iam:PassRole']:
+            self.assertFalse(allowed(action, arn, {'aws:RequestedRegion': 'us-east-1'}))
+
     def test_stage_tag_on_create_requires_existing_and_requested_platform_tags_and_region(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']
