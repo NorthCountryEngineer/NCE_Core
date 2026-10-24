@@ -1,0 +1,80 @@
+{
+  "slug": "game-studio",
+  "name": "Game Studio",
+  "version": "1.0.0",
+  "description": "Independent tenant game creation, conversational design, authored levels, isolated playtests, public editions, shared arcade scores, customizable badging and exact-origin host integrations. Installing this package registers Core identity only; infrastructure deployment is separate.",
+  "kind": "application",
+  "manifest": {
+    "external_runtime": "aws-amplify",
+    "callback_path": "/oauth/callback",
+    "capabilities": [],
+    "dependencies": [
+      "core-platform"
+    ],
+    "permissions": [
+      {
+        "codename": "games-play",
+        "name": "Play published games and save shared arcade scores"
+      },
+      {
+        "codename": "games-create",
+        "name": "Administer game creation and private drafts"
+      },
+      {
+        "codename": "games-publish",
+        "name": "Administer game publication and editions"
+      },
+      {
+        "codename": "games-manage",
+        "name": "Manage Game Studio content, branding and creation settings"
+      },
+      {
+        "codename": "agents-manage",
+        "name": "Configure Game Studio agents and workflows"
+      },
+      {
+        "codename": "accounts-manage",
+        "name": "Manage Game Studio accounts and invitations"
+      }
+    ],
+    "account_roles": [
+      {
+        "id": "player",
+        "name": "Player",
+        "description": "Play published games and save shared arcade scores without game creation access.",
+        "permissions": [
+          "games-play"
+        ]
+      },
+      {
+        "id": "creator",
+        "name": "Game creation administrator",
+        "description": "Create private games and review isolated playtests.",
+        "permissions": [
+          "games-create"
+        ]
+      },
+      {
+        "id": "publisher",
+        "name": "Game publishing administrator",
+        "description": "Create, playtest and publish reviewed game editions.",
+        "permissions": [
+          "games-create",
+          "games-publish"
+        ]
+      },
+      {
+        "id": "administrator",
+        "name": "Game Studio administrator",
+        "description": "Manage games, branding, creation settings, agents and application accounts.",
+        "permissions": [
+          "games-create",
+          "games-publish",
+          "games-manage",
+          "agents-manage",
+          "accounts-manage"
+        ]
+      }
+    ]
+  }
+}

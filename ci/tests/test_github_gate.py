@@ -68,6 +68,19 @@ class GitHubGateTests(unittest.TestCase):
         with self.assertRaises(gate.CIGateError):
             gate.verify_repository('NorthCountryEngineer/NCAcademy', SHA, read_json=Mock(side_effect=values))
 
+    def test_game_studio_requires_its_own_exact_repository_workflow_and_required_job(self):
+        values = documents()
+        for listing in (values[1], values[3]):
+            for item in listing['workflow_runs']:
+                item['repository']['full_name'] = 'NorthCountryEngineer/Game_Studio'
+                item['head_repository']['full_name'] = 'NorthCountryEngineer/Game_Studio'
+        values[2]['jobs'][0]['name'] = 'Game Studio required checks'
+        receipt = gate.verify_repository('NorthCountryEngineer/Game_Studio', SHA, read_json=Mock(side_effect=values))
+        self.assertEqual(receipt['repository'], 'NorthCountryEngineer/Game_Studio')
+        values[2]['jobs'][0]['name'] = 'NCAcademy required checks'
+        with self.assertRaises(gate.CIGateError):
+            gate.verify_repository('NorthCountryEngineer/Game_Studio', SHA, read_json=Mock(side_effect=values))
+
     def verify(self, values=None):
         get = Mock(side_effect=values or documents())
         result = gate.verify_repository(REPOSITORY, SHA, read_json=get)

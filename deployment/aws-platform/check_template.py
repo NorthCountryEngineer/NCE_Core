@@ -56,6 +56,16 @@ for name, entry in [('Runner', 'runner.py'), ('SourceBuilder', 'build_source.py'
 
 require(resources['Runner']['Properties']['ServiceRole'] != resources['SourceBuilder']['Properties']['ServiceRole'], 'source and deployment credentials must stay separate')
 require(resources['Runner']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_SMALL' and resources['SourceBuilder']['Properties']['Environment']['ComputeType'] == 'BUILD_GENERAL1_MEDIUM', 'nested builder must use a separate concurrency quota from its waiting runner')
+app_table_boundary = next(item for item in resources['AppBoundary']['Properties']['PolicyDocument']['Statement'] if item.get('Sid') == 'AppTables')
+require('dynamodb:ConditionCheckItem' in app_table_boundary['Action'], 'Game Studio conditional transaction guards need ConditionCheckItem within the existing table boundary')
+model_parameter = template['Parameters']['GameStudioModelArns']
+require(model_parameter['Type'] == 'CommaDelimitedList' and model_parameter['Default'] == '', 'Game Studio model boundary must default to no admitted models')
+model_boundary = resources['AppBoundary']['Properties']['PolicyDocument']['Statement'][-1]['Fn::If']
+require(model_boundary == ['HasGameStudioModels', {'Sid': 'GameStudioModels', 'Effect': 'Allow', 'Action': ['bedrock:InvokeModel', 'bedrock:GetInferenceProfile'], 'Resource': {'Ref': 'GameStudioModelArns'}}, {'Ref': 'AWS::NoValue'}], 'Game Studio model boundary must grant only explicitly admitted exact model ARNs')
+for valid_arn in ['', 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:0', 'arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.amazon.nova-micro-v1:0']:
+    require(re.fullmatch(model_parameter['AllowedPattern'], valid_arn) is not None, 'model boundary rejects a supported exact ARN')
+for invalid_arn in ['*', 'arn:aws:bedrock:*::foundation-model/*', 'arn:aws:iam::123456789012:role/anything']:
+    require(re.fullmatch(model_parameter['AllowedPattern'], invalid_arn) is None, 'model boundary accepts a wildcard or another service')
 source_actions = actions('SourceRole')
 require(not any(action.startswith(('iam:', 'ssm:', 'cloudformation:', 'amplify:', 'lambda:', 'sts:')) for action in source_actions), 'source builder received deployment/secret permissions')
 require(not any(action.startswith(('ecs:', 'ecr:', 'rds:', 'secretsmanager:', 'ec2:', 'servicediscovery:')) for action in source_actions), 'source builder received container or runtime-secret permissions')

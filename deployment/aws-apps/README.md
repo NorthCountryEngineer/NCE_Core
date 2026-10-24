@@ -126,3 +126,15 @@ Official references: [CodeBuild start_build](https://docs.aws.amazon.com/boto3/l
 [Amplify manual create_deployment](https://docs.aws.amazon.com/boto3/latest/reference/services/amplify/client/create_deployment.html),
 [CloudFormation change sets](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-changesets.html).
 See also [DynamoDB encryption settings](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-dynamodb-table-ssespecification.html).
+
+## Independent Game Studio recipe
+
+`amplify-game-studio` selects the fixed Core-owned `game-studio.template.json`,
+fixed game capability vocabulary and invitation roles. It packages the Python
+handler without executing source, registers the tenant application with Core,
+then builds and publishes the frontend through the separate artifact-only
+builder. Operator-owned `game_studio_apps` settings define branding and exact
+embedding hosts; application metadata cannot supply IAM or infrastructure.
+See the Game Studio section in `docs/cloud-deployments.md` for onboarding,
+player/creator/admin roles, default-free guided design, optional exact-ARN
+Bedrock policies, and the top-level creator/public-player embedding boundary.

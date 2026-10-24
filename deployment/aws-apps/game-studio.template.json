@@ -1,0 +1,1089 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Core-managed Game Studio: manual Amplify frontend, isolated Python API, tenant-owned private drafts, public editions, shared scores and bounded agent settings. Explicit operator approval is required for deployment costs.",
+  "Parameters": {
+    "ResourceName": {
+      "Type": "String"
+    },
+    "StorageName": {
+      "Type": "String"
+    },
+    "Environment": {
+      "Type": "String"
+    },
+    "PlatformPrefix": {
+      "Type": "String"
+    },
+    "ApplicationIdentifier": {
+      "Type": "String"
+    },
+    "PermissionsBoundaryArn": {
+      "Type": "String"
+    },
+    "ApplicationOrigin": {
+      "Type": "String",
+      "Default": "https://pending.invalid"
+    },
+    "CoreIssuer": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreOrganizationId": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreServiceId": {
+      "Type": "String",
+      "Default": ""
+    },
+    "CoreCredentialsParameter": {
+      "Type": "String"
+    },
+    "LambdaCodeBucket": {
+      "Type": "String"
+    },
+    "LambdaCodeKey": {
+      "Type": "String"
+    },
+    "LambdaHandler": {
+      "Type": "String"
+    },
+    "Archetype": {
+      "Type": "String",
+      "AllowedValues": [
+        "amplify-game-studio"
+      ]
+    },
+    "GameStudioConfigJson": {
+      "Type": "String",
+      "MaxLength": 2048
+    },
+    "AllowedOrigins": {
+      "Type": "CommaDelimitedList"
+    },
+    "AllowPaidModels": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ]
+    },
+    "ApprovedModelArns": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "AllowedPattern": "^$|^arn:aws:bedrock:[a-z]{2}(?:-[a-z]+)+-[0-9]:(?:[0-9]{12})?:(?:foundation-model|inference-profile|application-inference-profile)/[A-Za-z0-9._:-]{1,512}$"
+    }
+  },
+  "Conditions": {
+    "Serverless": {
+      "Fn::Equals": [
+        {
+          "Ref": "Archetype"
+        },
+        "amplify-game-studio"
+      ]
+    },
+    "PaidGameModels": {
+      "Fn::And": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AllowPaidModels"
+            },
+            "true"
+          ]
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Fn::Join": [
+                    "",
+                    {
+                      "Ref": "ApprovedModelArns"
+                    }
+                  ]
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "Frontend": {
+      "Type": "AWS::Amplify::App",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Name": {
+          "Ref": "ResourceName"
+        },
+        "Platform": "WEB",
+        "EnableBranchAutoDeletion": false,
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "CustomRules": [
+          {
+            "Source": "/<*>",
+            "Target": "/index.html",
+            "Status": "404-200"
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Frontend.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "FrontendBranch": {
+      "Type": "AWS::Amplify::Branch",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "AppId": {
+          "Fn::GetAtt": [
+            "Frontend",
+            "AppId"
+          ]
+        },
+        "BranchName": {
+          "Ref": "Environment"
+        },
+        "EnableAutoBuild": false,
+        "Stage": "PRODUCTION",
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application FrontendBranch.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "PrivateTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-private"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application PrivateTable.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "PublicTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-public"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application PublicTable.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Media": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {
+          "Ref": "StorageName"
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "IgnorePublicAcls": true,
+          "BlockPublicPolicy": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "CorsConfiguration": {
+          "CorsRules": [
+            {
+              "AllowedOrigins": {
+                "Ref": "AllowedOrigins"
+              },
+              "AllowedHeaders": [
+                "*"
+              ],
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "POST"
+              ],
+              "ExposedHeaders": [
+                "ETag"
+              ],
+              "MaxAge": 300
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Media.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "Logs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${ResourceName}-api"
+        },
+        "RetentionInDays": 14,
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Logs.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "RuntimeRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "RoleName": {
+          "Fn::Sub": "${ResourceName}-lambda"
+        },
+        "PermissionsBoundary": {
+          "Ref": "PermissionsBoundaryArn"
+        },
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ],
+        "Policies": [
+          {
+            "PolicyName": "application-resources",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Logs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Scan",
+                    "dynamodb:Query",
+                    "dynamodb:ConditionCheckItem"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "PrivateTable",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "PublicTable",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "AssistantState",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "GameDrafts",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "PublishedGames",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:DeleteObject"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${Media.Arn}/*"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:ListBucket",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Media",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "ssm:GetParameter",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CoreCredentialsParameter}"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "kms:Decrypt",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "kms:ViaService": {
+                        "Fn::Sub": "ssm.${AWS::Region}.amazonaws.com"
+                      },
+                      "kms:CallerAccount": {
+                        "Ref": "AWS::AccountId"
+                      },
+                      "kms:EncryptionContext:PARAMETER_ARN": {
+                        "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CoreCredentialsParameter}"
+                      }
+                    },
+                    "ForAnyValue:StringEquals": {
+                      "kms:ResourceAliases": [
+                        "alias/aws/ssm"
+                      ]
+                    },
+                    "Null": {
+                      "kms:ResourceAliases": "false"
+                    }
+                  }
+                },
+                {
+                  "Fn::If": [
+                    "PaidGameModels",
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "bedrock:InvokeModel",
+                        "bedrock:GetInferenceProfile"
+                      ],
+                      "Resource": {
+                        "Ref": "ApprovedModelArns"
+                      }
+                    },
+                    {
+                      "Ref": "AWS::NoValue"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application RuntimeRole.",
+          "must": [
+            "Scope each application to its own resources and retain state.",
+            "Paid model invocation is optional and limited to exact operator-approved ARNs also admitted by the platform permissions boundary; never accept model IAM from source."
+          ]
+        }
+      }
+    },
+    "Function": {
+      "Type": "AWS::Lambda::Function",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "DependsOn": [
+        "Logs"
+      ],
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${ResourceName}-api"
+        },
+        "Runtime": "python3.12",
+        "Architectures": [
+          "arm64"
+        ],
+        "Handler": {
+          "Ref": "LambdaHandler"
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "RuntimeRole",
+            "Arn"
+          ]
+        },
+        "MemorySize": 256,
+        "Timeout": 30,
+        "Code": {
+          "S3Bucket": {
+            "Ref": "LambdaCodeBucket"
+          },
+          "S3Key": {
+            "Ref": "LambdaCodeKey"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "CORE_ISSUER": {
+              "Ref": "CoreIssuer"
+            },
+            "CORE_ORGANIZATION_ID": {
+              "Ref": "CoreOrganizationId"
+            },
+            "CORE_SERVICE_ID": {
+              "Ref": "CoreServiceId"
+            },
+            "CORE_CREDENTIALS_PARAMETER": {
+              "Ref": "CoreCredentialsParameter"
+            },
+            "APPLICATION_ORIGIN": {
+              "Ref": "ApplicationOrigin"
+            },
+            "PRIVATE_TABLE": {
+              "Ref": "PrivateTable"
+            },
+            "PUBLIC_TABLE": {
+              "Ref": "PublicTable"
+            },
+            "MEDIA_BUCKET": {
+              "Ref": "Media"
+            },
+            "NCE_APP_ID": {
+              "Ref": "ApplicationIdentifier"
+            },
+            "ASSISTANT_TABLE": {
+              "Ref": "AssistantState"
+            },
+            "GAME_DRAFT_TABLE": {
+              "Ref": "GameDrafts"
+            },
+            "GAME_PUBLIC_TABLE": {
+              "Ref": "PublishedGames"
+            },
+            "GAME_STUDIO_CONFIG_JSON": {
+              "Ref": "GameStudioConfigJson"
+            }
+          }
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Function.",
+          "must": [
+            "Scope each application to its own resources and retain state.",
+            "Bind Core issuer, organization, service and own SSM credential at deployment; no request selects a tenant.",
+            "Default guided models require no paid provider IAM; Bedrock model invocation requires explicit per-platform and per-app ARN approval."
+          ]
+        }
+      }
+    },
+    "Api": {
+      "Type": "AWS::ApiGatewayV2::Api",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${ResourceName}-api"
+        },
+        "ProtocolType": "HTTP",
+        "CorsConfiguration": {
+          "AllowOrigins": {
+            "Ref": "AllowedOrigins"
+          },
+          "AllowMethods": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+          ],
+          "AllowHeaders": [
+            "authorization",
+            "content-type"
+          ],
+          "MaxAge": 300
+        },
+        "Tags": {
+          "nce:platform-prefix": {
+            "Ref": "PlatformPrefix"
+          },
+          "nce:application": {
+            "Ref": "ApplicationIdentifier"
+          }
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application Api.",
+          "must": [
+            "Scope each application to its own resources and retain state.",
+            "Exact application and operator-approved host origins only; no wildcard CORS."
+          ]
+        }
+      }
+    },
+    "ApiInvoke": {
+      "Type": "AWS::Lambda::Permission",
+      "Condition": "Serverless",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "Function"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/*/*"
+        },
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Core managed application ApiInvoke.",
+          "must": [
+            "Scope each application to its own resources and retain state."
+          ]
+        }
+      }
+    },
+    "MediaTLS": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Condition": "Serverless",
+      "Properties": {
+        "Bucket": {
+          "Ref": "Media"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Media",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Media.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Enforce TLS for each private media bucket.",
+          "must": [
+            "Keep deny scoped to app bucket and contents."
+          ]
+        }
+      }
+    },
+    "AssistantState": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-assistant"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Keep provider registries, workflow state and invocation receipts private.",
+          "must": [
+            "Retain on deletion/replacement; keep names inside the onboarded application prefix.",
+            "Never expose private conversations, Core subjects, credentials or model state in public projections."
+          ]
+        }
+      }
+    },
+    "GameDrafts": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-game-drafts"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Keep game drafts, creation configuration and branding private.",
+          "must": [
+            "Retain on deletion/replacement; keep names inside the onboarded application prefix.",
+            "Never expose private conversations, Core subjects, credentials or model state in public projections."
+          ]
+        }
+      }
+    },
+    "PublishedGames": {
+      "Type": "AWS::DynamoDB::Table",
+      "Condition": "Serverless",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": {
+          "Fn::Sub": "${ResourceName}-games"
+        },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": false
+        },
+        "Tags": [
+          {
+            "Key": "nce:platform-prefix",
+            "Value": {
+              "Ref": "PlatformPrefix"
+            }
+          },
+          {
+            "Key": "nce:application",
+            "Value": {
+              "Ref": "ApplicationIdentifier"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Only reviewed immutable public game editions and shared score projections enter this table.",
+          "must": [
+            "Retain on deletion/replacement; keep names inside the onboarded application prefix.",
+            "Never expose private conversations, Core subjects, credentials or model state in public projections."
+          ]
+        }
+      }
+    },
+    "ApiIntegration": {
+      "Type": "AWS::ApiGatewayV2::Integration",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "IntegrationType": "AWS_PROXY",
+        "IntegrationUri": {
+          "Fn::GetAtt": [
+            "Function",
+            "Arn"
+          ]
+        },
+        "PayloadFormatVersion": "2.0",
+        "TimeoutInMillis": 29000
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Pin the event shape expected by the standalone handler; no ambiguous QuickCreate defaults.",
+          "must": [
+            "Use Lambda proxy payload version 2.0 and the exact application function."
+          ]
+        }
+      }
+    },
+    "ApiDefaultRoute": {
+      "Type": "AWS::ApiGatewayV2::Route",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "RouteKey": "$default",
+        "Target": {
+          "Fn::Join": [
+            "/",
+            [
+              "integrations",
+              {
+                "Ref": "ApiIntegration"
+              }
+            ]
+          ]
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Route declared API operations to the fixed bounded dispatcher.",
+          "must": [
+            "Authentication and app capabilities remain enforced per operation by fresh Core introspection."
+          ]
+        }
+      }
+    },
+    "ApiDefaultStage": {
+      "Type": "AWS::ApiGatewayV2::Stage",
+      "Properties": {
+        "ApiId": {
+          "Ref": "Api"
+        },
+        "StageName": "$default",
+        "AutoDeploy": true,
+        "DefaultRouteSettings": {
+          "ThrottlingBurstLimit": 20,
+          "ThrottlingRateLimit": 10
+        }
+      },
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Serve an unstaged HTTPS API origin matching the common client interface.",
+          "must": [
+            "Keep explicit API throttling; no custom domain or DNS provisioning."
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "AmplifyAppId": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Frontend",
+          "AppId"
+        ]
+      }
+    },
+    "Origin": {
+      "Value": {
+        "Fn::Sub": "https://${Environment}.${Frontend.DefaultDomain}"
+      }
+    },
+    "ApiUrl": {
+      "Condition": "Serverless",
+      "Value": {
+        "Fn::GetAtt": [
+          "Api",
+          "ApiEndpoint"
+        ]
+      }
+    }
+  },
+  "Metadata": {
+    "AWSToolsMetrics": {
+      "AWSAgentToolkit": "aws-cloudformation@3"
+    },
+    "com.aws.cloudformation.Context": {
+      "ref": [
+        {
+          "at": "deployment/aws-apps/README.md",
+          "has": "Archetype contract and immutable release phases"
+        }
+      ],
+      "must": [
+        "Retain existing state; reject changes that remove or replace resources.",
+        "Build source in isolated CodeBuild role; never execute application code in deployment runner.",
+        "Accept only the fixed Game Studio manifest and operator-owned branding/host configuration.",
+        "Trusted runner overwrites archive customHttp.yml with exact-origin player-only framing policy.",
+        "Core identity uses fixed Game Studio capabilities and invitation-only application account roles."
+      ]
+    }
+  }
+}
