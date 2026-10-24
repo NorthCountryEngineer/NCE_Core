@@ -171,6 +171,43 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_http_api_tagging_matches_only_observed_encoded_api_arn_with_platform_request_tag(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']
+        grant = next(item for item in statements if item.get('Sid') == 'TagHttpApiForCloudFormation')
+        self.assertEqual(grant['Action'], ['apigateway:POST'])
+        self.assertEqual(grant['Effect'], 'Allow')
+        self.assertEqual(grant['Condition'], {'StringEquals': {
+            'aws:RequestedRegion': {'Ref': 'AWS::Region'},
+            'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'},
+        }})
+        pattern = grant['Resource']['Fn::Sub'].replace('${AWS::Partition}', 'aws').replace('${AWS::Region}', 'us-east-1')
+        observed = 'arn:aws:apigateway:us-east-1::/tags/arn%3Aaws%3Aapigateway%3Aus-east-1%3A%3A%2Fv2%2Fapis%2Fexample123'
+
+        def allowed(action, arn, *, region='us-east-1', prefix='nce-tests'):
+            # This evaluates only the new grant; existing role permissions are
+            # tested separately and must not be attributed to this addition.
+            return (action in grant['Action'] and fnmatch.fnmatchcase(arn, pattern)
+                    and region == 'us-east-1' and prefix == 'nce-tests')
+
+        self.assertTrue(allowed('apigateway:POST', observed))
+        self.assertTrue(allowed('apigateway:POST', observed.rsplit('%2F', 1)[0] + '%2F*'))
+        for region, prefix in [('eu-west-1', 'nce-tests'), (None, 'nce-tests'), ('us-east-1', 'other'), ('us-east-1', None)]:
+            with self.subTest(region=region, prefix=prefix):
+                self.assertFalse(allowed('apigateway:POST', observed, region=region, prefix=prefix))
+        for action in ['apigateway:GET', 'apigateway:PUT', 'apigateway:PATCH', 'apigateway:DELETE', 'iam:CreateRole']:
+            with self.subTest(action=action):
+                self.assertFalse(allowed(action, observed))
+        for arn in [observed.replace('%2Fv2%2Fapis%2F', '%2Frestapis%2F'),
+                    observed.replace('%2Fv2%2Fapis%2F', '%2Fdomainnames%2F'),
+                    observed.replace('us-east-1', 'eu-west-1'),
+                    observed.replace('%3Aus-east-1%3A', '%3Aeu-west-1%3A'),
+                    'arn:aws:apigateway:us-east-1::/apis/example123/routes',
+                    'arn:aws:apigateway:us-east-1::/tags/arn:aws:apigateway:us-east-1::/v2/apis/example123',
+                    'arn:aws:iam::123456789012:role/nce-tests-lambda']:
+            with self.subTest(arn=arn):
+                self.assertFalse(allowed('apigateway:POST', arn))
+
     def test_provider_reads_allow_aws_unscoped_resource_only_in_platform_region(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         resources = document['Resources']
