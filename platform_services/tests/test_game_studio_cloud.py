@@ -8,6 +8,7 @@ from fnmatch import fnmatchcase
 import io
 import json
 from pathlib import Path
+import re
 import shutil
 import tempfile
 from types import SimpleNamespace
@@ -181,6 +182,28 @@ class GameStudioCloudContractTests(SimpleTestCase):
         self.assertEqual(onboarding['Parameters']['GameStudioModelArns']['Default'], '')
         self.assertEqual(resources['ApiIntegration']['Properties']['PayloadFormatVersion'], '2.0')
         self.assertEqual(resources['Api']['Properties']['CorsConfiguration']['AllowOrigins'], {'Ref': 'AllowedOrigins'})
+
+    def test_spa_routes_use_200_rewrite_without_masking_sdk_or_missing_asset_responses(self):
+        resources = json.loads((runner.ROOT / 'game-studio.template.json').read_text())['Resources']
+        rules = resources['Frontend']['Properties']['CustomRules']
+        self.assertEqual(len(rules), 1)
+        rule = rules[0]
+        self.assertEqual(rule['Status'], '200')
+        self.assertEqual(rule['Target'], '/index.html')
+        self.assertTrue(rule['Source'].startswith('</') and rule['Source'].endswith('/>'))
+        expression = re.compile(rule['Source'][2:-2])
+        for path in ['/', '/game-studio', '/game-studio/', '/games',
+                     '/games/00000000-0000-4000-8000-000000000000',
+                     '/embed/games/00000000-0000-4000-8000-000000000000',
+                     '/oauth/callback', '/admin/accounts']:
+            with self.subTest(path=path):
+                self.assertIsNotNone(expression.search(path))
+        for path in ['/index.html', '/assets/index-build.js', '/assets/index-build.css',
+                     '/assets/game-studio-mark.svg', '/sdk/game-studio.js',
+                     '/missing.png', '/missing.json', '/missing.woff2',
+                     '/missing.mp4', '/examples/missing.html']:
+            with self.subTest(path=path):
+                self.assertIsNone(expression.search(path))
 
     def test_default_route_invoke_permission_matches_gateway_arn_without_widening_scope(self):
         resources = json.loads((runner.ROOT / 'game-studio.template.json').read_text())['Resources']

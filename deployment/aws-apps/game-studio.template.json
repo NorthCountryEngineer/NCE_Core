@@ -141,17 +141,18 @@
         ],
         "CustomRules": [
           {
-            "Source": "/<*>",
+            "Source": "</^[^.]+$/>",
             "Target": "/index.html",
-            "Status": "404-200"
+            "Status": "200"
           }
         ]
       },
       "Metadata": {
         "com.aws.cloudformation.Context": {
-          "why": "Core managed application Frontend.",
+          "why": "Serve extensionless Game Studio application routes with an explicit 200 SPA rewrite; dotted SDK and static asset paths retain their normal responses.",
           "must": [
-            "Scope each application to its own resources and retain state."
+            "Scope each application to its own resources and retain state.",
+            "Direct navigation to creator, player, embed and OAuth callback routes must return HTTP 200; missing assets must not become HTML success responses."
           ]
         }
       }

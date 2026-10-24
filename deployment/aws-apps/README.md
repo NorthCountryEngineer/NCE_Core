@@ -148,3 +148,15 @@ gateway 500 before the handler executes. See AWS's
 The legacy `ApiInvoke` permission remains unchanged because changing its
 `SourceArn` requires resource replacement. Adding the exact permission preserves
 the runner's existing rejection of replacements and removals.
+
+Game Studio's extensionless frontend routes use an explicit HTTP 200 rewrite to
+`/index.html`. The source expression `</^[^.]+$/>` covers direct creator, catalog,
+player, embed and OAuth callback navigation while leaving dotted SDK and asset
+paths to their normal responses. The earlier `404-200` rule could serve the app
+HTML with HTTP 404, so a valid response body alone does not establish route
+availability. Missing scripts, images, fonts and media must keep their real
+failure status. See the
+[Amplify SPA rewrite guidance](https://docs.aws.amazon.com/amplify/latest/userguide/redirect-rewrite-examples.html#redirects-for-single-page-web-apps-spa).
+Changing the Amplify app's `CustomRules` is an in-place CloudFormation update;
+an operator can review an app-only change set without rebuilding or replacing
+the API, publishing another frontend artifact, or modifying saved game data.
