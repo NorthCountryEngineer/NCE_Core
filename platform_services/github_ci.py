@@ -6,6 +6,8 @@ Only a server-owned encrypted credential or operator token file authenticates pr
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -21,6 +23,42 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 
 class CIGateError(Exception):
     """A sanitized deployment refusal; response bodies and credentials stay private."""
+
+
+class _NoPushEvidence(CIGateError):
+    """Only a complete, repeatedly empty push index permits a proposed alternative."""
+
+
+@dataclass(frozen=True)
+class OwnerDispatchPolicy:
+    repository: str
+    repository_id: int
+    owner_id: int
+    workflow_id: int
+    default_branch: str
+    workflow_sha256: str
+    approved_after: str | None = None
+
+
+# Owner approved this exact Game Studio policy at the UTC cutoff below.
+# Only NEW owner-dispatched runs created strictly after that approval qualify.
+# Application input, environment variables and operators' tokens cannot change
+# the repository, workflow, owner, reviewed workflow bytes or approval cutoff.
+OWNER_DISPATCH_PROPOSAL = OwnerDispatchPolicy(
+    repository='NorthCountryEngineer/Game_Studio', repository_id=1432213176,
+    owner_id=132168834, workflow_id=395127780, default_branch='main',
+    workflow_sha256='cdcec9d0a51f3b37012e6b7f757c6d940ae808d010567b2668d4565fc6f22998',
+    approved_after='2026-10-24T14:42:20Z',
+)
+_DISPATCH_STEPS = (
+    'Run actions/checkout@v4', 'Run actions/setup-node@v4', 'Run actions/setup-python@v5',
+    'Run npm ci --no-audit --no-fund', 'Run npm run typecheck', 'Run npm test',
+    "Run python3 -m unittest discover -s tests -p 'test_*.py'",
+    "Run python3 -m unittest discover -s scripts/tests -p 'test_*.py'",
+    'Run python3 scripts/validate-deployment.py', 'Run python3 scripts/package-api.py',
+    'Verify shared registry source', 'Run npm run build:preview',
+    'Build production with synthetic public registration',
+)
 
 
 @dataclass(frozen=True)
@@ -220,8 +258,133 @@ def _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id
         document = get(repository_listing, fresh=fresh or attempt > 0)
         if not _empty(document):
             break
+    if _empty(document):
+        raise _NoPushEvidence('No bounded, complete GitHub push CI result exists for this exact commit.')
     document = _repository_workflow_runs(document, policy, commit, workflow_id)
     return _latest(document, policy, commit, workflow_id), True
+
+
+def _dispatch_repository(document, approved):
+    if (not _repo(document, approved.repository) or not _positive(document.get('id')) or document.get('id') != approved.repository_id
+            or document.get('default_branch') != approved.default_branch
+            or not isinstance(document.get('owner'), dict)
+            or not _positive(document['owner'].get('id')) or document['owner'].get('id') != approved.owner_id or document['owner'].get('type') != 'User'):
+        raise CIGateError('Owner-dispatched CI requires the pinned repository, owner and default branch.')
+
+
+def _dispatch_head(document, approved, commit):
+    if (not isinstance(document, dict) or document.get('ref') != 'refs/heads/' + approved.default_branch
+            or not isinstance(document.get('object'), dict) or document['object'].get('type') != 'commit'
+            or document['object'].get('sha') != commit):
+        raise CIGateError('Owner-dispatched CI must test the current exact default-branch commit.')
+
+
+def _dispatch_latest(document, policy, approved, commit):
+    if not isinstance(document, dict):
+        raise CIGateError('Owner-dispatched CI requires a complete exact-commit workflow index.')
+    runs, total = document.get('workflow_runs'), document.get('total_count')
+    if (not isinstance(runs, list) or not isinstance(total, int) or isinstance(total, bool)
+            or total != len(runs) or not 1 <= total <= 100):
+        raise CIGateError('Owner-dispatched CI requires a complete exact-commit workflow index.')
+    seen = set()
+    for row in runs:
+        if (not isinstance(row, dict) or row.get('head_sha') != commit or row.get('event') != 'workflow_dispatch'
+                or not _positive(row.get('workflow_id')) or row.get('workflow_id') != approved.workflow_id or row.get('path') != policy.workflow
+                or not _repo(row.get('repository'), approved.repository) or not _repo(row.get('head_repository'), approved.repository)
+                or not _positive(row['repository'].get('id')) or not _positive(row['head_repository'].get('id'))
+                or row['repository'].get('id') != approved.repository_id or row['head_repository'].get('id') != approved.repository_id
+                or not all(_positive(row.get(key)) for key in ('id', 'run_number', 'run_attempt', 'check_suite_id'))
+                or row['id'] in seen):
+            raise CIGateError('Owner-dispatched CI has foreign or ambiguous run provenance.')
+        seen.add(row['id'])
+    try:
+        latest = max(runs, key=lambda row: (_stamp(row.get('updated_at')), row['run_number'], row['id']))
+        created, updated, after = _stamp(latest.get('created_at')), _stamp(latest.get('updated_at')), _stamp(approved.approved_after)
+        if created <= after or updated < created:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise CIGateError('Dispatch CI must be newly created after the recorded owner policy approval.') from None
+    if (latest.get('head_branch') != approved.default_branch
+            or any(not isinstance(latest.get(key), dict) or not _positive(latest[key].get('id')) or latest[key].get('id') != approved.owner_id
+                   or latest[key].get('type') != 'User' for key in ('actor', 'triggering_actor'))):
+        raise CIGateError('Dispatch CI must be created and triggered by the pinned owner on the default branch.')
+    if latest.get('status') != 'completed' or latest.get('conclusion') != 'success':
+        raise CIGateError('The latest owner-dispatched attempt has not passed; older success is insufficient.')
+    return latest
+
+
+def _verify_owner_dispatch(get, policy, commit, workflow_id, repository_push_listing):
+    approved = OWNER_DISPATCH_PROPOSAL
+    if (approved.approved_after is None or policy.repository != approved.repository
+            or workflow_id != approved.workflow_id):
+        raise CIGateError('No approved owner-dispatch CI policy exists for this repository and workflow.')
+    try:
+        _stamp(approved.approved_after)
+    except (ValueError, TypeError):
+        raise CIGateError('The owner-dispatch policy approval timestamp is invalid.') from None
+    prefix = '/repos/' + approved.repository
+    _dispatch_repository(get(prefix), approved)
+    reference = prefix + '/git/ref/heads/' + quote(approved.default_branch, safe='')
+    _dispatch_head(get(reference), approved, commit)
+    blob = get(prefix + '/contents/' + quote(policy.workflow, safe='/') + '?ref=' + commit)
+    try:
+        if (not isinstance(blob, dict) or blob.get('type') != 'file' or blob.get('path') != policy.workflow
+                or blob.get('encoding') != 'base64' or not isinstance(blob.get('content'), str)
+                or not _positive(blob.get('size')) or blob['size'] > 16384):
+            raise ValueError
+        raw = base64.b64decode(''.join(blob['content'].split()), validate=True)
+        if len(raw) != blob['size'] or hashlib.sha256(raw).hexdigest() != approved.workflow_sha256:
+            raise ValueError
+    except (ValueError, TypeError):
+        raise CIGateError('The dispatched workflow differs from the exact reviewed workflow bytes.') from None
+    query = urlencode({'head_sha': commit, 'event': 'workflow_dispatch', 'per_page': 100, 'page': 1})
+    listing = prefix + f'/actions/workflows/{workflow_id}/runs?' + query
+    run = _dispatch_latest(get(listing), policy, approved, commit)
+    jobs = get(prefix + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100&page=1")
+    entries = jobs.get('jobs') if isinstance(jobs, dict) else None
+    if (not isinstance(entries, list) or type(jobs.get('total_count')) is not int
+            or jobs['total_count'] != 1 or len(entries) != 1):
+        raise CIGateError('Dispatch CI requires the single reviewed successful checks job.')
+    job = entries[0]
+    if (not isinstance(job, dict) or not _positive(job.get('id')) or job.get('name') != policy.required_job
+            or not _positive(job.get('run_id')) or job.get('run_id') != run['id'] or job.get('head_sha') != commit
+            or job.get('status') != 'completed' or job.get('conclusion') != 'success'):
+        raise CIGateError('Dispatch CI required checks did not pass for the exact attempt and source.')
+    steps = job.get('steps')
+    if (not isinstance(steps, list) or not 1 <= len(steps) <= 100
+            or any(not isinstance(step, dict) or not _positive(step.get('number')) or not isinstance(step.get('name'), str)
+                   or step.get('status') != 'completed' or step.get('conclusion') not in ('success', 'skipped') for step in steps)):
+        raise CIGateError('Dispatch CI contains a missing, skipped or unsuccessful required check.')
+    names = [step['name'] for step in steps]
+    numbers = [step['number'] for step in steps]
+    if (numbers != sorted(set(numbers)) or any(names.count(name) != 1 for name in _DISPATCH_STEPS)
+            or any(step['conclusion'] != 'success' for step in steps if step['name'] in _DISPATCH_STEPS)):
+        raise CIGateError('Dispatch CI did not execute every reviewed checkout and verification step exactly once.')
+    expected_url = 'https://api.github.com' + prefix + '/check-runs/' + str(job['id'])
+    if job.get('check_run_url') != expected_url:
+        raise CIGateError('Dispatch CI has an unexpected required-check identity.')
+    check = get(prefix + '/check-runs/' + str(job['id']))
+    app = check.get('app') if isinstance(check, dict) else None
+    if (not isinstance(check, dict) or not _positive(check.get('id')) or check.get('id') != job['id'] or check.get('head_sha') != commit
+            or check.get('name') != policy.required_job or check.get('status') != 'completed' or check.get('conclusion') != 'success'
+            or not isinstance(check.get('check_suite'), dict) or not _positive(check['check_suite'].get('id')) or check['check_suite'].get('id') != run['check_suite_id']
+            or not isinstance(app, dict) or not _positive(app.get('id')) or app.get('id') != 15368 or app.get('slug') != 'github-actions'
+            or not isinstance(app.get('owner'), dict) or not _positive(app['owner'].get('id')) or app['owner'].get('id') != 9919 or app['owner'].get('login') != 'github'):
+        raise CIGateError('Dispatch CI required checks were not produced by the pinned GitHub Actions identity.')
+    refreshed = _dispatch_latest(get(listing, fresh=True), policy, approved, commit)
+    if any(refreshed.get(key) != run.get(key) for key in ('id', 'run_attempt', 'updated_at', 'check_suite_id')):
+        raise CIGateError('Dispatch CI changed during verification; verify the newest exact attempt again.')
+    _dispatch_head(get(reference, fresh=True), approved, commit)
+    _dispatch_repository(get(prefix, fresh=True), approved)
+    # A new push run must return to the normal unchanged policy. No failed or
+    # malformed push evidence may be bypassed by this alternate event.
+    if not _empty(get(repository_push_listing, fresh=True)):
+        raise CIGateError('Push evidence changed during dispatch verification; use the normal push policy.')
+    return {'repository': policy.repository, 'commit': commit, 'workflow': policy.workflow,
+            'run_id': run['id'], 'run_attempt': run['run_attempt'], 'required_job': policy.required_job,
+            'event': 'workflow_dispatch', 'policy': 'owner-dispatch-exact-workflow-v1',
+            'owner_id': approved.owner_id, 'workflow_sha256': approved.workflow_sha256,
+            'policy_approved_after': approved.approved_after}
 
 
 def verify_repository(repository, commit, *, token=None, read_json=None):
@@ -244,7 +407,13 @@ def verify_repository(repository, commit, *, token=None, read_json=None):
     query = urlencode({'head_sha': commit, 'event': 'push', 'per_page': 100, 'page': 1})
     listing = prefix + f'/actions/workflows/{workflow_id}/runs?' + query
     repository_listing = prefix + '/actions/runs?' + query
-    run, repository_mode = _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id)
+    try:
+        run, repository_mode = _lookup_latest(get, listing, repository_listing, policy, commit, workflow_id)
+    except _NoPushEvidence:
+        approved = OWNER_DISPATCH_PROPOSAL
+        if approved.approved_after is None or policy.repository != approved.repository:
+            raise
+        return _verify_owner_dispatch(get, policy, commit, workflow_id, repository_listing)
     jobs = get(prefix + f"/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs?per_page=100&page=1")
     entries = jobs.get('jobs')
     total_jobs = jobs.get('total_count')
