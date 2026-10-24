@@ -92,6 +92,25 @@ require(frontend_policy['Properties']['PolicyDocument']['Statement'] == [{
 }], 'optional frontend publishing must allow only two actions on one exact account/region/app/branch and its descendants')
 normal_publish = next(item for item in statements('RunnerRole') if item.get('Sid') == 'PublishOnlyTaggedFrontends')
 require(normal_publish['Action'] == ['amplify:CreateDeployment', 'amplify:StartDeployment', 'amplify:GetApp', 'amplify:GetBranch'] and normal_publish['Condition'] == {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}}}, 'normal frontend publish/read tag authority must remain intact')
+game_app = template['Parameters']['GameStudioFrontendAppId']
+game_branch = template['Parameters']['GameStudioFrontendBranch']
+require(game_app['Default'] == '' and game_app['AllowedPattern'] == frontend_app['AllowedPattern'], 'Game Studio frontend binding must default disabled and reject wildcard/path injection')
+require(game_branch['Default'] == 'production' and game_branch['AllowedPattern'] == frontend_branch['AllowedPattern'], 'Game Studio frontend binding must select one literal branch independently of other apps')
+require(template['Conditions']['HasBoundGameStudioFrontend'] == {'Fn::Not': [{'Fn::Equals': [{'Ref': 'GameStudioFrontendAppId'}, '']}]}, 'Game Studio frontend publishing requires an explicit owner binding')
+game_publish = resources['GameStudioFrontendPublishPolicy']
+require(game_publish['Type'] == 'AWS::IAM::ManagedPolicy' and game_publish['Condition'] == 'HasBoundGameStudioFrontend', 'Game Studio frontend grant must be separately conditional')
+require(game_publish['Properties']['Roles'] == [{'Ref': 'RunnerRole'}], 'Game Studio frontend grant escaped the trusted runner')
+require(game_publish['Properties']['PolicyDocument']['Statement'] == [{
+    'Effect': 'Allow', 'Action': ['amplify:CreateDeployment', 'amplify:StartDeployment'],
+    'Resource': [{'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/${GameStudioFrontendAppId}/branches/${GameStudioFrontendBranch}' + suffix}
+                 for suffix in ['', '/deployments/*', '/jobs/*']],
+    'Condition': {'StringEquals': {'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}], 'Game Studio manual publishing must remain two actions on the exact owner-bound branch, deployment/job paths and region')
+job_read = next(item for item in statements('RunnerRole') if item.get('Sid') == 'ReadAndStopFrontendJobs')
+require(job_read == {
+    'Sid': 'ReadAndStopFrontendJobs', 'Effect': 'Allow', 'Action': ['amplify:GetJob', 'amplify:StopJob'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:amplify:${AWS::Region}:${AWS::AccountId}:apps/*/branches/*/jobs/*'},
+}, 'frontend job read/stop must stay at the documented job path without new actions')
 
 for name, permitted in [('ControlRole', ['NCE_DEPLOYMENT', 'NCE_RESULT_KEY', 'NCE_RUN_TOKEN']), ('RunnerRole', ['NCE_BUILD_CONFIG', 'NCE_RUN_TOKEN'])]:
     condition = start_statement(name)['Condition']
