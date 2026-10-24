@@ -171,6 +171,45 @@ class AdapterTests(SimpleTestCase):
 
 
 class RunnerContractTests(SimpleTestCase):
+    def test_stage_tag_on_create_requires_existing_and_requested_platform_tags_and_region(self):
+        document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
+        statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']
+        grants = [item for item in statements if item.get('Sid') == 'TagHttpApiStages']
+        self.assertEqual(grants, [{
+            'Sid': 'TagHttpApiStages', 'Effect': 'Allow', 'Action': ['apigateway:TagResource'],
+            'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/stages'},
+            'Condition': {'StringEquals': {
+                'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                'aws:RequestedRegion': {'Ref': 'AWS::Region'},
+            }},
+        }])
+        grant = grants[0]
+        pattern = grant['Resource']['Fn::Sub'].replace('${AWS::Partition}', 'aws').replace('${AWS::Region}', 'us-east-1')
+        expected_context = {'aws:ResourceTag/nce:platform-prefix': 'nce-tests',
+                            'aws:RequestTag/nce:platform-prefix': 'nce-tests', 'aws:RequestedRegion': 'us-east-1'}
+
+        def allowed(action, arn, context):
+            return (action in grant['Action'] and fnmatch.fnmatchcase(arn, pattern)
+                    and all(context.get(key) == value for key, value in expected_context.items()))
+
+        arn = 'arn:aws:apigateway:us-east-1::/apis/example123/stages'
+        self.assertTrue(allowed('apigateway:TagResource', arn, expected_context))
+        for key in expected_context:
+            with self.subTest(context=key):
+                missing = {k: v for k, v in expected_context.items() if k != key}
+                self.assertFalse(allowed('apigateway:TagResource', arn, missing))
+                self.assertFalse(allowed('apigateway:TagResource', arn, {**expected_context, key: 'other'}))
+        self.assertFalse(allowed('apigateway:TagResource', arn, {}))
+        for action in ['apigateway:POST', 'apigateway:PUT', 'apigateway:PATCH', 'apigateway:GET', 'apigateway:DELETE', 'apigateway:UntagResource', 'iam:PassRole']:
+            self.assertFalse(allowed(action, arn, expected_context))
+        for path in ['/apis', '/apis/example123', '/apis/example123/stages/$default',
+                     '/apis/example123/integrations', '/apis/example123/routes', '/restapis/example123/stages',
+                     '/tags/arn%3Aaws%3Aapigateway%3Aus-east-1%3A%3A%2Fapis%2Fexample123%2Fstages%2F%24default']:
+            self.assertFalse(allowed('apigateway:TagResource', 'arn:aws:apigateway:us-east-1::' + path, expected_context))
+        self.assertFalse(allowed('apigateway:TagResource', arn.replace('us-east-1', 'eu-west-1'), expected_context))
+        self.assertEqual(sum('apigateway:TagResource' in item['Action'] for item in statements), 1)
+
     def test_explicit_game_http_api_children_create_only_under_tagged_parent_collections(self):
         document = json.loads((ROOT.parent / 'aws-platform/platform.template.json').read_text())
         statements = document['Resources']['CloudFormationRole']['Properties']['Policies'][0]['PolicyDocument']['Statement']
