@@ -4,6 +4,7 @@ No AWS/network requests, paid builds, model calls, or application code execution
 """
 import base64
 from copy import deepcopy
+from fnmatch import fnmatchcase
 import io
 import json
 from pathlib import Path
@@ -180,6 +181,47 @@ class GameStudioCloudContractTests(SimpleTestCase):
         self.assertEqual(onboarding['Parameters']['GameStudioModelArns']['Default'], '')
         self.assertEqual(resources['ApiIntegration']['Properties']['PayloadFormatVersion'], '2.0')
         self.assertEqual(resources['Api']['Properties']['CorsConfiguration']['AllowOrigins'], {'Ref': 'AllowedOrigins'})
+
+    def test_default_route_invoke_permission_matches_gateway_arn_without_widening_scope(self):
+        resources = json.loads((runner.ROOT / 'game-studio.template.json').read_text())['Resources']
+        self.assertEqual(resources['ApiDefaultRoute']['Properties']['RouteKey'], '$default')
+        self.assertEqual(resources['ApiDefaultStage']['Properties']['StageName'], '$default')
+        permission = resources['ApiDefaultInvoke']['Properties']
+        self.assertEqual(resources['ApiDefaultInvoke']['Condition'], 'Serverless')
+        self.assertEqual(permission['Action'], 'lambda:InvokeFunction')
+        self.assertEqual(permission['FunctionName'], {'Ref': 'Function'})
+        self.assertEqual(permission['Principal'], 'apigateway.amazonaws.com')
+        self.assertEqual(permission['SourceAccount'], {'Ref': 'AWS::AccountId'})
+        allowed = permission['SourceArn']['Fn::Sub']
+        substitutions = {'AWS::Partition': 'aws', 'AWS::Region': 'us-east-1', 'AWS::AccountId': '123456789012', 'Api': 'api123'}
+        for key, value in substitutions.items():
+            allowed = allowed.replace('${' + key + '}', value)
+        self.assertNotIn('*', allowed)
+        actual = 'arn:aws:execute-api:us-east-1:123456789012:api123/$default/$default'
+        self.assertTrue(fnmatchcase(actual, allowed))
+        # The method/path wildcard shape does not authorize this two-component ARN.
+        legacy = resources['ApiInvoke']['Properties']
+        self.assertEqual(legacy, {**permission, 'SourceArn': {'Fn::Sub':
+            'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${Api}/*/*/*'}})
+        self.assertFalse(fnmatchcase(actual, 'arn:aws:execute-api:us-east-1:123456789012:api123/*/*/*'))
+        for unrelated in [
+            actual.replace('api123/', 'api456/'),
+            actual.replace('123456789012:', '999999999999:'),
+            actual.replace('us-east-1:', 'us-west-2:'),
+            actual.replace('/$default/$default', '/preview/$default'),
+            actual.replace('/$default/$default', '/$default/GET/health'),
+        ]:
+            with self.subTest(unrelated=unrelated):
+                self.assertFalse(fnmatchcase(unrelated, allowed))
+
+    def test_default_route_permission_is_additive_without_relaxing_replacement_guard(self):
+        change = {'ResourceChange': {'Action': 'Add', 'LogicalResourceId': 'ApiDefaultInvoke',
+            'ResourceType': 'AWS::Lambda::Permission'}}
+        runner.no_destructive_changes([change])
+        for replacement in ['True', 'Conditional']:
+            with self.subTest(replacement=replacement), self.assertRaisesMessage(runner.RunnerError, 'removes or replaces'):
+                runner.no_destructive_changes([{'ResourceChange': {**change['ResourceChange'],
+                    'Action': 'Modify', 'Replacement': replacement}}])
 
     def test_runner_selects_pinned_core_template_not_repository_template(self):
         value = configuration(); request = game_snapshot(value)

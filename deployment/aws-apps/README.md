@@ -138,3 +138,13 @@ embedding hosts; application metadata cannot supply IAM or infrastructure.
 See the Game Studio section in `docs/cloud-deployments.md` for onboarding,
 player/creator/admin roles, default-free guided design, optional exact-ARN
 Bedrock policies, and the top-level creator/public-player embedding boundary.
+
+The HTTP API uses both a `$default` stage and a `$default` route. Its additive
+`ApiDefaultInvoke` permission matches the exact `${Api}/$default/$default` execution
+ARN, with the owning account and function still bound. A method/path-shaped
+`/*/*/*` suffix does not match that default-route invocation and produces a
+gateway 500 before the handler executes. See AWS's
+[HTTP API Lambda troubleshooting example](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-troubleshooting-lambda.html).
+The legacy `ApiInvoke` permission remains unchanged because changing its
+`SourceArn` requires resource replacement. Adding the exact permission preserves
+the runner's existing rejection of replacements and removals.
