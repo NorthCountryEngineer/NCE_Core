@@ -12,7 +12,8 @@ from .secrets import decrypt_bundle, encrypt_bundle
 
 ARCHETYPES = [('amplify-static', 'Amplify website'), ('amplify-serverless', 'Amplify website and Lambda API'),
               ('amplify-fargate', 'Amplify website and Fargate application'),
-              ('amplify-academy-fargate', 'Academy website and Fargate API')]
+              ('amplify-academy-fargate', 'Academy website and Fargate API'),
+              ('amplify-game-studio', 'Game Studio website and serverless API')]
 
 
 def digest(value):
@@ -81,6 +82,11 @@ class CloudPlatform(TaggedResource):
             raise ValidationError('Choose at least one environment and application template.')
         if set(self.config['archetypes']) - {key for key, _ in ARCHETYPES}:
             raise ValidationError('Unsupported application template.')
+        from .cloud_contract import ContractError, game_studio_applications
+        try:
+            game_studio_applications(self.config, self.allowed_repositories)
+        except ContractError as error:
+            raise ValidationError(str(error)) from None
         from .models import DeploymentEnvironment
         ids = self.config['environment_ids']
         try:
@@ -142,6 +148,8 @@ class CloudApplication(TaggedResource):
             raise ValidationError('This environment or template is not configured for the platform.')
         if self.archetype in ('amplify-fargate', 'amplify-academy-fargate') and self.platform.mode == 'aws' and self.repository not in self.platform.config.get('academy_fargate_apps' if self.archetype == 'amplify-academy-fargate' else 'fargate_apps', {}):
             raise ValidationError('Approve this repository’s container resource references in the deployment platform first.')
+        if self.archetype == 'amplify-game-studio' and self.platform.mode == 'aws' and self.repository not in self.platform.config.get('game_studio_apps', {}):
+            raise ValidationError('Approve this Game Studio repository’s branding and embedding hosts in the deployment platform first.')
         if self.public_origin:
             value = urlsplit(self.public_origin)
             if value.scheme != 'https' or not value.netloc or value.username or value.password or value.path or value.query or value.fragment:

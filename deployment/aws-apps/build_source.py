@@ -34,6 +34,10 @@ def main():
         if not re.fullmatch(r"VITE_[A-Z0-9_]{1,100}", name) or re.search(r"SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY", name):
             raise ValueError("Only public frontend configuration is allowed.")
         environment[name] = value
+    if 'VITE_GAME_STUDIO_CONFIG_JSON' in config['public_config']:
+        # This is public, operator-owned deployment configuration. Runtime
+        # secrets remain unavailable to this isolated source-build project.
+        environment['GAME_STUDIO_CONFIG_JSON'] = config['public_config']['VITE_GAME_STUDIO_CONFIG_JSON']
     subprocess.run(["npm", "ci", "--no-audit", "--no-fund"], cwd=source, env=environment, check=True)
     subprocess.run(["npm", "run", "build"], cwd=source, env=environment, check=True)
     output = safe_directory(source, config["frontend"]["output"])

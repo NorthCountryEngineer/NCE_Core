@@ -65,13 +65,19 @@ def read_manifest(root, archetype):
     package = json.loads((source / "package.json").read_text())
     if not isinstance(package.get("scripts", {}).get("build"), str):
         raise RunnerError("The frontend must provide the standard npm build script.")
-    if archetype == "amplify-serverless":
+    if archetype in {"amplify-serverless", "amplify-game-studio"}:
         backend = manifest.get("backend")
         if not isinstance(backend, dict) or set(backend) != {"directory", "handler"}:
             raise RunnerError("Serverless manifest requires backend directory and Python handler only.")
         child_directory(root, backend["directory"])
         if not isinstance(backend["handler"], str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}\.[A-Za-z_][A-Za-z0-9_]*", backend["handler"]):
             raise RunnerError("Invalid Python Lambda handler.")
+        if archetype == 'amplify-game-studio':
+            if backend != {'directory': 'backend/nce_api', 'handler': 'handler.handler'}:
+                raise RunnerError('Game Studio uses the fixed backend/nce_api and handler.handler contract.')
+            registry = child_directory(root, backend['directory']) / 'agent-framework.json'
+            if not registry.is_file() or registry.is_symlink() or registry.stat().st_size > 48000:
+                raise RunnerError('Game Studio requires its bounded adjacent agent-framework.json registry.')
     elif archetype in ('amplify-fargate', 'amplify-academy-fargate'):
         try:
             (_contract.academy_fargate_backend if archetype == 'amplify-academy-fargate' else _contract.fargate_backend)(manifest.get('backend'))
@@ -187,6 +193,16 @@ def stack_parameters(platform, snapshot, manifest, code_key, existing=False, act
         for key in ['CoreOrganizationId', 'CoreServiceId', 'CoreBrowserClientId', 'CoreDeploymentId']:
             values[key] = values[key] or 'pending'
         identity_keys.update({'CoreBrowserClientId', 'CoreRedirectUri', 'CoreDeploymentId', 'DesiredCount', 'ApiImageUri', 'BrowserImageUri'})
+    if snapshot['archetype'] == 'amplify-game-studio':
+        try:
+            approved = _contract.game_studio_applications(platform['config'], platform['allowed_repositories'], platform['account_id'], platform['region'])[snapshot['repository']]
+        except (KeyError, _contract.ContractError):
+            raise RunnerError('Game Studio integration must be approved in platform settings.') from None
+        values['GameStudioConfigJson'] = json.dumps(_contract.game_studio_public_configuration(approved), ensure_ascii=False, separators=(',', ':'))
+        values['AllowedOrigins'] = ','.join(dict.fromkeys([values['ApplicationOrigin']] + [host['origin'] for host in approved['hosts']]))
+        values['AllowPaidModels'] = 'true' if approved.get('allow_paid_models', False) else 'false'
+        values['ApprovedModelArns'] = ','.join(approved.get('bedrock_model_arns', []))
+        identity_keys.update({'GameStudioConfigJson', 'AllowedOrigins', 'AllowPaidModels', 'ApprovedModelArns'})
     parameters = []
     for key, value in values.items():
         preserve_pii = key == 'PiiSecretArn' and existing and any(
@@ -233,7 +249,7 @@ class Runner:
     def provision(self, manifest, root, activate=False):
         name, _ = stable_names(self.platform, self.snapshot)
         code_key = f"code/{name}/{self.snapshot['commit']}/api.zip"
-        if self.snapshot["archetype"] == "amplify-serverless":
+        if self.snapshot["archetype"] in {"amplify-serverless", "amplify-game-studio"}:
             archive = Path("/tmp/nce-api.zip")
             package_lambda(root, manifest["backend"], archive)
             self.client("s3").upload_file(str(archive), self.config["artifact_bucket"], code_key,
@@ -254,7 +270,7 @@ class Runner:
         operation_token = (hashlib.sha256((self.token + ('-activate' if activate else '-configure')).encode()).hexdigest()
                            if self.snapshot['archetype'] in ('amplify-fargate', 'amplify-academy-fargate') else self.token)
         change_set = f"nce-{operation_token[:32]}"
-        template = ROOT / ('academy-fargate.template.json' if self.snapshot['archetype'] == 'amplify-academy-fargate' else ('fargate.template.json' if self.snapshot['archetype'] == 'amplify-fargate' else 'application.template.json'))
+        template = ROOT / ('game-studio.template.json' if self.snapshot['archetype'] == 'amplify-game-studio' else ('academy-fargate.template.json' if self.snapshot['archetype'] == 'amplify-academy-fargate' else ('fargate.template.json' if self.snapshot['archetype'] == 'amplify-fargate' else 'application.template.json')))
         if not template.is_file() or template.stat().st_size > 51200:
             raise RunnerError('The pinned Core recipe template is missing or exceeds the inline limit.')
         arguments = {
@@ -381,6 +397,22 @@ class Runner:
                 total += item.file_size
             if total > MAX_ARTIFACT_BYTES:
                 raise RunnerError("Expanded frontend artifact exceeds the size limit.")
+        if self.snapshot['archetype'] == 'amplify-game-studio':
+            try:
+                approved = _contract.game_studio_applications(self.config, self.platform['allowed_repositories'])[self.snapshot['repository']]
+                headers = _contract.game_studio_hosting_headers(_contract.game_studio_public_configuration(approved))
+            except (KeyError, _contract.ContractError):
+                raise RunnerError('Game Studio embedding configuration is not approved.') from None
+            # Only the public player route can be framed. Replace app-produced
+            # headers so a repository cannot broaden the operator host policy.
+            protected = Path('/tmp/nce-game-studio-frontend.zip')
+            with ZipFile(archive) as source, ZipFile(protected, 'w', compression=ZIP_DEFLATED) as target:
+                if len(source.namelist()) != len(set(source.namelist())):
+                    raise RunnerError('Frontend archive contains duplicate paths.')
+                for entry in source.infolist():
+                    if entry.filename != 'customHttp.yml': target.writestr(entry, source.read(entry))
+                target.writestr('customHttp.yml', headers)
+            archive = protected
         amplify = self.client("amplify")
         app_id = self.outputs["amplify_app_id"]
         branch = self.snapshot["environment"]

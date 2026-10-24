@@ -103,3 +103,106 @@ def academy_fargate_backend(backend, approved=None):
     approval = ({**approved, 'browser_image_repository': approved['image_repository']} if approved else None)
     fargate_backend(normalized, approval)
     return backend
+
+
+def game_studio_identity():
+    """Core owns this vocabulary. Repository manifests cannot add authority."""
+    return {'callback_path': '/oauth/callback', 'permissions': [
+        {'codename': 'games-play', 'name': 'Play published games and save shared arcade scores'},
+        {'codename': 'games-create', 'name': 'Administer game creation and private drafts'},
+        {'codename': 'games-publish', 'name': 'Administer game publication and editions'},
+        {'codename': 'games-manage', 'name': 'Manage Game Studio content, branding and creation settings'},
+        {'codename': 'agents-manage', 'name': 'Configure Game Studio agents and workflows'},
+        {'codename': 'accounts-manage', 'name': 'Manage Game Studio accounts and invitations'}],
+        'account_roles': [
+            {'id': 'player', 'name': 'Player', 'description': 'Play published games and save shared arcade scores without game creation access.', 'permissions': ['games-play']},
+            {'id': 'creator', 'name': 'Game creation administrator', 'description': 'Create private games and review isolated playtests.', 'permissions': ['games-create']},
+            {'id': 'publisher', 'name': 'Game publishing administrator', 'description': 'Create, playtest and publish reviewed game editions.', 'permissions': ['games-create', 'games-publish']},
+            {'id': 'administrator', 'name': 'Game Studio administrator', 'description': 'Manage games, branding, creation settings, agents and application accounts.',
+                'permissions': ['games-create', 'games-publish', 'games-manage', 'agents-manage', 'accounts-manage']}]}
+
+
+def game_studio_configuration(value):
+    """Only operator-reviewed HTTPS host references and plain branding enter AWS."""
+    from urllib.parse import urlsplit
+    def require(condition):
+        if not condition: raise ContractError('Game Studio requires bounded branding and exact HTTPS embedding hosts.')
+    def label(item, maximum):
+        require(isinstance(item, str) and 1 <= len(item) <= maximum and item == item.strip() and not re.search(r'[<>\x00-\x1f\x7f-\x9f]', item))
+    def url(item, origin=False):
+        require(isinstance(item, str) and len(item) <= 2048 and not re.search(r'[\s\\<>\x00-\x1f\x7f-\x9f]', item))
+        try:
+            parsed = urlsplit(item); port = parsed.port
+        except ValueError: raise ContractError('Invalid Game Studio host URL.') from None
+        require(parsed.scheme == 'https' and bool(parsed.hostname) and parsed.username is None and parsed.password is None and '?' not in item and '#' not in item)
+        require(not origin or not parsed.path)
+        require(port is None or 1 <= port <= 65535)
+        require(bool(re.fullmatch(r'[A-Za-z0-9.\-:]+', parsed.hostname or '')) and '..' not in parsed.hostname)
+        if origin:
+            canonical = 'https://' + parsed.hostname + (':' + str(port) if port is not None and port != 443 else '')
+            require(item == canonical)
+            if re.fullmatch(r'(?:[0-9]+|0x[0-9a-f]+)', parsed.hostname.rsplit('.', 1)[-1], re.I):
+                import ipaddress
+                try: require(str(ipaddress.ip_address(parsed.hostname)) == parsed.hostname)
+                except ValueError: raise ContractError('Use a canonical HTTPS embedding origin.') from None
+    require(isinstance(value, dict) and set(value) == {'version', 'branding', 'hosts'} and type(value['version']) is int and value['version'] == 1)
+    branding = value['branding']
+    require(isinstance(branding, dict) and {'appName', 'badgeText', 'accentColor'} <= set(branding) and not set(branding) - {'appName', 'badgeText', 'accentColor', 'logoUrl'})
+    label(branding['appName'], 80); label(branding['badgeText'], 80)
+    require(isinstance(branding['accentColor'], str) and bool(re.fullmatch(r'#[a-fA-F0-9]{6}', branding['accentColor'])))
+    if 'logoUrl' in branding: url(branding['logoUrl'])
+    require(isinstance(value['hosts'], list) and len(value['hosts']) <= 20)
+    ids, origins = set(), set()
+    for host in value['hosts']:
+        require(isinstance(host, dict) and set(host) == {'id', 'name', 'origin', 'returnPath'})
+        require(isinstance(host['id'], str) and bool(re.fullmatch(r'[a-z][a-z0-9_-]{0,63}', host['id'])) and host['id'] not in ids)
+        label(host['name'], 80); url(host['origin'], origin=True)
+        require(host['origin'] not in origins)
+        path = host['returnPath']
+        require(isinstance(path, str) and len(path) <= 500 and bool(re.fullmatch(r'/(?:[A-Za-z0-9._~-]+/?)*', path)) and not any(part in {'.', '..'} for part in path.split('/')))
+        ids.add(host['id']); origins.add(host['origin'])
+    # Leave room for Core IDs, table names and credential references within the
+    # Lambda environment limit. This map contains no model/service credentials.
+    require(len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode()) <= 2048)
+    return value
+
+
+def game_studio_public_configuration(value):
+    result = {key: value[key] for key in ('version', 'branding', 'hosts')}
+    return game_studio_configuration(result)
+
+
+def game_studio_applications(config, repositories, account=None, region=None):
+    apps = config.get('game_studio_apps', {})
+    if not isinstance(apps, dict) or len(apps) > 20:
+        raise ContractError('Game Studio settings must be a bounded approved-repository map.')
+    for repository, values in apps.items():
+        if (repository not in repositories or not isinstance(values, dict) or
+                not {'version', 'branding', 'hosts'} <= set(values) or
+                set(values) - {'version', 'branding', 'hosts', 'allow_paid_models', 'bedrock_model_arns'}):
+            raise ContractError('Configure Game Studio integration only for an approved repository.')
+        game_studio_public_configuration(values)
+        models, enabled = values.get('bedrock_model_arns', []), values.get('allow_paid_models', False)
+        if (type(enabled) is not bool or not isinstance(models, list) or len(models) > 20 or
+                any(not isinstance(arn, str) for arn in models) or len(set(models)) != len(models) or enabled and not models):
+            raise ContractError('Paid Game Studio models require explicit operator approval and exact unique model ARNs.')
+        for arn in models:
+            match = re.fullmatch(r'arn:aws:bedrock:([a-z]{2}(?:-[a-z]+)+-[0-9]):([0-9]{12})?:(foundation-model|inference-profile|application-inference-profile)/[A-Za-z0-9._:-]{1,512}', arn)
+            if not match or (match[3] == 'foundation-model' and match[2]) or (match[3] != 'foundation-model' and (not match[2] or account and match[2] != account)):
+                raise ContractError('Game Studio model policies require exact foundation-model or platform-account inference-profile ARNs, without wildcards.')
+    return apps
+
+
+def game_studio_hosting_headers(value):
+    """Trusted runner overwrites source-provided headers at publication."""
+    game_studio_configuration(value)
+    rules = [('**', [('Strict-Transport-Security', 'max-age=31536000'), ('X-Content-Type-Options', 'nosniff'),
+        ('Referrer-Policy', 'no-referrer'), ('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()')])]
+    rules.append(('/sdk/**', [('Access-Control-Allow-Origin', '*'), ('Cross-Origin-Resource-Policy', 'cross-origin')]))
+    for pattern in ['/', '/index.html', '/games', '/games/**', '/game-studio', '/game-studio/**', '/studio', '/studio/**',
+                    '/oauth/**', '/settings', '/settings/**', '/accounts', '/accounts/**', '/agents', '/agents/**', '/feedback', '/feedback/**']:
+        rules.append((pattern, [('X-Frame-Options', 'DENY'), ('Content-Security-Policy', "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"), ('Cache-Control', 'no-store')]))
+    ancestors = ' '.join(host['origin'] for host in value['hosts']) or "'none'"
+    rules.append(('/embed/games/**', [('Content-Security-Policy', f"frame-ancestors {ancestors}; object-src 'none'; base-uri 'self'"), ('Cache-Control', 'no-store')]))
+    return 'customHeaders:\n' + ''.join('  - pattern: ' + json.dumps(pattern) + '\n    headers:\n' + ''.join(
+        '      - key: ' + json.dumps(key) + '\n        value: ' + json.dumps(item) + '\n' for key, item in headers) for pattern, headers in rules)
