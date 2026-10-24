@@ -44,11 +44,27 @@ context. The control role can encrypt that credential path, and each app's
 inline role narrows decryption to its exact parameter. No KMS key is created;
 customer-managed credential keys require a separate reviewed extension.
 
-HTTP APIs use API Gateway QuickCreate with a Lambda target. The execution role
-has no broad write access to HTTP API routes/integrations, whose tags are not
-inherited from the parent HTTP API. Amplify applications and branches carry the
-platform prefix tag. Amplify's create API and CloudWatch log-group discovery
-require `Resource: "*"`; those statements use request-tag or region conditions.
+The generic serverless recipe uses API Gateway QuickCreate with a Lambda target.
+Game Studio instead declares an explicit payload-version-2 integration, default
+route and throttled default stage. Its execution role permits `apigateway:POST`
+only on `/apis/*/integrations`, `/apis/*/routes` and `/apis/*/stages`, requiring
+both `aws:ResourceTag/nce:platform-prefix` equal to this platform prefix and this
+AWS region. Missing tags or region deny access; there is no untagged fallback.
+It adds no create access to authorizers, deployments, models or other collections,
+and no new role-passing authority.
+
+The [API Gateway V2 authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_apigatewayv2.html#apigatewayv2-actions-as-permissions)
+explicitly lists the resource-tag condition for POST on these three collection
+resources. The [tagging guide](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-tagging-supported-resources.html)
+lists direct V2 taggable resources and documents inheritance for V1; that is not
+proof of physical tag inheritance by V2 child resources. The role uses the V2
+reference's documented authorization context and fails closed if it is absent.
+Offline policy tests verify this scope, while an authorized provider retry must
+verify the actual context before a release is accepted.
+
+Amplify applications and branches carry the platform prefix tag. Amplify's
+create API and CloudWatch log-group discovery require `Resource: "*"`; those
+statements use request-tag or region conditions.
 If manual frontend publication fails despite verified app/branch tags, the
 platform owner can optionally bind `FrontendAppId` and `FrontendBranch` to one
 verified app/branch after provisioning. Empty app ID disables the separate
