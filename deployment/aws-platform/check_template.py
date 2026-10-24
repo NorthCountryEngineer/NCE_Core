@@ -126,8 +126,17 @@ require(http_api_children == {
     'Condition': {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'}, 'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
 }, 'Explicit HTTP API children require POST on only three collections, a platform resource tag and this region; no untagged fallback')
 require(body.count(b'"CreateTaggedHttpApiChildren"') == 1, 'HTTP API child creation must belong only to its exact CloudFormation role')
+stage_tags = next(item for item in cf_statements if item.get('Sid') == 'TagHttpApiStages')
+require(stage_tags == {
+    'Sid': 'TagHttpApiStages', 'Effect': 'Allow', 'Action': ['apigateway:TagResource'],
+    'Resource': {'Fn::Sub': 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis/*/stages'},
+    'Condition': {'StringEquals': {'aws:ResourceTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                                 'aws:RequestTag/nce:platform-prefix': {'Ref': 'Prefix'},
+                                 'aws:RequestedRegion': {'Ref': 'AWS::Region'}}},
+}, 'Stage tagging requires the exact collection, existing and requested platform tags, and this region; no untagged fallback')
+require(body.count(b'"TagHttpApiStages"') == body.count(b'"apigateway:TagResource"') == 1, 'Stage tagging must belong only to its exact CloudFormation role')
 http_api_grants = [item for item in cf_statements if any(action.startswith('apigateway:') for action in item['Action'])]
-require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation', 'CreateTaggedHttpApiChildren'}, 'HTTP API authority gained an unreviewed grant')
+require({item.get('Sid') for item in http_api_grants} == {'CreateNamedHttpApi', 'ManageTaggedHttpApi', 'ReadHttpApiTags', 'TagHttpApiForCloudFormation', 'CreateTaggedHttpApiChildren', 'TagHttpApiStages'}, 'HTTP API authority gained an unreviewed grant')
 require(body.count(b'"TagHttpApiForCloudFormation"') == 1, 'HTTP API tagging grant must belong only to its exact CloudFormation role')
 bucket_permissions = next(item for item in cf_statements if item['Sid'] == 'AppBuckets')
 require(bucket_permissions['Resource'] == {'Fn::Sub': 'arn:${AWS::Partition}:s3:::${Prefix}-${AWS::AccountId}-*'}, 'CloudFormation bucket reads must remain within app names')

@@ -62,6 +62,22 @@ reference's documented authorization context and fails closed if it is absent.
 Offline policy tests verify this scope, while an authorized provider retry must
 verify the actual context before a release is accepted.
 
+Stage tag-on-create additionally needs the literal `apigateway:TagResource`
+action on `/apis/*/stages`. The dedicated grant requires the existing platform
+resource tag, the requested platform tag and this AWS region. It permits no
+stage-object tagging path, `PUT`, `UntagResource` or missing-tag fallback.
+This follows the current us-east-1 CloudFormation Stage provider schema, whose
+create permissions are `apigateway:POST` and `apigateway:TagResource`, and the
+observed tagged `CreateStage` denial. The schema is available through
+`aws cloudformation describe-type --type RESOURCE --type-name AWS::ApiGatewayV2::Stage`
+or the [AWS-published resource schema archive](https://schema.cloudformation.us-east-1.amazonaws.com/CloudformationSchema.zip)
+(`aws-apigatewayv2-stage.json`). The authorization reference currently maps the
+`TagResource` operation to verb actions but omits this literal action. That
+documentation discrepancy does not justify widening the grant to all API
+Gateway writes; an authorized provider canary must verify these exact required
+conditions. The schema's update handler also lists `UntagResource`; this change
+does not authorize that operation or claim stage retagging support.
+
 Amplify applications and branches carry the platform prefix tag. Amplify's
 create API and CloudWatch log-group discovery require `Resource: "*"`; those
 statements use request-tag or region conditions.
