@@ -2,11 +2,6 @@
 {% block body_class %}chat-page{% endblock %}
 {% block workspace_path %}{% endblock %}
 {% block extra_head %}<style>{% include 'core_chat/workspace.css.html' %}</style>{% endblock %}
-{% block access_controls %}
-{% if brand_organization %}<details class="chat-access"><summary>Access purpose</summary>
-<form method="post" action="{% url 'access_purpose' brand_organization.slug %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><label for="access-purpose">Purpose code</label><input id="access-purpose" name="purpose_code" value="{{ access_purpose }}" maxlength="80"><button type="submit">Set purpose for this organization</button></form>
-</details>{% endif %}
-{% endblock %}
 {% block content %}
 <div class="chat-workspace">
 <aside class="chat-sidebar" aria-label="Chat navigation">

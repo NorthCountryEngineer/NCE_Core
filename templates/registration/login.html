@@ -8,7 +8,6 @@
   {% if app_auth %}<p>{{ app_auth.tagline }}</p>{% endif %}
   {% for provider in identity_providers %}<form class="provider-signin" method="get" action="{% url 'provider_begin' provider.pk %}">
     <input type="hidden" name="next" value="{{ next }}">
-    <label>Access purpose (if required)<input name="purpose_code" maxlength="80" placeholder="Configured purpose code"></label>
     <button type="submit">Sign in with {{ provider.name }} · {{ provider.organization.name }}</button>
   </form>{% endfor %}
   <form method="post">{% csrf_token %}{{ form.as_p }}
