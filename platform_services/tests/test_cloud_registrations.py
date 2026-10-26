@@ -159,7 +159,7 @@ class DurableRegistrationTests(TestCase):
             self.configure()
         self.app.refresh_from_db()
         self.assertEqual(self.app.config, {})
-        self.app.config = {'registrations': [{'client_secret': 'foreign-secret'}]}
+        self.app.config = {'registrations': [{'client_secret': uuid4().hex}]}
         with self.assertRaises(ValidationError):
             self.app.full_clean()
 

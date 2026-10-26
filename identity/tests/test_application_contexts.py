@@ -75,7 +75,7 @@ class ApplicationContextTests(TestCase):
         self.assertEqual(response.json(), {'error': 'invalid_user_token'})
         self.assertEqual(self.discover(token='not-an-access-token').status_code, 401)
         self.assertEqual(self.discover(credentials={'client_id': self.browser.client_id,
-                                                   'client_secret': 'no-secret'}).status_code, 401)
+                                                   'client_secret': uuid4().hex}).status_code, 401)
 
     def test_source_requires_exact_workspace_permission_even_with_other_access(self):
         self.role.permissions.remove(self.workspace)
