@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-26 — PostgreSQL-safe authentication evidence locking
+
+Registration maintenance locks only the selected authentication-evidence row while
+reading optional federated identity/provider metadata. Password-only evidence
+therefore works on PostgreSQL without attempting to lock the nullable side of an
+outer join. Existing actor, freshness, revocation and policy checks remain intact;
+focused registration and exact operator checks run against disposable PostgreSQL.
+
 ## 2026-10-26 — Existing login evidence for registration maintenance
 
 The shared-runtime registration command accepts an explicit existing actor-bound

@@ -47,6 +47,9 @@ class AuthenticationEvidenceRegistrationTests(TestCase):
         self.app.refresh_from_db()
 
     def test_real_authentication_policy_rejects_absent_evidence_and_accepts_exact_current_actor(self):
+        # Password-only evidence has no optional federated identity. PostgreSQL
+        # must lock the evidence row without locking its nullable joined rows.
+        self.assertIsNone(self.evidence.identity_id)
         with self.assertRaises(CommandError):
             self.configure()
         self.app.refresh_from_db()

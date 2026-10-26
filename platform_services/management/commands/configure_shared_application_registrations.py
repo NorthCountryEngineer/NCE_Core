@@ -35,7 +35,7 @@ class Command(BaseCommand):
                     identifier = options['authentication_evidence']
                     if str(UUID(identifier)) != identifier:
                         raise ValueError()
-                    evidence = AuthenticationEvidence.objects.select_for_update().select_related('identity__provider').get(
+                    evidence = AuthenticationEvidence.objects.select_for_update(of=('self',)).select_related('identity__provider').get(
                         pk=identifier, user=actor, revoked=False)
                 principal = Principal(user=actor, evidence=evidence, purpose=options.get('purpose', ''))
                 app = CloudApplication.objects.select_for_update().select_related('platform', 'environment').get(pk=options['application'])
