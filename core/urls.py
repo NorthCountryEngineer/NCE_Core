@@ -6,12 +6,14 @@ from identity import views
 from identity import federation
 from identity import app_auth
 from identity import consent
+from identity import application_contexts
 
 oauth_patterns = [
     path("authorize/", views.TenantAuthorizationView.as_view(), name="authorize"),
     path("token/", oauth_views.TokenView.as_view(), name="token"),
     path("revoke/", oauth_views.RevokeTokenView.as_view(), name="revoke-token"),
     path("introspect/", views.introspect, name="introspect"),
+    path("application-contexts/", application_contexts.application_contexts, name="application-contexts"),
     path("userinfo/", oauth_views.UserInfoView.as_view(), name="user-info"),
     path("jwks/", oauth_views.JwksInfoView.as_view(), name="jwks-info"),
 ]

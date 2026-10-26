@@ -10,6 +10,7 @@ import base64
 import hashlib
 import json
 import re
+from uuid import UUID
 from typing import Callable
 from .cloud_contract import ContractError, fargate_applications, academy_fargate_applications, identity_contract, game_studio_applications
 from platform_services.github_ci import CIGateError, POLICIES, verify_deployment
@@ -340,17 +341,48 @@ def poll_run(platform, snapshot, provider_state, *, client_factory=None):
         raise _safe_failure(error) from None
 
 
+def encode_resource_credentials(value):
+    """Pure bounded validation, usable before any metered deployment starts."""
+    if not isinstance(value, dict) or set(value) not in ({"client_id", "client_secret"}, {"client_id", "client_secret", "registrations"}):
+        raise AWSAdapterError("Invalid Core resource credential bundle.")
+    if any(not isinstance(value[key], str) or not 1 <= len(value[key]) <= 4096 or "\x00" in value[key]
+           for key in ("client_id", "client_secret")):
+        raise AWSAdapterError("Invalid Core resource credential bundle.")
+    registrations = value.get("registrations", [])
+    if "registrations" in value and (not isinstance(registrations, list) or not 1 <= len(registrations) <= 19):
+        raise AWSAdapterError("Invalid additional Core registration list.")
+    fields = {"organization_id", "service_id", "deployment_id", "browser_client_id", "resource_client_id",
+              "resource_client_secret", "environment", "name"}
+    seen = {key: set() for key in ("organization_id", "service_id", "deployment_id", "browser_client_id", "resource_client_id")}
+    for registration in registrations:
+        if not isinstance(registration, dict) or set(registration) != fields or any(
+                not isinstance(item, str) or not 1 <= len(item) <= (4096 if key == "resource_client_secret" else 200) or
+                any(ord(character) < 32 for character in item) for key, item in registration.items()):
+            raise AWSAdapterError("Invalid additional Core registration.")
+        try:
+            if any(str(UUID(registration[key])) != registration[key] for key in ("organization_id", "service_id", "deployment_id")):
+                raise ValueError
+        except (ValueError, TypeError, AttributeError):
+            raise AWSAdapterError("Invalid additional Core registration identity.") from None
+        if registration["environment"] not in {"sandbox", "development", "staging", "uat", "production"}:
+            raise AWSAdapterError("Invalid additional Core registration environment.")
+        if registration["resource_client_id"] == value["client_id"]:
+            raise AWSAdapterError("Duplicate Core resource registration.")
+        for key, identifiers in seen.items():
+            if registration[key] in identifiers:
+                raise AWSAdapterError("Duplicate additional Core registration.")
+            identifiers.add(registration[key])
+    encoded = json.dumps(value, separators=(",", ":"))
+    if len(encoded.encode()) > 4096:
+        raise AWSAdapterError("Core resource credentials exceed the Standard Parameter Store size limit.")
+    return encoded
+
+
 def store_credentials(platform, name, value, *, client_factory=None):
     """Controlled server-only credential write after a billable plan approval."""
     settings = configuration(platform)
     _required(name, rf"/{re.escape(settings['prefix'])}/apps/[A-Za-z0-9-]{{1,64}}/core-resource-client", "Core credential parameter")
-    if not isinstance(value, dict) or set(value) != {"client_id", "client_secret"}:
-        raise AWSAdapterError("Invalid Core resource credential bundle.")
-    if any(not isinstance(item, str) or not 1 <= len(item) <= 4096 for item in value.values()):
-        raise AWSAdapterError("Invalid Core resource credential bundle.")
-    encoded = json.dumps(value, separators=(",", ":"))
-    if len(encoded.encode()) > 4096:
-        raise AWSAdapterError("Core resource credentials exceed the Standard Parameter Store size limit.")
+    encoded = encode_resource_credentials(value)
     try:
         client = _clients(platform, ("ssm",), client_factory)["ssm"]
         arguments = {"Name": name, "Value": encoded, "Type": "SecureString", "Tier": "Standard", "Overwrite": True}

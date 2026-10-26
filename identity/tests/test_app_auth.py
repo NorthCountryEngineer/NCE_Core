@@ -8,6 +8,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from identity.forms import ServiceForm
 from identity.models import Application, Invitation, Membership, Organization, PermissionTag, Role, Service, ServicePermission, User
 
 PASSWORD = secrets.token_urlsafe(32)
@@ -51,6 +52,8 @@ class AppAuthenticationTests(TestCase):
         self.assertContains(response, 'Sign in to Axolotl News')
         self.assertContains(response, '/static/identity/axolotl-mark.svg')
         self.assertContains(response, 'Create your account')
+        self.assertNotContains(response, 'One account. Your next adventure.')
+        self.assertNotContains(response, 'THE AXOLOTL NEWSROOM')
         self.assertNotContains(response, '<core-header')
         self.assertNotContains(response, '>Organizations</a>')
         self.assertIn('no-store', response['Cache-Control'])
@@ -203,4 +206,37 @@ class AppAuthenticationTests(TestCase):
         self.assertContains(response, '&lt;script&gt;bad()&lt;/script&gt;')
         self.assertNotContains(response, '<script>bad()')
         self.assertContains(response, 'theme-core')
-        self.assertContains(response, 'A custom invitation')
+        self.assertNotContains(response, 'A custom invitation')
+
+    def test_proposal_studio_login_keeps_app_identity_without_default_or_saved_slogans(self):
+        self.service.slug = 'proposal-studio'
+        self.service.name = 'Proposal Studio'
+        self.service.save()
+        next_url, _ = self.flow()
+        for tagline in ['', 'Previously configured slogan']:
+            with self.subTest(tagline=tagline):
+                self.service.auth_tagline = tagline
+                self.service.save(update_fields=['auth_tagline'])
+                response = self.client.get(reverse('login'), {'next': next_url})
+                self.assertContains(response, 'Sign in to Proposal Studio')
+                self.assertContains(response, 'App access is managed separately.')
+                self.assertContains(response, 'name="next"')
+                self.assertNotContains(response, 'One account. Your next adventure.')
+                self.assertNotContains(response, 'Previously configured slogan')
+                self.assertNotIn('tagline', response.context['app_auth'])
+
+    def test_service_settings_preserve_existing_tagline_without_exposing_a_slogan_control(self):
+        self.service.auth_tagline = 'Previously configured slogan'
+        self.service.save(update_fields=['auth_tagline'])
+        form = ServiceForm(data={
+            'slug': self.service.slug, 'name': 'Updated service', 'active': True,
+            'auth_name': 'Updated app', 'auth_theme': 'core',
+            'auth_tagline': 'Unwanted replacement',
+        }, instance=self.service)
+        self.assertNotIn('auth_tagline', form.fields)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.service.refresh_from_db()
+        self.assertEqual(self.service.name, 'Updated service')
+        self.assertEqual(self.service.auth_name, 'Updated app')
+        self.assertEqual(self.service.auth_tagline, 'Previously configured slogan')

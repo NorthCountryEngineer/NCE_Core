@@ -154,6 +154,12 @@ def _snapshot(app):
         'platform_digest': app.platform.fingerprint(), 'platform_config': copy.deepcopy(app.platform.config),
         'repository': app.repository, 'branch': app.branch, 'commit': app.commit, 'archetype': app.archetype,
         'public_origin': app.public_origin, 'secret_parameter': f'/{app.platform.prefix}/apps/{app.pk}/core-resource-client'}
+    from .cloud_registrations import registration_bindings, primary_registration_binding, validate_registration_export
+    bindings = registration_bindings(app)
+    if bindings:
+        result['core_registration_bindings'] = bindings
+        result['core_primary_registration_binding'] = primary_registration_binding(app)
+        validate_registration_export(app)
     assignment = hosted_assignment(app)
     if assignment:
         result['hosting_assignment_digest'] = digest(assignment.descriptor())
@@ -287,7 +293,11 @@ def _register(release, outputs):
         approved = game_studio_public_configuration(app.platform.config['game_studio_apps'][app.repository])
         variables.update(VITE_APP_MODE='nce', VITE_CORE_REDIRECT_URI=public['redirect_uri'],
             VITE_GAME_STUDIO_CONFIG_JSON=json.dumps(approved, ensure_ascii=False, separators=(',', ':')))
-    return variables, external_resource_credentials(deployment), deployment
+    from .cloud_registrations import resource_bundle
+    # Recheck the public allowlist under the hosting-app lock before exporting secrets.
+    if _snapshot(app) != release.snapshot:
+        raise ValidationError('The application or reviewed Core registration bindings changed.')
+    return variables, resource_bundle(app, deployment), deployment
 
 
 def process_one():

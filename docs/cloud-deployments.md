@@ -913,3 +913,18 @@ AWS documents transactional condition permissions in
 [Using IAM with DynamoDB transactions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html).
 The existing source-build isolation, account checks, immutable source admission,
 retention, recovery and charge-approval boundaries remain unchanged.
+
+
+### Shared-runtime organization registrations
+
+A reviewed Fargate application may host a bounded set of independently
+registered Core organizations. Use the metadata-only
+`configure_shared_application_registrations` operator command before preparing
+the activation release. Its explicit deployment allowlist is part of the
+reviewed binding snapshot; normal releases regenerate the existing Standard
+SSM credential bundle from current Core records, preserving additional
+registrations without reading old SSM data. Rotation updates the paired
+encrypted deployment copy; stale, unavailable or mismatched credentials fail
+closed. No IAM extension, new secret parameter, hosting resource or schema
+change is required. See [shared-runtime registration
+maintenance](external-applications.md#keep-shared-runtime-registrations-across-releases).

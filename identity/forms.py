@@ -66,7 +66,7 @@ class MembershipForm(forms.ModelForm):
 class ServiceForm(forms.ModelForm):
     class Meta:
         model = Service
-        fields = ["slug", "name", "active", "auth_name", "auth_tagline", "auth_theme"]
+        fields = ["slug", "name", "active", "auth_name", "auth_theme"]
 
 
 class PermissionForm(forms.ModelForm):

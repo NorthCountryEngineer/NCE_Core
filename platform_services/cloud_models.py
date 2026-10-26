@@ -160,8 +160,8 @@ class CloudApplication(TaggedResource):
         old = type(self).objects.filter(pk=self.pk).first()
         if old and any(getattr(old, field) != getattr(self, field) for field in ['organization_id', 'slug', 'platform_id', 'environment_id', 'archetype', 'public_origin']):
             raise ValidationError('Application placement and origin are immutable. Create a separate application to change them.')
-        if self.config:
-            raise ValidationError('Additional application configuration is not supported by these templates.')
+        from .cloud_registrations import registration_ids
+        registration_ids(self)
 
     def __str__(self):
         return self.name
