@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-26 — Existing login evidence for registration maintenance
+
+The shared-runtime registration command accepts an explicit existing actor-bound
+login-evidence UUID and optional current policy purpose. Organization authentication
+policies, authentication age, MFA, federation, live administration and resource
+tags are checked for the host, provider and every target. Evidence is not created
+or inferred; revoked, foreign, stale and malformed proofs fail without changing
+the allowlist. The selected evidence is linked in the existing audit trail. No
+schema, hosting, IAM, secret-store or subscription change is required.
+
 ## 2026-10-26 — Durable shared-runtime registration credentials
 
 Added an operator-only, audited deployment allowlist in the existing cloud

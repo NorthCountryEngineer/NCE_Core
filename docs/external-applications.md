@@ -136,7 +136,8 @@ private package, installation, environment and OAuth pair:
 python manage.py configure_shared_application_registrations \
   --application HOST_CLOUD_APPLICATION_UUID \
   --deployment ADDITIONAL_EXTERNAL_DEPLOYMENT_UUID \
-  --actor-email EXISTING_ADMIN_EMAIL
+  --actor-email EXISTING_ADMIN_EMAIL \
+  --authentication-evidence EXISTING_ACTOR_LOGIN_EVIDENCE_UUID
 ```
 
 Repeat `--deployment` for additional organizations. The command replaces the
@@ -148,6 +149,18 @@ the hosting application and refuses queued/running releases. It records the
 human actor and each retained/removed application/deployment binding in Core's
 append-only audit log. This command changes Core metadata only and makes no
 AWS request; prepare a new reviewed release afterward to publish the bundle.
+
+The evidence option refers to an existing, unrevoked login proof belonging to
+that exact administrator. It is required whenever an organization authentication
+policy requires login evidence, including policies without MFA or federation.
+The command validates its current age, identity/provider, MFA and federation
+requirements independently for the host, hosting provider and every target.
+It never creates, refreshes or guesses evidence. A missing, foreign, expired or
+revoked proof cannot authorize a configuration change. Where a resource requires
+a purpose, pass its existing allowed value with `--purpose`; this grants no new
+purpose or permission. The selected proof is linked in the audit trail without
+printing tokens, passwords or client secrets. Omitting evidence remains compatible
+only with organizations whose current policy permits it.
 
 The release snapshot pins the primary and additional public registration
 bindings, including organization, service, deployment, browser/resource client,

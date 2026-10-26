@@ -928,3 +928,10 @@ encrypted deployment copy; stale, unavailable or mismatched credentials fail
 closed. No IAM extension, new secret parameter, hosting resource or schema
 change is required. See [shared-runtime registration
 maintenance](external-applications.md#keep-shared-runtime-registrations-across-releases).
+
+When existing organization authentication policy requires a current login, supply
+the actor's exact existing `--authentication-evidence` UUID. The same evidence is
+validated for the host, provider and selected organizations; it does not bypass
+MFA, federation, age, resource tags or current administration. An optional
+`--purpose` supplies a required policy purpose without granting it. The command
+does not create authentication evidence or choose a person from an email match.

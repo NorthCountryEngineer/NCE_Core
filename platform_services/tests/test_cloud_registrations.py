@@ -1,6 +1,7 @@
 """Durable multi-organization credentials, exercised without AWS or provider calls."""
 import io
 import json
+from datetime import timedelta
 from unittest.mock import Mock
 from uuid import uuid4
 
@@ -10,9 +11,10 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from identity.access import Principal
-from identity.models import Application, AuditEvent, Membership, Organization, User
+from identity.models import Application, AuditEvent, AuthenticationEvidence, AuthenticationPolicy, Membership, Organization, User
 from platform_services.cloud_aws import AWSAdapterError, store_credentials
 from platform_services.cloud_deployments import _register, approve_release, create_application, prepare_release, verify_platform
 from platform_services.cloud_models import CloudApplication, CloudPlatform, CloudRelease
@@ -27,6 +29,69 @@ from .test_cloud_aws import platform
 IDENTITY = {'callback_path': '/api/auth/core/callback', 'permissions': [
     {'codename': 'workspace-use', 'name': 'Use workspace'}]}
 ORIGIN = 'https://workspace.example.test'
+
+
+class AuthenticationEvidenceRegistrationTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        DurableRegistrationTests.setUpTestData.__func__(cls)
+        for organization in (cls.owner, cls.target_org):
+            AuthenticationPolicy.objects.create(organization=organization, max_session_age=60)
+        cls.evidence = AuthenticationEvidence.objects.create(user=cls.actor,
+            authenticated_at=timezone.now(), verified_at=timezone.now())
+
+    def configure(self, **overrides):
+        args = {'application': str(self.app.pk), 'deployment': [str(self.target.pk)],
+            'actor_email': self.actor.email, 'stdout': io.StringIO(), **overrides}
+        call_command('configure_shared_application_registrations', **args)
+        self.app.refresh_from_db()
+
+    def test_real_authentication_policy_rejects_absent_evidence_and_accepts_exact_current_actor(self):
+        with self.assertRaises(CommandError):
+            self.configure()
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.config, {})
+        self.configure(authentication_evidence=str(self.evidence.pk))
+        self.assertEqual(self.app.config[REGISTRY_KEY], [str(self.target.pk)])
+        event = AuditEvent.objects.get(action='cloud.application_registration_evidence', organization=self.owner)
+        self.assertEqual(event.target, f'{self.app.pk}:{self.evidence.pk}')
+        self.assertEqual(event.actor_id, self.actor.pk)
+
+    def test_foreign_revoked_expired_and_malformed_evidence_never_change_config(self):
+        foreign = User.objects.create_user('foreign-proof@example.test', 'synthetic-test-only')
+        proof = AuthenticationEvidence.objects.create(user=foreign, authenticated_at=timezone.now())
+        candidates = [str(proof.pk), 'not-a-uuid']
+        for identifier in candidates:
+            with self.subTest(identifier=identifier), self.assertRaises(CommandError):
+                self.configure(authentication_evidence=identifier)
+        for changes in ({'revoked': True}, {'revoked': False, 'verified_at': timezone.now() - timedelta(minutes=2)},
+                        {'verified_at': timezone.now() + timedelta(minutes=2)}):
+            AuthenticationEvidence.objects.filter(pk=self.evidence.pk).update(**changes)
+            with self.subTest(changes=list(changes)), self.assertRaises(CommandError):
+                self.configure(authentication_evidence=str(self.evidence.pk))
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.config, {})
+
+    def test_target_mfa_and_federation_policy_are_preserved(self):
+        policy = AuthenticationPolicy.objects.get(organization=self.target_org)
+        policy.require_mfa = True; policy.save(update_fields=['require_mfa'])
+        with self.assertRaises(CommandError):
+            self.configure(authentication_evidence=str(self.evidence.pk))
+        AuthenticationEvidence.objects.filter(pk=self.evidence.pk).update(mfa=True)
+        self.configure(authentication_evidence=str(self.evidence.pk))
+        policy.require_federated = True; policy.save(update_fields=['require_federated'])
+        with self.assertRaises(CommandError):
+            self.configure(authentication_evidence=str(self.evidence.pk))
+
+    def test_permission_and_purpose_checks_still_apply_with_valid_evidence(self):
+        tag = self.target_env.boundary_tag
+        tag.allowed_purposes = ['approved-maintenance']; tag.save(update_fields=['allowed_purposes'])
+        with self.assertRaises(CommandError):
+            self.configure(authentication_evidence=str(self.evidence.pk))
+        self.configure(authentication_evidence=str(self.evidence.pk), purpose='approved-maintenance')
+        Membership.objects.filter(organization=self.target_org, user=self.actor).update(kind='member')
+        with self.assertRaises(CommandError):
+            self.configure(authentication_evidence=str(self.evidence.pk), purpose='approved-maintenance')
 
 
 class DurableRegistrationTests(TestCase):
