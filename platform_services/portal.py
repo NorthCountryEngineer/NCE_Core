@@ -34,6 +34,21 @@ def dashboard(request, organization):
         values["billing" if name == "billing" else "config"] = resource if resource and visible_resources(principal, [resource]) else None
     for installation in values["installations"]:
         installation.visible_credentials = visible_resources(principal, installation.credentials.filter(active=True))
+    from .cloud_models import CloudApplication
+    from .cloud_lightsail import current_hosting
+    from .cloud_aws import AWSAdapterError
+    current = {}
+    applications = visible_resources(principal, CloudApplication.objects.filter(organization=organization,
+        installation__isnull=False).select_related('platform', 'environment'))
+    for app in applications:
+        try:
+            hosting = current_hosting(app)
+        except AWSAdapterError:
+            hosting = {'provider': 'Lightsail', 'status': 'Configuration unavailable'}
+        if hosting:
+            current[app.installation_id] = hosting
+    for deployment in values['deployments']:
+        deployment.current_hosting = current.get(deployment.installation_id)
     return render(request, "platform_services/dashboard.html", values)
 
 

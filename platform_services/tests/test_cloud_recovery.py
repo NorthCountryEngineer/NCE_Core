@@ -109,6 +109,7 @@ class CloudRecoveryTests(TestCase):
         stop.assert_called_once()
         self.assertEqual(stop.call_args.args[2]['build_id'], 'runner:active-job')
         self.assertEqual(stop.call_args.args[1]['action'], 'provision')
+        self.assertEqual(stop.call_args.args[1]['plan_hash'], release.digest)
         start.assert_not_called()
         poll.assert_not_called()
         self.assertEqual(release.status, 'failed')
@@ -125,6 +126,33 @@ class CloudRecoveryTests(TestCase):
         self.assertEqual(release.status, 'failed')
         self.assertEqual(release.provider_state['build_id'], 'runner:active-job')
         self.assertIn('could not be stopped automatically', release.error)
+
+    def test_failed_release_cancellation_preserves_the_reviewed_plan_and_public_configuration(self):
+        release = self.live_release()
+        public_config = {'VITE_APPLICATION_ORIGIN': 'https://recovery.example.test'}
+        CloudRelease.objects.filter(pk=release.pk).update(provider_state={
+            'build_id': 'runner:active-job', 'phase': 'release', 'public_config': public_config})
+
+        def validate_cancellation(platform, snapshot, state):
+            # The fixed Lightsail protocol requires the same approved plan hash
+            # for every operation, including a stop after a failed provider poll.
+            self.assertEqual(snapshot['plan_hash'], release.digest)
+            self.assertEqual(snapshot['action'], 'release')
+            self.assertEqual(snapshot['public_config'], public_config)
+            self.assertEqual(state['build_id'], 'runner:active-job')
+            return {'message': 'Cancellation recorded'}
+
+        with patch('platform_services.cloud_deployments._ready'), \
+                patch('platform_services.cloud_aws.poll_run', return_value={'status': 'failed', 'outputs': {}, 'provider_state': {}}), \
+                patch('platform_services.cloud_aws.stop_run', side_effect=validate_cancellation) as stop, \
+                patch('platform_services.cloud_aws.start_run') as start:
+            self.assertTrue(process_one())
+        release.refresh_from_db()
+        stop.assert_called_once()
+        start.assert_not_called()
+        self.assertEqual(release.status, 'failed')
+        self.assertIn('Review the recorded runner job', release.error)
+        self.assertNotIn('could not be stopped automatically', release.error)
 
     def test_operator_disable_stops_active_job_before_any_provider_poll(self):
         release = self.live_release()

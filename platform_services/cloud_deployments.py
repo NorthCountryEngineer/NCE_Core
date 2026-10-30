@@ -154,6 +154,10 @@ def _snapshot(app):
         'platform_digest': app.platform.fingerprint(), 'platform_config': copy.deepcopy(app.platform.config),
         'repository': app.repository, 'branch': app.branch, 'commit': app.commit, 'archetype': app.archetype,
         'public_origin': app.public_origin, 'secret_parameter': f'/{app.platform.prefix}/apps/{app.pk}/core-resource-client'}
+    from .cloud_provider import hosting_fingerprint
+    hosting = hosting_fingerprint(app)
+    if hosting:
+        result['hosting_binding_digest'] = hosting
     from .cloud_registrations import registration_bindings, primary_registration_binding, validate_registration_export
     bindings = registration_bindings(app)
     if bindings:
@@ -195,6 +199,12 @@ def prepare_release(app, principal):
             {'label': 'Register the application with Core', 'status': 'pending', 'description': 'Central user identity, app-branded sign-in, and explicit app roles. API credentials go to SSM SecureString.'},
             {'label': 'Build the reviewed commit', 'status': 'pending', 'description': 'Run the frontend build in a separate project with no deployment permissions.'},
             {'label': 'Publish and confirm hosting', 'status': 'pending', 'description': 'Deploy the compiled ZIP and wait for Amplify publication. Retain application data.'}])
+    if snapshot.get('hosting_binding_digest'):
+        release.steps[0].update(label='Verify existing Lightsail hosting', description='Use the existing application and identity contract; create no application infrastructure.')
+        release.steps[1]['description'] = 'Preserve the existing Core clients and approved organization registrations; stage the private resource credential bundle.'
+        release.steps[2].update(label='Build approved source and verify artifacts', description='Build the exact CI-approved commit with public registration settings in isolated on-demand CodeBuild. Verify immutable AMD64 images and frontend checksums before maintenance.')
+        release.steps[3].update(label='Migrate and verify services', description='Quiesce writers, preserve a database backup, migrate once and verify application readiness before reopening traffic.')
+        release.save(update_fields=['steps'])
     _audit(release, principal.user, 'cloud.release_prepared')
     return release
 
@@ -236,7 +246,8 @@ def cancel_release(release, principal):
     if release.lease_until and release.lease_until > timezone.now():
         raise ValidationError('A deployment step is in progress. Retry cancellation shortly.')
     if release.provider_state.get('build_id') and release.application.platform.mode == 'aws':
-        from .cloud_aws import AWSAdapterError, stop_run
+        from .cloud_aws import AWSAdapterError
+        from .cloud_provider import stop_run
         try:
             working = copy.deepcopy(release.snapshot)
             working.update(action=release.provider_state.get('phase', 'provision'), public_config=release.provider_state.get('public_config', {}))
@@ -354,7 +365,7 @@ def process_one():
                 for step in release.steps:
                     step['status'] = 'succeeded'
         else:
-            from .cloud_aws import start_run, poll_run, recover_run, store_credentials
+            from .cloud_provider import start_run, poll_run, recover_run, store_credentials
             if not state.get('build_id'):
                 key = str(release.pk) + '-' + phase
                 if state.get('starting'):
@@ -375,14 +386,14 @@ def process_one():
                 state.update(result.get('provider_state', {}))
                 outputs.update(result.get('outputs', {}))
                 if result['status'] == 'failed':
-                    raise ValidationError('AWS deployment failed. Review the named CodeBuild run in AWS for details.')
+                    raise ValidationError('Deployment failed. Review the recorded runner job with the operator.')
                 if result['status'] == 'succeeded':
                     if phase == 'provision':
                         variables, credentials, _ = _register(release, outputs)
                         if working['archetype'] in {'amplify-serverless', 'amplify-fargate', 'amplify-academy-fargate', 'amplify-game-studio'}:
                             if not CloudRelease.objects.filter(pk=release.pk, lease_owner=owner, status='running', lease_until__gt=timezone.now()).exists():
                                 return True
-                            store_credentials(platform, working['secret_parameter'], credentials)
+                            store_credentials(platform, working['secret_parameter'], credentials, snapshot=working)
                         state = {'phase': 'release', 'public_config': variables}
                         release.steps[0]['status'] = release.steps[1]['status'] = 'succeeded'
                     else:
@@ -396,7 +407,8 @@ def process_one():
             Deployment.objects.filter(installation_id=release.application.installation_id, environment=release.application.environment, target='external').update(
                 observed_state='running', healthy=True, last_seen=timezone.now())
     except Exception as failure:
-        from .cloud_aws import AWSAdapterError, stop_run, recover_run
+        from .cloud_aws import AWSAdapterError
+        from .cloud_provider import stop_run, recover_run
         if isinstance(failure, CIGateError):
             # Admission failed before AWS credential acquisition or StartBuild.
             # Do not treat the durable intent as an ambiguous billable start.
@@ -418,15 +430,16 @@ def process_one():
                 outputs['build_id'] = state['build_id']
             except Exception:
                 outputs['recovery_token'] = state.get('run_token', '')
-                error = (error[:220] + ' AWS build start could not be confirmed. Inspect the recovery token in the runner project before approving another release.')[:400]
+                error = (error[:220] + ' Runner start could not be confirmed. Inspect the recovery token with the operator before approving another release.')[:400]
         if (state.get('build_id') and release.application.platform.mode == 'aws' and
                 CloudRelease.objects.filter(pk=release.pk, lease_owner=owner, status='running', lease_until__gt=timezone.now()).exists()):
             try:
                 stop_snapshot = copy.deepcopy(release.snapshot)
-                stop_snapshot.update(action=state.get('phase', 'provision'), public_config=state.get('public_config', {}))
+                stop_snapshot.update(action=state.get('phase', 'provision'), plan_hash=release.digest,
+                    public_config=state.get('public_config', {}))
                 stop_run(release.application.platform, stop_snapshot, state)
             except Exception:
-                error = (error[:280] + ' The runner could not be stopped automatically; inspect its recorded CodeBuild run in AWS.')[:400]
+                error = (error[:280] + ' The runner could not be stopped automatically; inspect its recorded job with the operator.')[:400]
         for step in release.steps:
             if step['status'] in ['pending', 'running']:
                 step['status'] = 'failed'

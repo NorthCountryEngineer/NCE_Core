@@ -1,0 +1,22 @@
+# Source extracted from the immutable deployed Core image. See the sibling
+# core-source-manifest.json for every preserved source-file checksum.
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv==0.12.19
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --system-certs
+COPY . .
+RUN uv pip install --python .venv/bin/python --system-certs --requirements deployment/cloud-runner-requirements.txt
+RUN chmod -R a+rX /app \
+    && groupadd --gid 10001 core && useradd --uid 10001 --gid core --no-create-home core \
+    && mkdir -p staticfiles && chown core:core staticfiles
+LABEL org.opencontainers.image.revision="d3adefe79f0fbfa8b34441cc33ec9294e01807d6" \
+      ai.nnytech.source-image="sha256:0482163f6060fd2ccae5ac9e4ad9ece5b291cda090f6accf64bebbcca96285cc" \
+      ai.nnytech.deployment="lightsail-reviewed-hosting-adapter-v2"
+USER core
+EXPOSE 8000
+ENTRYPOINT [".venv/bin/python", "deployment/lightsail_entrypoint.py"]
+CMD ["web"]

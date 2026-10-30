@@ -233,6 +233,8 @@ class ApprovalForm(forms.Form):
         kwargs.setdefault('initial', {})['digest'] = release.digest
         super().__init__(*args, **kwargs)
         self.fields['confirm_costs'].required = release.application.platform.mode == 'aws'
+        if release.snapshot.get('hosting_binding_digest'):
+            self.fields['confirm_costs'].label = 'I authorize this release and its existing hosting usage'
         if not self.fields['confirm_costs'].required:
             self.fields.pop('confirm_costs')
 
@@ -295,6 +297,13 @@ def applications(request, organization):
     principal = request_principal(request)
     deployments.authorized(principal, organization, 'cloud.application_list')
     values = _visible(principal, CloudApplication.objects.filter(organization=organization).select_related('platform', 'environment').order_by('name'))
+    from .cloud_lightsail import hosting_fingerprint
+    from .cloud_aws import AWSAdapterError
+    for app in values:
+        try:
+            app.current_provider = 'Lightsail' if hosting_fingerprint(app) else ('Simulation' if app.platform.mode == 'demo' else 'AWS')
+        except AWSAdapterError:
+            app.current_provider = 'Hosting configuration unavailable'
     return render(request, 'platform_services/cloud_applications.html', {'organization': organization, 'applications': values, 'title': 'Cloud applications'})
 
 
@@ -318,8 +327,14 @@ def application_add(request, organization, pk=None):
 def application(request, organization, pk):
     app = _resource(request, organization, CloudApplication, pk)
     releases = _visible(request_principal(request), CloudRelease.objects.filter(application=app).order_by('-created')[:50])
+    from .cloud_lightsail import current_hosting
+    from .cloud_aws import AWSAdapterError
+    try:
+        hosting = current_hosting(app)
+    except AWSAdapterError:
+        hosting = {'provider': 'Lightsail', 'status': 'Configuration unavailable'}
     return render(request, 'platform_services/cloud_application.html', {'organization': organization, 'application': app,
-        'releases': releases, 'can_manage_hosting': deployments.can_manage_hosting(request_principal(request), app), 'title': app.name})
+        'releases': releases, 'current_hosting': hosting, 'can_manage_hosting': deployments.can_manage_hosting(request_principal(request), app), 'title': app.name})
 
 
 @organization_admin

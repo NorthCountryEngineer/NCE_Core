@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-30 — Exact-plan release cancellation and frontend publisher repair
+
+Failed or revoked releases retain the approved plan hash when requesting runner
+cancellation, matching the fixed Lightsail protocol's original request contract.
+An operator-only plan/apply helper repairs the existing frontend publisher with
+only Proposal Studio's fixed production manual-deployment resource and the two
+existing create/start actions. It preserves all prior policy statements, checks
+the AWS account and exact before hash, records intent before the single update,
+verifies the after hash, and refuses automatic retries of an unknown outcome.
+The release includes the already-deployed Lightsail adapter source in Git;
+unrelated older checkout changes are excluded. See the [operating guide](lightsail-deployment.md).
+
 ## 2026-10-26 — PostgreSQL-safe authentication evidence locking
 
 Registration maintenance locks only the selected authentication-evidence row while
@@ -114,3 +126,19 @@ resource, or paid model call is needed for these local checks.
 - Delegated application administrators can list and revoke their own application's
   eligible invitations without receiving organization or environment grants. Exact
   deployment filters and explicit/inherited identity and personnel tags remain enforced.
+
+
+## 2026-10-27 — Lightsail hosting adapter preparation
+
+Added the portable Core launcher and an operator-bound Lightsail deployment provider for existing container applications. Human approval, exact CI/source/binding checks, existing identities and credential bundles remain. A fixed SSH runner accepts only staged immutable artifacts, preserves quiesced database backups, and stops safely on uncertain application writes. Unstaged commits are refused. Existing unbound AWS recipes remain unchanged; no cloud mutation or live acceptance is claimed by local tests. See [operating guide](lightsail-deployment.md).
+
+## 2026-10-28 — Automatic bounded Lightsail source builds
+
+Reviewed administrator releases retain exact-commit CI admission and now build
+source automatically in isolated on-demand CodeBuild. The fixed host runner
+verifies project/source/build/artifact provenance and AMD64 image digests before
+maintenance, migration and existing Amplify publication. Root-only minute reserves
+and durable recovery prevent duplicate or unbounded builds. Normal releases need
+no manual artifact staging; no ECS/RDS/NAT provisioning fallback is available for
+bound applications. Source patches, local checks and live acceptance remain
+separately recorded in the Lightsail operating guide.
