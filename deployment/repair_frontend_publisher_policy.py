@@ -45,7 +45,9 @@ class AWS:
     def call(self, service, operation, *arguments):
         require((service, operation) in {('sts', 'get-caller-identity'), ('iam', 'get-user-policy'),
                                         ('iam', 'put-user-policy')}, 'Operation outside fixed policy repair')
-        environment = dict(os.environ)
+        # The operator explicitly selected this profile. Inherited credentials,
+        # credential-file paths and endpoint overrides must not replace it.
+        environment = {key: value for key, value in os.environ.items() if not key.startswith('AWS_')}
         environment.update(AWS_MAX_ATTEMPTS='1', AWS_PAGER='', AWS_EC2_METADATA_DISABLED='true')
         command = ['aws', '--profile', 'axolotl-deploy', '--region', 'us-east-1', '--output', 'json', '--no-cli-pager', service, operation]
         if service == 'iam': command += ['--user-name', USER, '--policy-name', POLICY]

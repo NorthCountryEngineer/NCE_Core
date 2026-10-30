@@ -87,3 +87,20 @@ class PublisherPolicyTests(SimpleTestCase):
         self.assertEqual(options['env']['AWS_MAX_ATTEMPTS'], '1')
         self.assertEqual(json.loads(command[-1]), self.plan['after'])
         with self.assertRaises(ValueError): repair.AWS(run).call('iam', 'attach-user-policy')
+
+    def test_selected_profile_ignores_inherited_credentials_files_and_endpoints(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            return type('Result', (), {'stdout': '{}'})()
+        inherited = {key: 'synthetic-override' for key in (
+            'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN',
+            'AWS_PROFILE', 'AWS_DEFAULT_PROFILE', 'AWS_CONFIG_FILE', 'AWS_SHARED_CREDENTIALS_FILE',
+            'AWS_ENDPOINT_URL', 'AWS_ENDPOINT_URL_IAM', 'AWS_ENDPOINT_URL_STS',
+            'AWS_WEB_IDENTITY_TOKEN_FILE', 'AWS_ROLE_ARN', 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI')}
+        with patch.dict(repair.os.environ, inherited): repair.AWS(run).identity()
+        command, options = calls[0]
+        self.assertEqual(command[command.index('--profile') + 1], 'axolotl-deploy')
+        self.assertFalse(set(inherited) & options['env'].keys())
+        self.assertEqual({key for key in options['env'] if key.startswith('AWS_')},
+                         {'AWS_MAX_ATTEMPTS', 'AWS_PAGER', 'AWS_EC2_METADATA_DISABLED'})

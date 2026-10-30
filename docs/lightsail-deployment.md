@@ -100,6 +100,9 @@ and existing operator identity, without another build, migration or restore.
 It preserves every existing statement and cannot select another user, policy,
 app, branch, account, action or resource. Planning and apply require the existing
 authorized `axolotl-deploy` profile; no credentials enter source or output.
+Inherited AWS credential, credential-file and endpoint environment overrides are
+removed before invoking that profile; the normal operator's profile files remain
+available through the existing local AWS CLI configuration.
 
 ```sh
 python deployment/repair_frontend_publisher_policy.py plan --plan /private/operator/publisher-plan.json

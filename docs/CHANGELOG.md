@@ -6,7 +6,8 @@ Failed or revoked releases retain the approved plan hash when requesting runner
 cancellation, matching the fixed Lightsail protocol's original request contract.
 An operator-only plan/apply helper repairs the existing frontend publisher with
 only Proposal Studio's fixed production manual-deployment resource and the two
-existing create/start actions. It preserves all prior policy statements, checks
+existing create/start actions. It preserves all prior policy statements, isolates
+the explicitly selected profile from inherited AWS credentials/endpoints, checks
 the AWS account and exact before hash, records intent before the single update,
 verifies the after hash, and refuses automatic retries of an unknown outcome.
 The release includes the already-deployed Lightsail adapter source in Git;
