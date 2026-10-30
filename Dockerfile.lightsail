@@ -13,6 +13,7 @@ RUN uv pip install --python .venv/bin/python --system-certs --requirements deplo
 RUN chmod -R a+rX /app \
     && groupadd --gid 10001 core && useradd --uid 10001 --gid core --no-create-home core \
     && mkdir -p staticfiles && chown core:core staticfiles
+# pragma: allowlist nextline secret -- public immutable source revision, not a credential
 LABEL org.opencontainers.image.revision="d3adefe79f0fbfa8b34441cc33ec9294e01807d6" \
       ai.nnytech.source-image="sha256:0482163f6060fd2ccae5ac9e4ad9ece5b291cda090f6accf64bebbcca96285cc" \
       ai.nnytech.deployment="lightsail-reviewed-hosting-adapter-v2"

@@ -229,7 +229,7 @@ class AutomatedArtifactTests(TestCase):
 
     def test_nonpublic_environment_and_invalid_destination_contract_refused(self):
         with self.assertRaisesRegex(artifact.Refused, 'public'):
-            artifact.public_values({'public_config': {'VITE_PRIVATE_KEY': 'must-never-build'}}, self.binding)
+            artifact.public_values({'public_config': {'VITE_PRIVATE_KEY': 'must-never-build'}}, self.binding)  # pragma: allowlist secret -- negative fixture; no key material
         bad = copy.deepcopy(self.contract)
         bad['monthly_build_minutes'] = 301
         with self.assertRaises(artifact.Refused): artifact.validate_config(bad)

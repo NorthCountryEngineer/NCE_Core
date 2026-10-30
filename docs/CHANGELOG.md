@@ -11,7 +11,9 @@ the explicitly selected profile from inherited AWS credentials/endpoints, checks
 the AWS account and exact before hash, records intent before the single update,
 verifies the after hash, and refuses automatic retries of an unknown outcome.
 The release includes the already-deployed Lightsail adapter source in Git;
-unrelated older checkout changes are excluded. See the [operating guide](lightsail-deployment.md).
+unrelated older checkout changes are excluded. Line-scoped scanner annotations
+identify the public immutable source revision and synthetic negative fixtures;
+secret-scanning rules and release gates remain unchanged. See the [operating guide](lightsail-deployment.md).
 
 ## 2026-10-26 — PostgreSQL-safe authentication evidence locking
 

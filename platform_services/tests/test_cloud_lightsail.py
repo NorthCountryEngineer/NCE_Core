@@ -389,7 +389,7 @@ class RunnerTests(SimpleTestCase):
         (self.home / 'config/release-bindings.json').write_text(json.dumps(self.config))
         (self.home / 'config/current-academy.json').write_text('{"services":{}}')
         (self.home / 'secrets').mkdir()
-        (self.home / 'secrets/academy-migration.env').write_text('DATABASE_URL=postgresql://owner:synthetic@postgres/academy\nACADEMY_RUNTIME_DB_USERNAME=academy_runtime\nACADEMY_RUNTIME_DB_PASSWORD=synthetic-password\nACADEMY_REUSE_RUNTIME_DB_ROLE=1\n')
+        (self.home / 'secrets/academy-migration.env').write_text('DATABASE_URL=postgresql://owner:synthetic@postgres/academy\nACADEMY_RUNTIME_DB_USERNAME=academy_runtime\nACADEMY_RUNTIME_DB_PASSWORD=synthetic-password\nACADEMY_REUSE_RUNTIME_DB_ROLE=1\n')  # pragma: allowlist secret -- isolated synthetic database fixture
         self.runner = protocol.Runner(self.home, enforce_owner=False, run=self.runner.run, maintenance_lock=self.home / 'shared-maintenance.lock')
         self.submit()
         self.runner.execute(TOKEN)
