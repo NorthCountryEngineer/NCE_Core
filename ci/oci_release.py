@@ -204,7 +204,7 @@ def generate_chart(config, images, app_commit, core_commit, destination):
         "releaseIdentity": {"sourceCommit": app_commit, "runnerCommit": core_commit},
         "workloads": deepcopy(config["values"]["workloads"]),
         "external": {"databaseCredentialRef": "", "runtimeCredentialRef": "",
-                     "pullSecrets": [], "apiEnvironment": {}, "apiCredentialKeys": [],
+                     "pullSecrets": [], "apiEnvironment": {}, "apiEnvFromKeys": [],
                      "externalEgressCIDRs": []},
         "ingress": {"enabled": False, "className": "", "host": "", "tlsSecret": ""},
         "networkPolicy": {"enabled": True, "ingressNamespaceSelector": {},
