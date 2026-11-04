@@ -25,7 +25,7 @@ CHART_SOURCE = ROOT / "charts/nce-application"
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}\Z")
 NAME = re.compile(r"[a-z][a-z0-9-]{0,52}[a-z0-9]\Z")
-VERSION = re.compile(r"0|[1-9]\d*\.[0-9]+\.[0-9]+\Z")
+VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 ECR = re.compile(r"(?P<account>[0-9]{12})\.dkr\.ecr\.(?P<region>[a-z]{2}(?:-[a-z]+)+-[0-9])\.amazonaws\.com/(?P<name>[a-z0-9][a-z0-9._/-]*)\Z")
 STAGES = ("build-images", "publish-images", "generate-helm", "validate-helm", "package-helm", "publish-helm-oci", "record-release")
 
