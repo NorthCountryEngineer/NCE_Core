@@ -434,13 +434,26 @@ def rbac(config):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('stage', choices=['run', 'check', 'test', 'build', 'publish', 'render', 'deploy', 'rbac', 'smoke'])
+    parser.add_argument('stage', choices=['run', 'check', 'test', 'build', 'publish', 'render', 'deploy', 'rbac', 'smoke', 'application-release'])
     parser.add_argument('--config', default=os.environ.get('CORE_CI_CONFIG', 'ci/environments/example.json'))
     parser.add_argument('--mode', choices=['verify', 'publish', 'deploy'], default='verify')
     parser.add_argument('--image')
     parser.add_argument('--commit')
+    parser.add_argument('--source', help='Separate checked-out application source for application-release')
     args = parser.parse_args()
     try:
+        if args.stage == 'application-release':
+            if not args.source:
+                raise PipelineError('--source is required for application-release.')
+            from ci.oci_release import release, ReleaseError
+            if args.mode == 'deploy':
+                raise PipelineError('External Helm deployment is owned by the target platform; choose verify or publish.')
+            try:
+                result = release(args.config, args.source, mode=args.mode)
+            except ReleaseError as error:
+                raise PipelineError(str(error)) from None
+            print(json.dumps({'release_id': result['release_id'], 'status': result['status'], 'stages': result['stages']}))
+            return 0
         config = load_config(args.config)
         if args.stage == 'run':
             # Reject unauthorized release modes before registry/deployment mutations.
