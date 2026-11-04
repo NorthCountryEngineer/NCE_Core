@@ -1,7 +1,7 @@
 {
   "external": {
-    "databaseSecret": "nce-app-db",
-    "runtimeSecret": "nce-app-runtime",
+    "databaseCredentialRef": "nce-app-db",
+    "runtimeCredentialRef": "nce-app-runtime",
     "pullSecrets": [],
     "apiEnvironment": {
       "APP_URL": "https://proposal.example.invalid",
@@ -14,7 +14,7 @@
       "S3_ADDRESSING_STYLE": "auto",
       "PLATFORM_ADMIN_USERS": "approved-operator"
     },
-    "apiSecretKeys": [
+    "apiCredentialKeys": [
       "GITHUB_CLIENT_ID",
       "GITHUB_CLIENT_SECRET"
     ],
