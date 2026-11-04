@@ -3,11 +3,11 @@ images: {}
 releaseIdentity: {}
 workloads: {}
 external:
-  databaseSecret: ""
-  runtimeSecret: ""
+  databaseCredentialRef: ""
+  runtimeCredentialRef: ""
   pullSecrets: []
   apiEnvironment: {}
-  apiSecretKeys: []
+  apiCredentialKeys: []
   externalEgressCIDRs: []
 ingress:
   enabled: false
