@@ -47,12 +47,12 @@ spec:
             limits: {cpu: "1000m", memory: "1Gi"}
           env:
             - name: DATABASE_URL
-              valueFrom: {secretKeyRef: {name: {{ .Values.external.databaseSecret | quote }}, key: DATABASE_URL}}
+              valueFrom: {secretKeyRef: {name: {{ .Values.external.databaseCredentialRef | quote }}, key: DATABASE_URL}}
             - name: SESSION_SECRET
-              valueFrom: {secretKeyRef: {name: {{ .Values.external.runtimeSecret | quote }}, key: SESSION_SECRET}}
-            {{- range $key := .Values.external.apiSecretKeys }}
+              valueFrom: {secretKeyRef: {name: {{ .Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
+            {{- range $key := .Values.external.apiCredentialKeys }}
             - name: {{ $key | quote }}
-              valueFrom: {secretKeyRef: {name: {{ $.Values.external.runtimeSecret | quote }}, key: {{ $key | quote }}}}
+              valueFrom: {secretKeyRef: {name: {{ $.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
             {{- end }}
             {{- range $key, $value := .Values.external.apiEnvironment }}
             - name: {{ $key | quote }}
