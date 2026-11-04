@@ -206,7 +206,7 @@ def generate_chart(config, images, app_commit, core_commit, destination):
         "external": {"databaseCredentialRef": "", "runtimeCredentialRef": "",
                      "pullSecrets": [], "apiEnvironment": {}, "apiEnvFromKeys": [],
                      "externalEgressCIDRs": []},
-        "ingress": {"enabled": False, "className": "", "host": "", "tlsSecret": ""},
+        "ingress": {"enabled": False, "className": "", "host": "", "tlsRef": ""},
         "networkPolicy": {"enabled": True, "ingressNamespaceSelector": {},
                           "ingressPodSelector": {}, "browserPublicEgress": False},
     }
