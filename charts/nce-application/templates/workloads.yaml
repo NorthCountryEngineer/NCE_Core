@@ -93,7 +93,7 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ required "runtimeCredentialRef required" $root.Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
             - name: SAM_BROWSER_URL
               value: {{ printf "http://%s-browser:8010" $name | quote }}
-            {{- range $key := $root.Values.external.apiCredentialKeys }}
+            {{- range $key := $root.Values.external.apiEnvFromKeys }}
             - name: {{ $key | quote }}
               valueFrom: {secretKeyRef: {name: {{ $root.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
             {{- end }}
