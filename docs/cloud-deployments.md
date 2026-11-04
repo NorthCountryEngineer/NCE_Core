@@ -918,3 +918,24 @@ retention, recovery and charge-approval boundaries remain unchanged.
 ## External Kubernetes release artifacts
 
 For OCI image and Helm chart publication from NCE-owned source builds, see [Application OCI/Helm releases](helm-oci-releases.md). This does not replace CloudRelease's existing Amplify and Fargate hosting workflows.
+
+### Shared-runtime organization registrations
+
+A reviewed Fargate application may host a bounded set of independently
+registered Core organizations. Use the metadata-only
+`configure_shared_application_registrations` operator command before preparing
+the activation release. Its explicit deployment allowlist is part of the
+reviewed binding snapshot; normal releases regenerate the existing Standard
+SSM credential bundle from current Core records, preserving additional
+registrations without reading old SSM data. Rotation updates the paired
+encrypted deployment copy; stale, unavailable or mismatched credentials fail
+closed. No IAM extension, new secret parameter, hosting resource or schema
+change is required. See [shared-runtime registration
+maintenance](external-applications.md#keep-shared-runtime-registrations-across-releases).
+
+When existing organization authentication policy requires a current login, supply
+the actor's exact existing `--authentication-evidence` UUID. The same evidence is
+validated for the host, provider and selected organizations; it does not bypass
+MFA, federation, age, resource tags or current administration. An optional
+`--purpose` supplies a required policy purpose without granting it. The command
+does not create authentication evidence or choose a person from an email match.

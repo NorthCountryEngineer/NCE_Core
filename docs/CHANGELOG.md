@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-11-04 — Independent application transfer and hosted-runtime compatibility
+
+Added a metadata-only transfer coordinator with one-use source pairing offers,
+exact human-reviewed plans, five chained application-signed acceptance stages,
+and a separate final reference-only handover. Source identifiers and retained
+history remain intact; completed handover removes Core workload, OAuth, data-query
+and deployment authority. Application adapters retain local authority over data
+export/import, identity mapping and durable fencing. No transfer runs merely by
+installing this release. See [independent application transfer](application-transfer.md).
+
+Customer registry relocation verifies the publisher's original release and chart,
+preserves every image digest and security template, and signs the exact derived
+chart with the independently pinned customer key. The API chart can optionally
+mount an existing migration-state claim at `/migration`; other workloads do not
+receive it. New runtime/chart features require a new verified NCE-built release.
+
+The source also retains the existing native Lightsail provider, shared-runtime
+Core registration maintenance and independently authorized application-context
+discovery. Runtime bindings and credentials remain operator-owned configuration,
+outside source. Required CI and current authorization checks remain in force.
+
+## 2026-10-26 — PostgreSQL-safe authentication evidence locking
+
+Registration maintenance locks only the selected authentication-evidence row while
+reading optional federated identity/provider metadata. Password-only evidence
+therefore works on PostgreSQL without attempting to lock the nullable side of an
+outer join. Existing actor, freshness, revocation and policy checks remain intact;
+focused registration and exact operator checks run against disposable PostgreSQL.
+
+## 2026-10-26 — Existing login evidence for registration maintenance
+
+The shared-runtime registration command accepts an explicit existing actor-bound
+login-evidence UUID and optional current policy purpose. Organization authentication
+policies, authentication age, MFA, federation, live administration and resource
+tags are checked for the host, provider and every target. Evidence is not created
+or inferred; revoked, foreign, stale and malformed proofs fail without changing
+the allowlist. The selected evidence is linked in the existing audit trail. No
+schema, hosting, IAM, secret-store or subscription change is required.
+
+## 2026-10-26 — Durable shared-runtime registration credentials
+
+Added an operator-only, audited deployment allowlist in the existing cloud
+application configuration. Exact reviewed releases pin the primary/additional
+public identity bindings and rebuild the existing Standard SSM bundle from
+current Core records, so later releases preserve shared-runtime organizations
+without reading foreign secret-store data. Unavailable/mismatched registrations,
+stale rotated credentials, malformed bundles and the serialized 4 KiB limit
+fail closed before writing. Normal external-resource secret rotation updates its
+paired encrypted deployment copy transactionally. The command requires current
+hosting/provider and target administrator authority and cannot race an active
+release. No table, IAM permission, SSM tier, service, hosting or subscription
+change is introduced. See [registration maintenance](external-applications.md#keep-shared-runtime-registrations-across-releases).
+
+## 2026-10-26 — Independent organization context discovery
+
+Added metadata-only external-application context discovery for a bounded,
+operator-configured list of organization deployments sharing the exact public
+origin and callback. The source user's paired resource client and live
+`workspace-use` access are required; each target independently checks current
+membership, permission, deployment availability, authentication and tag policy.
+Discovery creates no memberships, roles, installations, credentials or hosting
+resources and returns no secrets. Applications must complete separate target
+PKCE authorization before switching authority. See [external applications](external-applications.md#multiple-organizations-at-one-application-origin).
+
+## 2026-10-26 — Plain authentication and operational copy
+
+Removed promotional taglines and decorative authentication headings from Core sign-in and invitation pages, including the default “One account. Your next adventure.” and previously configured service taglines. Service settings retain the app name and theme controls while hiding the unused tagline field; existing stored values remain intact without a migration. Cloud application and chat empty states use direct status text. Application branding, access explanations, invitation handling, OAuth validation, and consent behavior are unchanged.
+
 ## 2026-10-24 — External application ownership adoption
 
 Added an operator-only, exact-state plan/apply operation for moving an external application to another organization while retaining its service, deployment, OAuth clients and existing infrastructure identifiers. A per-application hosting assignment preserves the provider's separate platform authority; receiving administrators can view their application's history without gaining provider credentials, settings or unrelated applications. Unclassified dependencies and active releases prevent a partial move. Application tokens are revoked and both organizations retain migration audit evidence. See [cloud deployments](cloud-deployments.md) and [security](security.md#external-application-ownership-adoption).
@@ -67,3 +135,19 @@ resource, or paid model call is needed for these local checks.
 - Delegated application administrators can list and revoke their own application's
   eligible invitations without receiving organization or environment grants. Exact
   deployment filters and explicit/inherited identity and personnel tags remain enforced.
+
+
+## 2026-10-27 — Lightsail hosting adapter preparation
+
+Added the portable Core launcher and an operator-bound Lightsail deployment provider for existing container applications. Human approval, exact CI/source/binding checks, existing identities and credential bundles remain. A fixed SSH runner accepts only staged immutable artifacts, preserves quiesced database backups, and stops safely on uncertain application writes. Unstaged commits are refused. Existing unbound AWS recipes remain unchanged; no cloud mutation or live acceptance is claimed by local tests. See [operating guide](lightsail-deployment.md).
+
+## 2026-10-28 — Automatic bounded Lightsail source builds
+
+Reviewed administrator releases retain exact-commit CI admission and now build
+source automatically in isolated on-demand CodeBuild. The fixed host runner
+verifies project/source/build/artifact provenance and AMD64 image digests before
+maintenance, migration and existing Amplify publication. Root-only minute reserves
+and durable recovery prevent duplicate or unbounded builds. Normal releases need
+no manual artifact staging; no ECS/RDS/NAT provisioning fallback is available for
+bound applications. Source patches, local checks and live acceptance remain
+separately recorded in the Lightsail operating guide.

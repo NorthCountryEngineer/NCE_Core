@@ -54,6 +54,9 @@ def entry(reader, organization, caller=None):
 
 
 def authorize(reader, source, caller=None):
+    from platform_services.application_transfers import independent
+    if independent(source.installation):
+        raise PermissionDenied('Independent applications have no Core data-query authority.')
     entry(reader, source.organization, caller)
     source.full_clean()
     if (not source.active or not source.environment.active or not source.installation.enabled or
@@ -158,6 +161,9 @@ def evidence(source, row):
 
 
 def fetch(source, reader, after, limit, remaining_ms):
+    from platform_services.application_transfers import independent
+    if independent(source.installation):
+        raise PermissionDenied('Independent applications cannot supply new Core query data.')
     if source.contract_id:
         value = consume(reader, source.contract, 'read', {'after': after, 'limit': min(limit, 100)}, timeout_ms=remaining_ms)
         return value['records'], value['next_cursor'], len(value['records']), value['next_cursor'] > after

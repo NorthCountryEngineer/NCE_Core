@@ -14,7 +14,7 @@
 {% if message.reply_to %}<div class="chat-reply-quote"><a href="?message={{ message.reply_to }}#message-{{ message.reply_to }}">Reply to message</a><br>{{ message.reply_preview }}</div>{% endif %}
 <p class="chat-message-text">{{ message.text|urlize }}</p>
 <div class="chat-message-actions">{% if can_send %}<button type="button" class="chat-reply" data-reply="{{ message.id }}">Reply</button>{% endif %}<a class="chat-message-link" href="?message={{ message.id }}#message-{{ message.id }}">Share link</a>{% if conversation.connection_id %}<small>{{ message.origin_issuer }}</small>{% endif %}</div>
-</div></section>{% empty %}<p id="chat-empty">{% if query %}No messages match your search.{% else %}No messages yet. Start the conversation.{% endif %}</p>{% endfor %}
+</div></section>{% empty %}<p id="chat-empty">{% if query %}No messages match your search.{% else %}No messages yet.{% endif %}</p>{% endfor %}
 </div>
 <div class="chat-compose-area">
 {% if can_send %}<form id="chat-composer" method="post" data-post="{% url 'chat_post' organization.slug conversation.pk %}">{% csrf_token %}{{ form.non_field_errors }}{{ form.text.errors }}{{ form.request_id }}{{ form.reply_to }}

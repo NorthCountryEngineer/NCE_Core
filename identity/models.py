@@ -11,6 +11,7 @@ from django.utils import timezone
 from oauth2_provider.models import AbstractApplication
 
 from .validators import validate_avatar_url
+from .policy_evaluation import policy_evaluation
 
 
 class TaggedResource(models.Model):
@@ -150,12 +151,20 @@ class Application(AbstractApplication, TaggedResource):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="applications")
     active = models.BooleanField(default=True)
 
+    @policy_evaluation()
     def is_usable(self, request):
         if not (self.active and self.service.active and self.service.organization.active):
             return False
         from platform_services.external_apps import application_deployment, external_available
         deployment = application_deployment(self)
-        return external_available(deployment) if deployment and deployment.target == 'external' else True
+        if deployment:
+            if deployment.target == 'external':
+                return external_available(deployment)
+            from platform_services.application_transfers import independent
+            return not independent(deployment.installation)
+        from platform_services.transfer_models import ApplicationPlacementReference
+        return not ApplicationPlacementReference.objects.filter(
+            installation__service_id=self.service_id, reference_only=True).exists()
 
     def clean(self):
         super().clean()

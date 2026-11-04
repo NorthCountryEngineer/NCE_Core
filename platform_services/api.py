@@ -226,7 +226,8 @@ def runtime_sync(request):
         for report in reports:
             # A runtime can observe only its explicitly assigned instances in its namespace.
             deployment = Deployment.objects.filter(pk=report.get("deployment_id"), node=node, namespace=node.namespace,
-                installation__organization=node.organization, revision=report["revision"]).first()
+                installation__organization=node.organization, revision=report["revision"],
+                installation__independent_placement__isnull=True).first()
             if deployment is None:
                 continue
             try:
@@ -237,7 +238,8 @@ def runtime_sync(request):
                 observed_state=report["state"], observed_revision=report["revision"], healthy=report["healthy"],
                 last_seen=timezone.now(), message="Kubernetes reconciliation failed." if report["state"] == "failed" else "")
         deployments = Deployment.objects.select_related("installation__package", "installation__organization", "installation__service", "application").filter(
-            node=node, installation__organization=node.organization, namespace=node.namespace)
+            node=node, installation__organization=node.organization, namespace=node.namespace,
+            installation__independent_placement__isnull=True)
         visible = []
         for deployment in deployments:
             try:

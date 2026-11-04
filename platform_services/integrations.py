@@ -76,6 +76,9 @@ def authorize(principal, binding):
     # Reload placement and grants on every operation, including held worker objects.
     binding = ApplicationIntegration.objects.select_related('definition__service', 'definition__provider__package',
         'installation__package', 'installation__service', 'environment', 'connection').get(pk=binding.pk)
+    from .application_transfers import independent
+    if independent(binding.installation):
+        deny(principal, binding, 'independent_reference_only')
     definition = binding.definition
     if (not binding.organization.active or not binding.environment.active or not definition.active or not definition.service.active or
             not binding.installation.enabled or not binding.installation.package.active or not binding.installation.service.active or

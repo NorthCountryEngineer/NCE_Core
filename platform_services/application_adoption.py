@@ -102,6 +102,9 @@ def _collect(application, target, environment, actor, member_user_ids):
     if not application.installation_id:
         return {'blockers': blockers, 'state': state}
     installation = application.installation
+    from .application_transfers import independent
+    if independent(installation):
+        block('independent_reference_only')
     service, package = installation.service, installation.package
     deployments = list(installation.deployments.select_related('environment').order_by('pk'))
     releases = list(application.releases.order_by('pk'))

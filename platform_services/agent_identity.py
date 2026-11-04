@@ -16,6 +16,9 @@ def binding_valid(binding):
     # Reload all controls: long-running tasks must observe administrative revocation.
     binding = AgentBinding.objects.select_related('account__organization', 'account__listing',
         'installation__service', 'installation__package', 'task').filter(pk=binding.pk).first()
+    from .application_transfers import independent
+    if binding and independent(binding.installation):
+        return False
     if not binding or not (binding.active and binding.account.active and binding.organization.active and
             binding.installation.enabled and binding.installation.service.active and binding.installation.package.active and
             binding.installation.organization_id == binding.organization_id and

@@ -3,9 +3,7 @@
 {% block body_class %}auth-page{% endblock %}
 {% block content %}
 <section class="auth-window">
-  {% if app_auth %}<span class="auth-eyebrow">{% if app_auth.theme == 'axolotl' %}THE AXOLOTL NEWSROOM{% else %}ACCOUNT SIGN-IN{% endif %}</span>{% else %}<div class="window-caption"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Account sign-in</span></div>{% endif %}
   <h1>Sign in to {% if app_auth %}{{ app_auth.name }}{% else %}{{ product_name }}{% endif %}</h1>
-  {% if app_auth %}<p>{{ app_auth.tagline }}</p>{% endif %}
   {% for provider in identity_providers %}<form class="provider-signin" method="get" action="{% url 'provider_begin' provider.pk %}">
     <input type="hidden" name="next" value="{{ next }}">
     <button type="submit">Sign in with {{ provider.name }} · {{ provider.organization.name }}</button>

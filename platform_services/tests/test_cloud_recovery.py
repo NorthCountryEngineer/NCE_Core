@@ -8,7 +8,7 @@ from django.test import TestCase, override_settings
 from identity.access import Principal
 from identity.models import AuditEvent, Membership, Organization, User
 from platform_services.cloud_aws import AWSAdapterError
-from platform_services.cloud_deployments import approve_release, create_application, prepare_release, process_one, verify_platform
+from platform_services.cloud_deployments import approve_release, cancel_release, create_application, prepare_release, process_one, verify_platform
 from platform_services.cloud_models import CloudPlatform, CloudRelease
 from platform_services.environments import create_environment
 
@@ -109,10 +109,25 @@ class CloudRecoveryTests(TestCase):
         stop.assert_called_once()
         self.assertEqual(stop.call_args.args[2]['build_id'], 'runner:active-job')
         self.assertEqual(stop.call_args.args[1]['action'], 'provision')
+        self.assertEqual(stop.call_args.args[1]['plan_hash'], release.digest)
         start.assert_not_called()
         poll.assert_not_called()
         self.assertEqual(release.status, 'failed')
         self.assertEqual(release.provider_state['build_id'], 'runner:active-job')
+
+    def test_manual_cancel_preserves_exact_reviewed_plan_in_provider_stop(self):
+        release = self.live_release()
+        CloudRelease.objects.filter(pk=release.pk).update(provider_state={
+            'build_id': 'runner:active-job', 'phase': 'release', 'public_config': {'PUBLIC_SETTING': 'reviewed'}})
+        release.refresh_from_db()
+        with patch('platform_services.cloud_aws.stop_run') as stop:
+            cancel_release(release, Principal(user=self.admin))
+        stop.assert_called_once()
+        self.assertEqual(stop.call_args.args[1]['plan_hash'], release.digest)
+        self.assertEqual(stop.call_args.args[1]['action'], 'release')
+        self.assertEqual(stop.call_args.args[1]['public_config'], {'PUBLIC_SETTING': 'reviewed'})
+        release.refresh_from_db()
+        self.assertEqual(release.status, 'cancelled')
 
     def test_failed_automatic_stop_preserves_named_job_and_manual_recovery_notice(self):
         release = self.live_release()

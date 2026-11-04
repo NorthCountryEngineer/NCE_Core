@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Q
 
 from identity.models import Application, AuditEvent, Organization
-from identity.policy_evaluation import policy_fact
+from identity.policy_evaluation import evaluation_active, policy_fact
 from .models import Deployment
 from .secrets import decrypt_bundle, encrypt_bundle
 from .validation import validate_endpoint
@@ -14,15 +14,27 @@ from .validation import validate_endpoint
 def application_deployment(application):
     if not application or not application.pk:
         return None
+    def load():
+        deployment = Deployment.objects.select_related('environment__boundary_tag', 'environment__organization',
+            'installation__package', 'installation__service', 'installation__organization',
+            'installation__independent_placement', 'node', 'application', 'resource_application').filter(
+            Q(application=application) | Q(resource_application=application)).first()
+        if deployment and evaluation_active():
+            # This relation was read in the same fresh query. Reuse the fact only
+            # for this live authorization response, never on held model objects.
+            placement = getattr(deployment.installation, 'independent_placement', None)
+            policy_fact(('independent_installation', str(deployment.installation_id)),
+                lambda: bool(placement and placement.reference_only))
+        return deployment
     return policy_fact(("application_deployment", str(application.service.organization_id), str(application.pk)),
-        lambda: Deployment.objects.select_related('environment__boundary_tag', 'environment__organization',
-            'installation__package', 'installation__service', 'installation__organization', 'node',
-            'application', 'resource_application').filter(
-            Q(application=application) | Q(resource_application=application)).first())
+        load)
 
 
 def external_available(deployment):
     installation = deployment.installation
+    from .application_transfers import independent
+    if independent(installation):
+        return False
     return bool(deployment.target == 'external' and deployment.desired_state == 'running' and
         deployment.environment_id and deployment.environment.active and installation.enabled and
         installation.organization.active and installation.service.active and installation.package.active and
@@ -37,6 +49,8 @@ def external_available(deployment):
 @transaction.atomic
 def register_external_deployment(installation, environment, origin, actor=None):
     """Registration is metadata and OAuth clients only: no AWS, cluster, or remote requests."""
+    from .application_transfers import require_change_allowed
+    require_change_allowed(installation)
     Organization.objects.select_for_update().get(pk=installation.organization_id)
     validate_endpoint(origin)
     origin = origin.rstrip('/')
@@ -94,5 +108,7 @@ def external_public_configuration(deployment):
 
 def external_resource_credentials(deployment):
     """Private output for a server-side secret store; never add it to public configuration."""
+    from .application_transfers import require_managed
+    require_managed(deployment.installation)
     return {'client_id': deployment.resource_application.client_id,
         'client_secret': decrypt_bundle(deployment.encrypted_bundle)['introspection_client_secret']}

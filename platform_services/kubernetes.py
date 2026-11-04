@@ -10,6 +10,8 @@ def resource_name(deployment):
 
 
 def deployment_spec(deployment):
+    from .application_transfers import require_managed
+    require_managed(deployment.installation)
     organization_id = str(deployment.installation.organization_id)
     spec = {"deployment_id": str(deployment.pk), "organization_id": organization_id, "namespace": deployment.namespace,
         "revision": deployment.revision, "desired_state": deployment.desired_state,

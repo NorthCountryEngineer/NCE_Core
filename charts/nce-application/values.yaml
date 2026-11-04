@@ -5,6 +5,7 @@ workloads: {}
 external:
   databaseCredentialRef: ""
   runtimeCredentialRef: ""
+  migrationStateClaim: ""
   pullSecrets: []
   apiEnvironment: {}
   apiEnvFromKeys: []

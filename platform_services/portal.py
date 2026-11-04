@@ -24,8 +24,8 @@ from identity.access import request_principal, visible_resources, require_access
 def dashboard(request, organization):
     principal = request_principal(request)
     values = {"organization": organization,
-        "installations": visible_resources(principal, organization.installations.select_related("package")),
-        "deployments": visible_resources(principal, Deployment.objects.select_related("installation__package", "node").filter(installation__organization=organization)),
+        "installations": visible_resources(principal, organization.installations.select_related("package", 'independent_placement')),
+        "deployments": visible_resources(principal, Deployment.objects.select_related("installation__package", 'installation__independent_placement', "node").filter(installation__organization=organization)),
         "nodes": visible_resources(principal, organization.runtime_nodes.all()), "datasets": visible_resources(principal, organization.datasets.all()),
         "pipelines": visible_resources(principal, organization.pipelines.select_related("dataset")), "agents": visible_resources(principal, organization.agents.all()),
         "workflows": visible_resources(principal, organization.workflows.all()), "runs": visible_resources(principal, organization.workflow_runs.order_by("-created")[:25])}
@@ -34,6 +34,21 @@ def dashboard(request, organization):
         values["billing" if name == "billing" else "config"] = resource if resource and visible_resources(principal, [resource]) else None
     for installation in values["installations"]:
         installation.visible_credentials = visible_resources(principal, installation.credentials.filter(active=True))
+    from .cloud_models import CloudApplication
+    from .cloud_lightsail import current_hosting
+    from .cloud_aws import AWSAdapterError
+    current = {}
+    applications = visible_resources(principal, CloudApplication.objects.filter(organization=organization,
+        installation__isnull=False, installation__independent_placement__isnull=True).select_related('platform', 'environment'))
+    for app in applications:
+        try:
+            hosting = current_hosting(app)
+        except AWSAdapterError:
+            hosting = {'provider': 'Lightsail', 'status': 'Configuration unavailable'}
+        if hosting:
+            current[app.installation_id] = hosting
+    for deployment in values['deployments']:
+        deployment.current_hosting = current.get(deployment.installation_id)
     return render(request, "platform_services/dashboard.html", values)
 
 
@@ -61,9 +76,14 @@ def install(request, organization, package_slug):
 @organization_admin
 def installation_settings(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk)
+    from .application_transfers import controls_frozen
+    if controls_frozen(installation):
+        return redirect('application_transfer', slug=organization.slug, pk=installation.pk)
     form = InstallationSettingsForm(request.POST or None, package=installation.package, manifest=installation.manifest,
         initial={"grants": installation.granted_capabilities, "enabled": installation.enabled, 'header_mode': installation.header_mode})
     if request.method == "POST" and form.is_valid():
+        from .application_transfers import require_change_allowed
+        require_change_allowed(installation)
         if installation.package.slug == "core-platform" and not form.cleaned_data["enabled"]:
             form.add_error(None, "The current control plane must remain enabled.")
         else:
@@ -78,7 +98,9 @@ def installation_settings(request, organization, pk):
                     installation.deployments.filter(target="kubernetes").update(desired_state="stopped", revision=F("revision") + 1)
                 audit(request, "installation.updated", installation.pk)
             return redirect("platform_dashboard", slug=organization.slug)
-    return render(request, "identity/form.html", {"form": form, "title": f"Access: {installation.package.name}"})
+    return render(request, "identity/form.html", {"form": form, "title": f"Access: {installation.package.name}",
+        'application_transfer_url': reverse('application_transfer', args=[organization.slug, installation.pk])
+        if installation.package.kind == 'application' else ''})
 
 
 @organization_admin
@@ -161,6 +183,9 @@ def node_disable(request, organization, pk):
 @organization_admin
 def issue_key(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk, enabled=True)
+    from .application_transfers import controls_frozen
+    if controls_frozen(installation):
+        return redirect('application_transfer', slug=organization.slug, pk=installation.pk)
     from django import forms
     class KeyForm(forms.Form):
         environment = forms.ModelChoiceField(queryset=organization.environments.filter(active=True))
@@ -263,6 +288,14 @@ def deployment_action(request, organization, pk):
     with transaction.atomic():
         deployment = get_object_or_404(Deployment.objects.select_for_update().select_related("installation__package"), pk=pk,
             installation__organization=organization)
+        from .application_transfers import independent
+        if independent(deployment.installation):
+            raise PermissionDenied('This independent application is a reference only. Core cannot control it.')
+        from .application_transfers import require_change_allowed
+        try:
+            require_change_allowed(deployment.installation)
+        except ValidationError:
+            raise PermissionDenied('An approved transfer freezes deployment changes.') from None
         if deployment.target == 'external' and action == 'restart':
             messages.error(request, 'AWS releases and restarts are managed in Amplify. Core controls application access only.')
         elif deployment.target == 'kubernetes-adopted' and action == 'restart':
