@@ -98,7 +98,7 @@
         "runtimeCredentialRef",
         "pullSecrets",
         "apiEnvironment",
-        "apiCredentialKeys",
+        "apiEnvFromKeys",
         "externalEgressCIDRs"
       ],
       "properties": {
@@ -125,7 +125,7 @@
             "maxLength": 4000
           }
         },
-        "apiCredentialKeys": {
+        "apiEnvFromKeys": {
           "type": "array",
           "maxItems": 40,
           "items": {
