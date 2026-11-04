@@ -267,3 +267,8 @@ prohibited by Proposal Studio's application contract.
 References: [ECS execution-role secret injection](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html),
 [ECS deployments](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/deployment-type-ecs.html),
 [AWS Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/).
+
+
+## Alternative OCI/Helm delivery
+
+The Fargate deployment recipe remains supported. An independent application OCI/Helm release pipeline is documented in [Application OCI/Helm releases](helm-oci-releases.md).
