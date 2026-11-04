@@ -75,7 +75,7 @@
       "enabled": true,
       "className": "nginx",
       "host": "proposal.example.invalid",
-      "tlsSecret": "nce-app-tls"
+      "tlsRef": "nce-app-tls"
     },
     "networkPolicy": {
       "enabled": true,
