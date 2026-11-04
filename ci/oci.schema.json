@@ -10,7 +10,8 @@
     "chart",
     "images",
     "values",
-    "validation_values_file"
+    "validation_values_file",
+    "environment"
   ],
   "properties": {
     "schema_version": {
@@ -279,6 +280,16 @@
     },
     "require_sbom": {
       "type": "boolean"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "staging",
+        "production",
+        "development",
+        "uat",
+        "sandbox"
+      ]
     }
   }
 }
