@@ -39,6 +39,21 @@
       "type": "string",
       "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_./-]{0,120}$"
     },
+    "builder_project": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{1,254}$"
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_uri"],
+      "properties": {
+        "key_uri": {
+          "type": "string",
+          "pattern": "^awskms:///arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/([a-f0-9-]{36}|mrk-[a-f0-9]{32})$"
+        }
+      }
+    },
     "registry": {
       "type": "object",
       "additionalProperties": false,
@@ -266,6 +281,16 @@
             },
             "browserPublicEgress": {
               "type": "boolean"
+            },
+            "dnsNamespaceSelector": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"type": "string"}
+            },
+            "dnsPodSelector": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"type": "string"}
             }
           }
         }

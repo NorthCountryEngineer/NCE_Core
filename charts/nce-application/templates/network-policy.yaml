@@ -1,5 +1,35 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- $root := . }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "nce.name" . }}-migrate
+  annotations:
+    # Hooks must have their egress policy before the first migration Pod starts.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: migrate
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {{ toJson (.Values.networkPolicy.dnsNamespaceSelector | default (dict "kubernetes.io/metadata.name" "kube-system")) }}
+          podSelector:
+            matchLabels: {{ toJson (.Values.networkPolicy.dnsPodSelector | default (dict "k8s-app" "kube-dns")) }}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    {{- range $cidr := .Values.external.externalEgressCIDRs }}
+    - to: [{ipBlock: {cidr: {{ $cidr | quote }}}}]
+    {{- end }}
 {{- range $component := list "web" "api" "browser" }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -32,7 +62,10 @@ spec:
   {{- end }}
   egress:
     - to:
-        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+        - namespaceSelector:
+            matchLabels: {{ toJson ($root.Values.networkPolicy.dnsNamespaceSelector | default (dict "kubernetes.io/metadata.name" "kube-system")) }}
+          podSelector:
+            matchLabels: {{ toJson ($root.Values.networkPolicy.dnsPodSelector | default (dict "k8s-app" "kube-dns")) }}
       ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
     {{- if eq $component "web" }}
     - to:
@@ -54,7 +87,7 @@ spec:
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
-            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8, 100.64.0.0/10]
+            except: [0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24, 192.168.0.0/16, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, 240.0.0.0/4]
       ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 80}]
       {{- else if eq $component "api" }}
       {{- range $cidr := $root.Values.external.externalEgressCIDRs }}

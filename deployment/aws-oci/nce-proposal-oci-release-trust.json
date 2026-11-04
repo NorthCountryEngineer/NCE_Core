@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "codebuild.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "015454941623"
+        },
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "name": "nce-proposal-oci-release",
+  "description": "NCE-controlled Proposal Studio build adapter for ci/pipeline.py application-release",
+  "serviceRole": "arn:aws:iam::015454941623:role/nce-proposal-oci-release",
+  "source": {
+    "type": "GITHUB",
+    "location": "https://github.com/NorthCountryEngineer/NCE_Core.git",
+    "gitCloneDepth": 1,
+    "buildspec": "ci/oci_buildspec.yml",
+    "auth": {
+      "type": "CODECONNECTIONS",
+      "resource": "arn:aws:codeconnections:us-east-1:015454941623:connection/1ac24555-2c7b-4367-bb11-3697083ee414"
+    },
+    "reportBuildStatus": false
+  },
+  "secondarySources": [
+    {
+      "type": "GITHUB",
+      "location": "https://github.com/NorthCountryEngineer/Proposal_Studio.git",
+      "sourceIdentifier": "ProposalStudio",
+      "gitCloneDepth": 1,
+      "auth": {
+        "type": "CODECONNECTIONS",
+        "resource": "arn:aws:codeconnections:us-east-1:015454941623:connection/1ac24555-2c7b-4367-bb11-3697083ee414"
+      },
+      "reportBuildStatus": false
+    }
+  ],
+  "sourceVersion": "main",
+  "secondarySourceVersions": [
+    {
+      "sourceIdentifier": "ProposalStudio",
+      "sourceVersion": "main"
+    }
+  ],
+  "artifacts": {
+    "type": "NO_ARTIFACTS"
+  },
+  "environment": {
+    "type": "LINUX_CONTAINER",
+    "image": "aws/codebuild/standard:7.0",
+    "computeType": "BUILD_GENERAL1_MEDIUM",
+    "privilegedMode": true,
+    "environmentVariables": [
+      {
+        "name": "NCE_RELEASE_MODE",
+        "value": "verify",
+        "type": "PLAINTEXT"
+      }
+    ]
+  },
+  "timeoutInMinutes": 90,
+  "queuedTimeoutInMinutes": 30,
+  "concurrentBuildLimit": 1,
+  "logsConfig": {
+    "cloudWatchLogs": {
+      "status": "ENABLED",
+      "groupName": "/aws/codebuild/nce-proposal-oci-release"
+    }
+  },
+  "tags": [
+    {
+      "key": "ManagedBy",
+      "value": "NCE-Proposal-OCI"
+    }
+  ]
+}

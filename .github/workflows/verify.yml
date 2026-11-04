@@ -41,6 +41,10 @@
           }
         },
         {
+          "name": "Install checksum-pinned Helm and Kubernetes validator",
+          "run": "python3 ci/install_oci_tools.py --validation-only\necho /tmp/nce-oci-tools >> \"$GITHUB_PATH\""
+        },
+        {
           "name": "Verify AWS source-build and container isolation offline",
           "run": "python3 deployment/aws-platform/check_template.py"
         },
@@ -50,7 +54,7 @@
         },
         {
           "name": "Render and lint OCI application chart offline",
-          "run": "set -euo pipefail\nhelm version --short\n.venv/bin/python - <<'PY'\nfrom ci.oci_release import generate_chart, load_config\nfrom pathlib import Path\nfrom tempfile import TemporaryDirectory\nimport subprocess\nc = load_config('ci/applications/proposal-studio.example.json')\na, r = 'a' * 40, 'b' * 40\nimages = {name: item['repository'] + '@sha256:' + 'c' * 64 for name, item in c['images'].items()}\nwith TemporaryDirectory() as tmp:\n    chart, version = generate_chart(c, images, a, r, tmp)\n    values = 'ci/applications/proposal-studio.validation.json'\n    subprocess.run(['helm', 'lint', '--strict', str(chart), '-f', values], check=True)\n    manifests = subprocess.run(['helm', 'template', 'proposal-studio', str(chart), '-f', values], check=True, capture_output=True, text=True).stdout\n    for name in ('Deployment', 'Service', 'NetworkPolicy', 'Job', 'Ingress'):\n        assert 'kind: ' + name in manifests, name\n    assert 'kind: Secret\\n' not in manifests\n    print('Helm chart rendered and linted with synthetic image digests; no cluster accessed.')\nPY"
+          "run": "set -euo pipefail\n.venv/bin/python - <<'CHECK'\nfrom ci.oci_release import generate_chart, load_config, validate_chart\nfrom tempfile import TemporaryDirectory\nc = load_config('ci/applications/proposal-studio.example.json')\nimages = {name: item['repository'] + '@sha256:' + 'c' * 64 for name, item in c['images'].items()}\nwith TemporaryDirectory() as tmp:\n    chart, version = generate_chart(c, images, 'a' * 40, 'b' * 40, tmp)\n    print(validate_chart(c, chart, version))\nCHECK"
         }
       ]
     }

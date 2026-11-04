@@ -8,6 +8,8 @@ external:
   pullSecrets: []
   apiEnvironment: {}
   apiEnvFromKeys: []
+  apiServiceAccountAnnotations: {}
+  migrationServiceAccountAnnotations: {}
   externalEgressCIDRs: []
 ingress:
   enabled: false
@@ -19,3 +21,7 @@ networkPolicy:
   ingressNamespaceSelector: {}
   ingressPodSelector: {}
   browserPublicEgress: false
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  dnsPodSelector:
+    k8s-app: kube-dns
