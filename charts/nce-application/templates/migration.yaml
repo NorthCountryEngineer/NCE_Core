@@ -50,7 +50,7 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.external.databaseCredentialRef | quote }}, key: DATABASE_URL}}
             - name: SESSION_SECRET
               valueFrom: {secretKeyRef: {name: {{ .Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
-            {{- range $key := .Values.external.apiCredentialKeys }}
+            {{- range $key := .Values.external.apiEnvFromKeys }}
             - name: {{ $key | quote }}
               valueFrom: {secretKeyRef: {name: {{ $.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
             {{- end }}
