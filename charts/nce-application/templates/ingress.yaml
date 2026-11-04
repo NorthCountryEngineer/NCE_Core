@@ -9,7 +9,7 @@ spec:
   ingressClassName: {{ required "Ingress class required" .Values.ingress.className | quote }}
   tls:
     - hosts: [{{ required "Ingress host required" .Values.ingress.host | quote }}]
-      secretName: {{ required "Existing TLS secret required" .Values.ingress.tlsSecret | quote }}
+      secretName: {{ required "Existing TLS secret required" .Values.ingress.tlsRef | quote }}
   rules:
     - host: {{ .Values.ingress.host | quote }}
       http:
