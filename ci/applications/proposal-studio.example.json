@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "application": {
+    "name": "proposal-studio",
+    "repository": "NorthCountryEngineer/Proposal_Studio"
+  },
+  "runner_release_branch": "main",
+  "registry": {
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "chart_repository": "000000000000.dkr.ecr.us-east-1.amazonaws.com/nce/proposal-studio",
+    "release_bucket": "nce-proposal-release-receipts"
+  },
+  "chart": {
+    "name": "proposal-studio",
+    "base_version": "0.1.0"
+  },
+  "images": {
+    "web": {
+      "repository": "000000000000.dkr.ecr.us-east-1.amazonaws.com/nce-proposal-web",
+      "dockerfile": "apps/web/Dockerfile"
+    },
+    "api": {
+      "repository": "000000000000.dkr.ecr.us-east-1.amazonaws.com/nce-proposal-api",
+      "dockerfile": "apps/api/Dockerfile"
+    },
+    "browser": {
+      "repository": "000000000000.dkr.ecr.us-east-1.amazonaws.com/nce-proposal-browser",
+      "dockerfile": "apps/browser/Dockerfile"
+    }
+  },
+  "values": {
+    "workloads": {
+      "web": {
+        "port": 8080,
+        "replicas": 1,
+        "readinessPath": "/health",
+        "memory": "256Mi",
+        "cpu": "100m"
+      },
+      "api": {
+        "port": 8000,
+        "replicas": 1,
+        "readinessPath": "/api/health",
+        "memory": "1Gi",
+        "cpu": "200m"
+      },
+      "browser": {
+        "port": 8010,
+        "replicas": 1,
+        "readinessPath": "/health",
+        "memory": "1Gi",
+        "cpu": "200m"
+      }
+    },
+    "external": {
+      "databaseSecret": "nce-app-db",
+      "runtimeSecret": "nce-app-runtime",
+      "pullSecrets": [],
+      "apiEnvironment": {
+        "APP_URL": "https://proposal.example.invalid",
+        "AUTH_MODE": "github",
+        "STORAGE_BACKEND": "s3",
+        "S3_AUTH_MODE": "role",
+        "S3_ENDPOINT": "",
+        "S3_REGION": "us-east-1",
+        "S3_BUCKET": "nce-proposal-artifacts",
+        "S3_ADDRESSING_STYLE": "auto",
+        "PLATFORM_ADMIN_USERS": "approved-operator"
+      },
+      "apiSecretKeys": [
+        "GITHUB_CLIENT_ID",
+        "GITHUB_CLIENT_SECRET"
+      ],
+      "externalEgressCIDRs": []
+    },
+    "ingress": {
+      "enabled": true,
+      "className": "nginx",
+      "host": "proposal.example.invalid",
+      "tlsSecret": "nce-app-tls"
+    },
+    "networkPolicy": {
+      "enabled": true,
+      "ingressNamespaceSelector": {
+        "kubernetes.io/metadata.name": "ingress-nginx"
+      },
+      "ingressPodSelector": {
+        "app.kubernetes.io/name": "ingress-nginx"
+      },
+      "browserPublicEgress": false
+    }
+  },
+  "validation_values_file": "ci/applications/proposal-studio.validation.json",
+  "require_signatures": true,
+  "require_sbom": true
+}
