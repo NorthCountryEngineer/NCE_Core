@@ -13,7 +13,7 @@ ingress:
   enabled: false
   className: ""
   host: ""
-  tlsSecret: ""
+  tlsRef: ""
 networkPolicy:
   enabled: true
   ingressNamespaceSelector: {}
