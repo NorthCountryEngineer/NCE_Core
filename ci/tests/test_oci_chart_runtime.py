@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from jsonschema import Draft7Validator
+import yaml
 
 from ci import oci_release as release
 
@@ -162,6 +163,59 @@ class ChartRuntimeTests(unittest.TestCase):
         self.assertIn('name: WEB_CONCURRENCY\n              value: "1"', api)
         self.assertIn("startupProbe:", api)
         self.assertNotIn("kind: Secret\n", "\n".join(documents))
+
+    def test_private_migration_state_is_optional_api_only_and_persistent(self):
+        defaults = json.loads((self.chart / 'values.yaml').read_text())
+        self.assertEqual(defaults['external']['migrationStateClaim'], '')
+        self.assertNotIn('mountPath: /migration', '\n'.join(self._render()))
+        values = deepcopy(self.values)
+        values['external']['migrationStateClaim'] = 'customer-migration-state'
+        values['external']['apiEnvironment'].update(MIGRATION_ENABLED='true',
+            MIGRATION_STATE_PATH='/migration/state/production', AUTH_MODE='oidc',
+            SSO_ISSUER='https://identity.customer.example', SSO_CLIENT_ID='customer-app')
+        values['external']['apiEnvFromKeys'] = ['MIGRATION_STAGING_DATABASE_URL', 'SSO_CLIENT_SECRET']
+        self.validator.validate(values)
+        documents = [yaml.safe_load(document) for document in self._render(values=values)]
+        api = next(item for item in documents if item['kind'] == 'Deployment' and item['metadata']['name'] == 'proposal-studio-api')
+        pod = api['spec']['template']['spec']
+        self.assertEqual(pod['securityContext']['fsGroup'], 10001)
+        container = pod['containers'][0]
+        self.assertTrue(container['securityContext']['readOnlyRootFilesystem'])
+        self.assertEqual(next(item for item in container['volumeMounts'] if item['name'] == 'migration-state'),
+            {'name': 'migration-state', 'mountPath': '/migration', 'readOnly': False})
+        self.assertEqual(next(item for item in pod['volumes'] if item['name'] == 'migration-state'),
+            {'name': 'migration-state', 'persistentVolumeClaim': {'claimName': 'customer-migration-state'}})
+        environment = {item['name']: item for item in container['env']}
+        self.assertEqual(environment['MIGRATION_STATE_PATH']['value'], '/migration/state/production')
+        self.assertEqual(environment['MIGRATION_STAGING_DATABASE_URL']['valueFrom']['secretKeyRef']['key'], 'MIGRATION_STAGING_DATABASE_URL')
+        self.assertEqual(environment['SSO_CLIENT_SECRET']['valueFrom']['secretKeyRef']['key'], 'SSO_CLIENT_SECRET')
+        for item in documents:
+            if item['kind'] not in {'Deployment', 'Job'} or item['metadata']['name'] == 'proposal-studio-api':
+                continue
+            other = item['spec']['template']['spec']
+            self.assertFalse(any(volume['name'] == 'migration-state' for volume in other.get('volumes', [])))
+            self.assertFalse(any(mount['mountPath'] == '/migration' for value in other['containers'] for mount in value.get('volumeMounts', [])))
+        self.assertFalse(any(item['kind'] in {'PersistentVolumeClaim', 'Secret'} for item in documents))
+
+    def test_migration_state_claim_rejects_non_dns_labels_and_inline_sso_secret(self):
+        for claim in ['../escape', '/host/path', 'Uppercase', 'dotted.claim', 'x' * 64, '-leading', 'trailing-']:
+            with self.subTest(claim=claim):
+                values = deepcopy(self.values)
+                values['external']['migrationStateClaim'] = claim
+                self.assertFalse(self.validator.is_valid(values))
+        values = deepcopy(self.values)
+        values['external']['apiEnvironment']['SSO_CLIENT_SECRET'] = 'synthetic-never-inline'  # pragma: allowlist secret -- rejected synthetic inline-credential fixture
+        self.assertFalse(self.validator.is_valid(values))
+
+    def test_migration_state_claim_chart_is_a_valid_kubernetes_manifest(self):
+        if not shutil.which('kubeconform'):
+            self.skipTest('kubeconform is required for Kubernetes schema validation')
+        values = deepcopy(self.values)
+        values['external']['migrationStateClaim'] = 'customer-migration-state'
+        rendered = '\n---'.join(self._render(values=values))
+        result = subprocess.run(['kubeconform', '-strict', '-summary'], input=rendered,
+            text=True, capture_output=True, check=True)
+        self.assertIn('Invalid: 0', result.stdout)
 
 
 if __name__ == "__main__":

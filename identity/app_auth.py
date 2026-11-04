@@ -56,7 +56,7 @@ def authorization_context(request, value=None):
     if theme == "automatic":
         theme = "axolotl" if app.service.slug == "axolotl-news" else "core"
     return {"application": app, "next": value, "name": app.service.auth_name or app.service.name,
-            "tagline": app.service.auth_tagline or "One account. Your next adventure.", "theme": theme,
+            "theme": theme,
             "home": f"{origin.scheme}://{origin.netloc}",
             "signup_url": reverse("app_signup") + "?" + urlencode({"next": value}),
             "login_url": reverse("login") + "?" + urlencode({"next": value})}

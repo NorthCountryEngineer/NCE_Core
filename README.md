@@ -1,5 +1,9 @@
 # Core Platform
 
+[Independent application transfer](docs/application-transfer.md) provides a reviewed,
+signed metadata workflow and reference-only handover to customer-owned infrastructure.
+Application adapters retain local authority over customer-data export and import.
+
 NCE_Core hosts **Core Platform**, an organization control plane with identity,
 authorization, a marketplace, core data services, chat, agents, workflows, and Kubernetes
 instance management.

@@ -41,6 +41,9 @@ def validate_peer(peer):
 
 
 def request_peer(peer, suffix, values, *, timeout_ms=None):
+    from platform_services.application_transfers import independent
+    if independent(peer.inbound_installation):
+        raise PermissionDenied('An independent application cannot be polled through its former Core peer.')
     validate_peer(peer)
     if not peer.active:
         raise PermissionDenied('Peer is disabled.')

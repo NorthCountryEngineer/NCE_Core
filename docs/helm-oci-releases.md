@@ -36,6 +36,30 @@ The chart packages web8080, API8000 and isolated browser8010 workloads, service 
 
 For destination workload identity, supply `external.apiServiceAccountAnnotations` and `external.migrationServiceAccountAnnotations` as separate string maps in the destination values overlay (for example, the approved `eks.amazonaws.com/role-arn`). Both maps default to empty; their destination identity bindings are not packaged in the release. API and migration identities may differ: grant each only the external services its runtime needs. Browser and frontend ServiceAccounts cannot receive these annotations. Service-account token automount remains disabled; the destination identity integration must project its own scoped token when required. Identity annotation maps cannot override Helm or Argo CD hook annotations.
 
+For locally enabled application transfer, set the optional
+`external.migrationStateClaim` to an existing destination-owned PVC DNS label.
+It defaults to empty and creates no PVC. When present, only the API mounts it
+read/write at `/migration`, with its existing user/group/fsGroup `10001` and
+read-only root filesystem. The browser, frontend and schema migration Job receive
+no migration-state mount or receiver private-key files. Retain and back up this
+volume: it holds receiver identities, encrypted manifests, replay markers and
+transfer evidence required across API replacement/restart. Do not share the claim
+with unrelated workloads.
+
+Supply nonsecret `MIGRATION_ENABLED=true` and
+`MIGRATION_STATE_PATH=/migration/state/production` through `external.apiEnvironment`.
+The same generic map accepts nonsecret customer `AUTH_MODE`, SSO issuer/endpoints
+and client ID. Put `MIGRATION_STAGING_DATABASE_URL`, `SSO_CLIENT_SECRET` and other
+credential-bearing values in the destination runtime Secret and list their names
+in `external.apiEnvFromKeys`; never inline their values in chart settings. The
+staging database and any reference/blob custody remain separate reviewed bindings.
+
+These mounts and runtime features require a new NCE-published release containing
+the updated chart and application code. An older signed chart cannot gain this
+volume through a values overlay, and customer registry relocation is deliberately
+limited to image repositories/schema constants and chart version; it cannot add
+new templates or features to an old release.
+
 Before rollout, the destination must back up PostgreSQL/object data, drain in-process jobs and verify recovery. An earlier hook creates the migration service account and dedicated egress policy before the Argo PreSync/Helm migration Job. `python -m studio.migrate` runs once before rollout; a PostgreSQL advisory lock serializes this command with API startup. Failed migrations do not retry automatically. Validate recovery and authenticated functionality in the destination before declaring deployment complete.
 
 ## Feedback and validation limits
@@ -43,3 +67,59 @@ Before rollout, the destination must back up PostgreSQL/object data, drain in-pr
 `ci/oci_feedback.py` validates sanitized release-correlated status events; an authenticated, replay-protected persistent feedback endpoint remains a separate integration. NCE owns artifact release state; the destination remains authoritative for deployment/runtime state.
 
 Run `python -m unittest discover -s ci/tests -v` for offline contracts, chart regressions and fail-closed publication checks. Core required CI also runs disposable PostgreSQL application tests, image build and real strict chart validation. `--mode verify` uses synthetic digests and does not build/publish production containers or prove a live destination deployment.
+
+## Customer-owned registry relocation
+
+The original chart pins complete NCE registry image references. A customer mirror
+needs a distinct derived chart; changing only a values overlay cannot override
+those schema constants. `python -m ci.relocate_release` performs an offline,
+deterministic derivation without contacting a registry or cluster. Copy images and
+the original chart using the customer's existing approved OCI tools first.
+
+Prepare a private-reviewed JSON image map with exactly the published component
+names and customer registry references, each preserving the original SHA-256
+digest. Use the receiver's existing owner-only `identity.json` outside Git; never
+copy an NCE KMS/private signing key. Review the target origin, new chart version,
+publisher SPKI fingerprint, exact release-file SHA-256 and receiver public key.
+
+```sh
+python -m ci.relocate_release \
+  --release /private/release/release.json \
+  --signature /private/release/release.json.sig \
+  --publisher-key /private/release/publisher.pub \
+  --publisher-spki-sha256 REVIEWED_PUBLISHER_SPKI_SHA256 \
+  --release-sha256 REVIEWED_RELEASE_FILE_SHA256 \
+  --chart /private/release/original.tgz \
+  --image-map /private/approved-mirrors.json \
+  --customer-registry registry.customer.example \
+  --target-origin https://proposal.customer.example \
+  --derived-version 0.1.0-customer.1 \
+  --customer-key-file /private/migration/identity.json \
+  --customer-public-key REVIEWED_RECEIVER_ED25519_PUBLIC_KEY \
+  --output-chart /private/release/customer-derived.tgz \
+  --output-receipt /private/release/customer-derivation.json
+```
+
+Both output paths must be new. The utility verifies the publisher's detached
+P-256 signature and independently pinned public key, exact original release bytes
+and chart-package hash. It rejects archive escapes, links, duplicate paths,
+devices and oversized packages. It changes only `values.yaml` image repositories,
+their corresponding `values.schema.json` constants, `Chart.yaml` version, and an
+optional chart-root `release.json` image map. Every image digest, other setting,
+template, migration hook, scope and network policy remains unchanged. Package
+timestamps and archive ownership are normalized for deterministic output.
+
+The customer signs a domain-separated `chart-relocation` receipt binding the
+original publisher/release/chart digests, exact independently reviewed customer
+registry/image map, derived package digest/version, target origin and unchanged
+file manifest. This receipt is customer derivation evidence, not an NCE publisher
+signature over the new chart. Keep both trust chains and original artifacts.
+
+The shared pure `ci/migration_chart.py::verify_derivation` verifier requires the
+pinned publisher and customer keys, approved target origin and exact customer
+registry/image map. It rebuilds the allowed derivation and compares every output
+byte; even a customer-signed change to another chart file is rejected. Destination
+acceptance must verify the original OCI closure and this derivation against the
+current customer-owned files before activating. Registry copying, customer chart
+publication, destination secrets/ingress overlays, Helm validation and actual
+rollout remain explicit customer operations; this command does not perform them.

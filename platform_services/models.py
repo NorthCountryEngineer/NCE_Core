@@ -664,3 +664,4 @@ from .documentation_models import DocumentationPage, DocumentationRevision, Docu
 from .rule_models import AIRulePolicy, AIRuleRevision, AIUsageMeter, AIUsageReservation  # noqa: E402,F401
 from .development_models import DevelopmentObject, DevelopmentRevision, DevelopmentRun  # noqa: E402,F401
 from .cloud_models import CloudPlatform, CloudApplication, CloudRelease, CloudHostingAssignment  # noqa: E402,F401
+from .transfer_models import ApplicationTransfer, TransferReceipt, ApplicationPlacementReference  # noqa: E402,F401

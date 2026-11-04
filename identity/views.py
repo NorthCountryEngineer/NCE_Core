@@ -339,6 +339,16 @@ def rotate_client_secret(request, organization, service_pk, pk):
         raw = secrets.token_urlsafe(48)
         application.client_secret = raw
         application.save(update_fields=["client_secret"])
+        # External deployment exports must follow this exact client's rotation;
+        # otherwise the next normal release would re-publish its revoked secret.
+        from platform_services.models import Deployment
+        from platform_services.secrets import decrypt_bundle, encrypt_bundle
+        deployment = Deployment.objects.select_for_update().filter(target='external', resource_application=application).first()
+        if deployment:
+            bundle = decrypt_bundle(deployment.encrypted_bundle)
+            bundle['introspection_client_secret'] = raw
+            deployment.encrypted_bundle = encrypt_bundle(bundle)
+            deployment.save(update_fields=['encrypted_bundle'])
         audit(request, "client.secret_rotated", application.client_id)
     return render(request, "identity/credential.html", {
         "title": "Client secret rotated", "client_id": application.client_id, "client_secret": raw,

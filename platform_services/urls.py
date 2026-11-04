@@ -7,8 +7,14 @@ from . import rules_api, rules_portal
 from . import development_api, development_portal
 from . import header_views
 from . import cloud_portal
+from . import transfer_portal
 
 urlpatterns = [
+    path('application-transfer/receive/', transfer_portal.pairing_help, name='application_transfer_pairing_help'),
+    path('application-transfer/clear-fragment.js', transfer_portal.clear_fragment),
+    path('organizations/<slug:slug>/platform/installations/<uuid:pk>/transfer/', transfer_portal.application_transfer, name='application_transfer'),
+    path('api/platform/v1/application-transfers/<uuid:pk>/claim/', transfer_portal.claim, name='application_transfer_claim'),
+    path('api/platform/v1/application-transfers/<uuid:pk>/receipts/', transfer_portal.receipt, name='application_transfer_receipt'),
     path('organizations/<slug:slug>/platform/cloud/platforms/', cloud_portal.platforms, name='cloud_platforms'),
     path('organizations/<slug:slug>/platform/cloud/platforms/new/', cloud_portal.platform_add, name='cloud_platform_add'),
     path('organizations/<slug:slug>/platform/cloud/platforms/<uuid:pk>/', cloud_portal.platform_add, name='cloud_platform_edit'),

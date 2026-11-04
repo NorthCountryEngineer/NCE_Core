@@ -116,6 +116,9 @@ spec:
           volumeMounts:
             - {name: scratch, mountPath: /tmp}
             - {name: local, mountPath: /app/.local}
+            {{- with $root.Values.external.migrationStateClaim }}
+            - {name: migration-state, mountPath: /migration, readOnly: false}
+            {{- end }}
             {{- with $root.Values.external.referenceLibraryClaim }}
             - {name: library, mountPath: /reference/library, readOnly: true}
             {{- end }}
@@ -132,6 +135,9 @@ spec:
         {{- else if eq $component "api" }}
         - {name: scratch, emptyDir: {sizeLimit: 256Mi}}
         - {name: local, emptyDir: {sizeLimit: 64Mi}}
+        {{- with $root.Values.external.migrationStateClaim }}
+        - {name: migration-state, persistentVolumeClaim: {claimName: {{ . | quote }}}}
+        {{- end }}
         {{- with $root.Values.external.referenceLibraryClaim }}
         - {name: library, persistentVolumeClaim: {claimName: {{ . | quote }}}}
         {{- end }}

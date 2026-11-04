@@ -33,6 +33,9 @@ def credential_allows(credential, capabilities):
     if not credential or not credential.active:
         return False
     installation = credential.installation
+    from .application_transfers import independent
+    if independent(installation):
+        return False
     if not installation.enabled or not installation.service.active or not installation.organization.active or not installation.package.active:
         return False
     return all(c in installation.granted_capabilities and c in CAPABILITIES and
@@ -81,6 +84,8 @@ def install_core(organization, actor=None):
 
 
 def issue_workload_credential(installation, name, environment=None, deployment=None):
+    from .application_transfers import require_change_allowed
+    require_change_allowed(installation)
     if environment and (environment.organization_id != installation.organization_id or not environment.active):
         raise ValidationError('Choose an active environment from this organization.')
     if deployment and (deployment.installation_id != installation.pk or deployment.environment_id != (environment.pk if environment else None)):
@@ -93,6 +98,8 @@ def issue_workload_credential(installation, name, environment=None, deployment=N
 
 @transaction.atomic
 def upgrade_installation(installation, grants, actor):
+    from .application_transfers import require_change_allowed
+    require_change_allowed(installation)
     package = installation.package
     package.full_clean()
     if package.kind != "application" or not package.active:
@@ -126,6 +133,8 @@ def upgrade_installation(installation, grants, actor):
 
 @transaction.atomic
 def create_deployment(installation, node, endpoint, actor=None, desired_state="running", adopted=None):
+    from .application_transfers import require_change_allowed
+    require_change_allowed(installation)
     from .validation import validate_endpoint
     validate_endpoint(endpoint)
     if not adopted and not installation.manifest.get('image'):
