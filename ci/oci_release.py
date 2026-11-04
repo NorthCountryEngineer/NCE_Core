@@ -87,6 +87,9 @@ def load_config(path):
     workloads = value["values"]["workloads"]
     if set(workloads) != set(value["images"]):
         raise ReleaseError("Workload/image names do not match.")
+    for key in value["values"]["external"]["apiEnvironment"]:
+        if re.search(r"SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY", key):
+            raise ReleaseError("Secret values may not be embedded in chart environment settings.")
     for name, workload in workloads.items():
         if workload.get("replicas", 1) != 1 and name in ("api", "browser"):
             raise ReleaseError("Single-process API and browser services require exactly one replica.")
@@ -124,7 +127,9 @@ def admission(config, app_commit, core_commit):
     return receipts
 
 
-def require_publish():
+def require_publish(config):
+    if os.environ.get("CORE_CI_ALLOW_PUBLISH") != "1" or os.environ.get("CORE_CI_ENVIRONMENT") != config["environment"]:
+        raise ReleaseError("Publish requires the approved matching protected CI environment.")
     if os.environ.get("CORE_CI_ALLOW_PUBLISH") != "1":
         raise ReleaseError("CORE_CI_ALLOW_PUBLISH=1 and protected environment approval are required.")
 
@@ -257,7 +262,7 @@ def release(config_path, source, *, mode="verify"):
     app_root, app_commit = ensure_source(source, config)
     core_commit = checkout_commit(ROOT)
     if mode == "publish":
-        require_publish()
+        require_publish(config)
         require_runner_branch(config, core_commit)
     receipts = admission(config, app_commit, core_commit)
     release_id = release_version(config["chart"]["base_version"], app_commit, core_commit)
