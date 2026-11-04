@@ -130,8 +130,6 @@ def admission(config, app_commit, core_commit):
 def require_publish(config):
     if os.environ.get("CORE_CI_ALLOW_PUBLISH") != "1" or os.environ.get("CORE_CI_ENVIRONMENT") != config["environment"]:
         raise ReleaseError("Publish requires the approved matching protected CI environment.")
-    if os.environ.get("CORE_CI_ALLOW_PUBLISH") != "1":
-        raise ReleaseError("CORE_CI_ALLOW_PUBLISH=1 and protected environment approval are required.")
 
 
 def require_runner_branch(config, core_commit):
@@ -198,9 +196,20 @@ def generate_chart(config, images, app_commit, core_commit, destination):
         "apiVersion: v2\nname: " + config["chart"]["name"] +
         "\ndescription: Immutable NCE application release\n"
         "type: application\nversion: " + version + "\nappVersion: \"" + app_commit + "\"\n")
-    values = deepcopy(config["values"])
-    values["images"] = images
-    values["releaseIdentity"] = {"sourceCommit": app_commit, "runnerCommit": core_commit}
+    # The published application artifact is target-neutral. Deployment-specific
+    # origins, external endpoints, Secret names and Raft networking belong to
+    # the destination's separately approved values overlay only.
+    values = {
+        "images": images,
+        "releaseIdentity": {"sourceCommit": app_commit, "runnerCommit": core_commit},
+        "workloads": deepcopy(config["values"]["workloads"]),
+        "external": {"databaseCredentialRef": "", "runtimeCredentialRef": "",
+                     "pullSecrets": [], "apiEnvironment": {}, "apiCredentialKeys": [],
+                     "externalEgressCIDRs": []},
+        "ingress": {"enabled": False, "className": "", "host": "", "tlsSecret": ""},
+        "networkPolicy": {"enabled": True, "ingressNamespaceSelector": {},
+                          "ingressPodSelector": {}, "browserPublicEgress": False},
+    }
     (chart / "values.yaml").write_text(json.dumps(values, sort_keys=True, indent=2) + "\n")
     return chart, version
 
