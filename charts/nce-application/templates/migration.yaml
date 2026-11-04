@@ -1,0 +1,72 @@
+{{- $name := include "nce.name" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-migrate-{{ .Values.releaseIdentity.sourceCommit | trunc 12 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    {{- include "nce.labels" . | nindent 4 }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 900
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      {{- with .Values.external.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ required "API digest is required" .Values.images.api | quote }}
+          command: ["python", "-m", "studio.migrate"]
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: "100m", memory: "256Mi"}
+            limits: {cpu: "1000m", memory: "1Gi"}
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ .Values.external.databaseCredentialRef | quote }}, key: DATABASE_URL}}
+            - name: SESSION_SECRET
+              valueFrom: {secretKeyRef: {name: {{ .Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
+            {{- range $key := .Values.external.apiEnvFromKeys }}
+            - name: {{ $key | quote }}
+              valueFrom: {secretKeyRef: {name: {{ $.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
+            {{- end }}
+            {{- range $key, $value := .Values.external.apiEnvironment }}
+            - name: {{ $key | quote }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - {name: scratch, mountPath: /tmp}
+            - {name: local, mountPath: /app/.local}
+            {{- with .Values.external.referenceLibraryClaim }}
+            - {name: library, mountPath: /reference/library, readOnly: true}
+            {{- end }}
+      volumes:
+        - {name: scratch, emptyDir: {sizeLimit: 256Mi}}
+        - {name: local, emptyDir: {sizeLimit: 64Mi}}
+        {{- with .Values.external.referenceLibraryClaim }}
+        - {name: library, persistentVolumeClaim: {claimName: {{ . | quote }}}}
+        {{- end }}

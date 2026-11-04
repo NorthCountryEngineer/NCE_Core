@@ -1,0 +1,77 @@
+name: NCE application Helm OCI release
+# Manual only. Source stays in the NCE-owned build environment.
+on:
+  workflow_dispatch:
+    inputs:
+      application_commit:
+        description: Exact 40-character application commit SHA with passed CI
+        required: true
+        type: string
+      mode:
+        type: choice
+        options: [verify, publish]
+        default: verify
+permissions:
+  contents: read
+concurrency:
+  group: nce-application-oci-${{ inputs.application_commit }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ${{ fromJSON(vars.CORE_RUNNER_LABELS || '["self-hosted","linux","x64","core-ci"]') }}
+    timeout-minutes: 90
+    environment: ${{ vars.CORE_CI_ENVIRONMENT || 'staging' }}
+    env:
+      CORE_CI_ALLOW_PUBLISH: ${{ vars.CORE_CI_ALLOW_PUBLISH || '0' }}
+      CORE_CI_ALLOW_DEPLOY: '0'
+      CORE_CI_ENVIRONMENT: ${{ vars.CORE_CI_ENVIRONMENT || 'staging' }}
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: core
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/create-github-app-token@v2
+        id: source-token
+        with:
+          app-id: ${{ vars.NCE_RELEASE_GITHUB_APP_ID }}
+          private-key: ${{ secrets.NCE_RELEASE_GITHUB_APP_PRIVATE_KEY }}
+          owner: NorthCountryEngineer
+          repositories: Proposal_Studio
+          permission-contents: read
+      - name: Check exact application commit format
+        env:
+          SOURCE_COMMIT: ${{ inputs.application_commit }}
+        run: |
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          repository: NorthCountryEngineer/Proposal_Studio
+          ref: ${{ inputs.application_commit }}
+          token: ${{ steps.source-token.outputs.token }}
+          path: app
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up release Python environment
+        working-directory: core
+        run: python -m pip install 'jsonschema>=4.23,<5'
+      - name: Verify and optionally publish immutable OCI artifacts
+        env:
+          CORE_CI_GITHUB_TOKEN_FILE: ${{ vars.CORE_CI_GITHUB_TOKEN_FILE }}
+          CORE_CI_MODE: ${{ inputs.mode }}
+        run: |
+          python core/ci/pipeline.py application-release \
+            --config core/ci/applications/proposal-studio.example.json \
+            --source app \
+            --mode "$CORE_CI_MODE"
+      - uses: actions/upload-artifact@v4
+        if: always() && vars.CORE_CI_ALLOW_ARTIFACT_UPLOAD == '1'
+        with:
+          name: nce-application-oci-${{ inputs.application_commit }}
+          path: core/artifacts/oci/
+          retention-days: 1
+          if-no-files-found: ignore

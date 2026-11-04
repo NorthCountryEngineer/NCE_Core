@@ -342,3 +342,8 @@ and database secrets, and approvals for sandbox, development, and production.
 Generated manifests include `core.platform/environment` and `CORE_ENVIRONMENT`.
 The deployment pipeline does not create namespaces or isolate their networks;
 review/apply the [environment isolation bundle](modernization.md) separately.
+
+
+## External application Helm releases
+
+A reusable image-digest-pinned Helm/OCI release pipeline is documented in [Application OCI/Helm releases](helm-oci-releases.md). It is an additional manually approved release strategy; the existing Core runtime pipeline remains unchanged.

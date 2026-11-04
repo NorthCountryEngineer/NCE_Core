@@ -1,0 +1,144 @@
+{{- $root := . -}}
+{{- $name := include "nce.name" . -}}
+{{- range $component := list "web" "api" "browser" }}
+{{- $workload := index $root.Values.workloads $component -}}
+{{- $image := required (printf "missing digest-pinned %s image" $component) (index $root.Values.images $component) -}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "nce.labels" $root | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "nce.labels" $root | nindent 4 }}
+spec:
+  # API in-process work and browser scan admission are single-process.
+  replicas: {{ $workload.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      annotations:
+        nce.core/release: {{ $root.Chart.Version | quote }}
+      labels:
+        app.kubernetes.io/instance: {{ $root.Release.Name }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      serviceAccountName: {{ $name }}-{{ $component }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
+        runAsGroup: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
+        fsGroup: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile: {type: RuntimeDefault}
+      {{- with $root.Values.external.pullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $component }}
+          image: {{ $image | quote }}
+          imagePullPolicy: IfNotPresent
+          {{- with $workload.command }}
+          command: {{ toJson . }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $workload.port }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: {{ $workload.cpu | quote }}, memory: {{ $workload.memory | quote }}}
+            limits: {cpu: "1000m", memory: {{ $workload.memory | quote }}}
+          readinessProbe:
+            httpGet: {path: {{ $workload.readinessPath | quote }}, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: {{ $workload.readinessPath | quote }}, port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          {{- if eq $component "web" }}
+          env:
+            - name: STUDIO_API_UPSTREAM
+              value: {{ printf "%s-api" $name | quote }}
+            - name: NGINX_ENVSUBST_FILTER
+              value: STUDIO_API_UPSTREAM
+          volumeMounts:
+            - {name: cache, mountPath: /var/cache/nginx}
+            - {name: run, mountPath: /var/run}
+            - {name: conf, mountPath: /etc/nginx/conf.d}
+          {{- else if eq $component "api" }}
+          env:
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ required "databaseCredentialRef required" $root.Values.external.databaseCredentialRef | quote }}, key: DATABASE_URL}}
+            - name: SESSION_SECRET
+              valueFrom: {secretKeyRef: {name: {{ required "runtimeCredentialRef required" $root.Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
+            - name: SAM_BROWSER_URL
+              value: {{ printf "http://%s-browser:8010" $name | quote }}
+            {{- range $key := $root.Values.external.apiEnvFromKeys }}
+            - name: {{ $key | quote }}
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
+            {{- end }}
+            {{- range $key, $value := $root.Values.external.apiEnvironment }}
+            - name: {{ $key | quote }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - {name: scratch, mountPath: /tmp}
+            - {name: local, mountPath: /app/.local}
+            {{- with $root.Values.external.referenceLibraryClaim }}
+            - {name: library, mountPath: /reference/library, readOnly: true}
+            {{- end }}
+          {{- else }}
+          volumeMounts:
+            - {name: scratch, mountPath: /tmp}
+            - {name: shm, mountPath: /dev/shm}
+          {{- end }}
+      volumes:
+        {{- if eq $component "web" }}
+        - {name: cache, emptyDir: {sizeLimit: 32Mi}}
+        - {name: run, emptyDir: {sizeLimit: 8Mi}}
+        - {name: conf, emptyDir: {sizeLimit: 8Mi}}
+        {{- else if eq $component "api" }}
+        - {name: scratch, emptyDir: {sizeLimit: 256Mi}}
+        - {name: local, emptyDir: {sizeLimit: 64Mi}}
+        {{- with $root.Values.external.referenceLibraryClaim }}
+        - {name: library, persistentVolumeClaim: {claimName: {{ . | quote }}}}
+        {{- end }}
+        {{- else }}
+        - {name: scratch, emptyDir: {sizeLimit: 1Gi}}
+        - {name: shm, emptyDir: {medium: Memory, sizeLimit: 256Mi}}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-{{ $component }}
+  labels:
+    {{- include "nce.labels" $root | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: {{ $component }}
+  ports:
+    - {name: http, port: {{ $workload.port }}, targetPort: http}
+{{- end }}

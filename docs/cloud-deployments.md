@@ -913,3 +913,8 @@ AWS documents transactional condition permissions in
 [Using IAM with DynamoDB transactions](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html).
 The existing source-build isolation, account checks, immutable source admission,
 retention, recovery and charge-approval boundaries remain unchanged.
+
+
+## External Kubernetes release artifacts
+
+For OCI image and Helm chart publication from NCE-owned source builds, see [Application OCI/Helm releases](helm-oci-releases.md). This does not replace CloudRelease's existing Amplify and Fargate hosting workflows.

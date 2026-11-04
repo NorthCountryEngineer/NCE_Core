@@ -1,0 +1,66 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . }}
+{{- range $component := list "web" "api" "browser" }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "nce.name" $root }}-{{ $component }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $component }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+  {{- if eq $component "web" }}
+    - from:
+        - namespaceSelector:
+            matchLabels: {{ toJson $root.Values.networkPolicy.ingressNamespaceSelector }}
+          podSelector:
+            matchLabels: {{ toJson $root.Values.networkPolicy.ingressPodSelector }}
+      ports:
+        - {port: 8080, protocol: TCP}
+  {{- else }}
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: {{ if eq $component "api" }}web{{ else }}api{{ end }}
+      ports:
+        - {port: {{ if eq $component "api" }}8000{{ else }}8010{{ end }}, protocol: TCP}
+  {{- end }}
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    {{- if eq $component "web" }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: api
+      ports: [{port: 8000, protocol: TCP}]
+    {{- else if eq $component "api" }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+              app.kubernetes.io/component: browser
+      ports: [{port: 8010, protocol: TCP}]
+    {{- end }}
+    {{- if or (eq $component "api") (eq $component "browser") }}
+      {{- if and (eq $component "browser") $root.Values.networkPolicy.browserPublicEgress }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8, 100.64.0.0/10]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 80}]
+      {{- else if eq $component "api" }}
+      {{- range $cidr := $root.Values.external.externalEgressCIDRs }}
+    - to: [{ipBlock: {cidr: {{ $cidr | quote }}}}]
+      {{- end }}
+      {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
