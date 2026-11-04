@@ -41,6 +41,8 @@ spec:
         runAsNonRoot: true
         runAsUser: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
         runAsGroup: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
+        fsGroup: {{ if eq $component "web" }}101{{ else if eq $component "browser" }}10002{{ else }}10001{{ end }}
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile: {type: RuntimeDefault}
       {{- with $root.Values.external.pullSecrets }}
       imagePullSecrets:
