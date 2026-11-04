@@ -85,8 +85,8 @@ def load_config(path):
     # All deployable workloads have exactly one digest-pinned image. Disallow
     # arbitrary image/command injection from an unreviewed environment overlay.
     workloads = value["values"]["workloads"]
-    if set(workloads) != set(value["images"]):
-        raise ReleaseError("Workload/image names do not match.")
+    if set(workloads) != {"web", "api", "browser"} or set(value["images"]) != set(workloads):
+        raise ReleaseError("This chart requires exactly the web, api and browser workloads.")
     for key in value["values"]["external"]["apiEnvironment"]:
         if re.search(r"SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY", key):
             raise ReleaseError("Secret values may not be embedded in chart environment settings.")
@@ -264,6 +264,10 @@ def release(config_path, source, *, mode="verify"):
     if mode == "publish":
         require_publish(config)
         require_runner_branch(config, core_commit)
+        if config.get("require_signatures") and not shutil.which("cosign"):
+            raise ReleaseError("OCI signing is required but cosign is unavailable.")
+        if config.get("require_sbom") and not shutil.which("syft"):
+            raise ReleaseError("SBOM generation is required but syft is unavailable.")
     receipts = admission(config, app_commit, core_commit)
     release_id = release_version(config["chart"]["base_version"], app_commit, core_commit)
     completed = []
