@@ -33,6 +33,8 @@ def normalize_feedback(release, event):
         raise FeedbackError("Feedback must have exactly the approved metadata fields.")
     if event["release_id"] != release.get("release_id"):
         raise FeedbackError("Feedback is not for the originating release.")
+    if not isinstance(event["images"], dict) or not isinstance(event["chart_digest"], str):
+        raise FeedbackError("Feedback artifact references must be structured.")
     if event["images"] != release.get("images") or event["chart_digest"] != release.get("chart", {}).get("oci_digest"):
         raise FeedbackError("Feedback artifact digests do not match the released OCI artifacts.")
     if not _SHA.fullmatch(event["chart_digest"] or "") or any(
@@ -53,9 +55,12 @@ def normalize_feedback(release, event):
     if diagnostic and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,255}", diagnostic):
         raise FeedbackError("Unsafe diagnostics reference.")
     if diagnostic.startswith("http"):
-        uri = urlsplit(diagnostic)
-        if uri.scheme != "https" or not uri.hostname or uri.username or uri.password or uri.port:
-            raise FeedbackError("Unsafe diagnostics reference.")
+        try:
+            uri = urlsplit(diagnostic)
+            if uri.scheme != "https" or not uri.hostname or uri.username or uri.password or uri.port:
+                raise ValueError
+        except ValueError:
+            raise FeedbackError("Unsafe diagnostics reference.") from None
     elif diagnostic and not _ID.fullmatch(diagnostic):
         raise FeedbackError("Use an opaque diagnostic receipt identifier.")
     return {key: event[key] for key in sorted(required)}
