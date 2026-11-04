@@ -14,7 +14,7 @@
       "S3_ADDRESSING_STYLE": "auto",
       "PLATFORM_ADMIN_USERS": "approved-operator"
     },
-    "apiCredentialKeys": [],
+    "apiEnvFromKeys": [],
     "externalEgressCIDRs": []
   },
   "ingress": {
