@@ -82,6 +82,7 @@ spec:
           volumeMounts:
             - {name: cache, mountPath: /var/cache/nginx}
             - {name: run, mountPath: /var/run}
+            - {name: conf, mountPath: /etc/nginx/conf.d}
           {{- else if eq $component "api" }}
           env:
             - name: DATABASE_URL
@@ -113,6 +114,7 @@ spec:
         {{- if eq $component "web" }}
         - {name: cache, emptyDir: {sizeLimit: 32Mi}}
         - {name: run, emptyDir: {sizeLimit: 8Mi}}
+        - {name: conf, emptyDir: {sizeLimit: 8Mi}}
         {{- else if eq $component "api" }}
         - {name: scratch, emptyDir: {sizeLimit: 256Mi}}
         - {name: local, emptyDir: {sizeLimit: 64Mi}}
