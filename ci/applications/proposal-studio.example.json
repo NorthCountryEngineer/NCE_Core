@@ -93,5 +93,6 @@
   },
   "validation_values_file": "ci/applications/proposal-studio.validation.json",
   "require_signatures": true,
-  "require_sbom": true
+  "require_sbom": true,
+  "environment": "staging"
 }
