@@ -10,7 +10,7 @@
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:NorthCountryEngineer/NCE_Core:environment:nce-oci-production"
+          "token.actions.githubusercontent.com:sub": "repo:NorthCountryEngineer@132168834/NCE_Core@1412449668:environment:nce-oci-production"
         }
       }
     }
