@@ -14,10 +14,7 @@
       "S3_ADDRESSING_STYLE": "auto",
       "PLATFORM_ADMIN_USERS": "approved-operator"
     },
-    "apiCredentialKeys": [
-      "GITHUB_CLIENT_ID",
-      "GITHUB_CLIENT_SECRET"
-    ],
+    "apiCredentialKeys": [],
     "externalEgressCIDRs": []
   },
   "ingress": {
