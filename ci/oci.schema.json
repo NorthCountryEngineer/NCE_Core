@@ -176,19 +176,19 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
-            "databaseSecret",
-            "runtimeSecret",
+            "databaseCredentialRef",
+            "runtimeCredentialRef",
             "pullSecrets",
             "apiEnvironment",
-            "apiSecretKeys",
+            "apiCredentialKeys",
             "externalEgressCIDRs"
           ],
           "properties": {
-            "databaseSecret": {
+            "databaseCredentialRef": {
               "type": "string",
               "minLength": 1
             },
-            "runtimeSecret": {
+            "runtimeCredentialRef": {
               "type": "string",
               "minLength": 1
             },
@@ -204,7 +204,7 @@
                 "type": "string"
               }
             },
-            "apiSecretKeys": {
+            "apiCredentialKeys": {
               "type": "array",
               "items": {
                 "type": "string"
