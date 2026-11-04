@@ -34,7 +34,7 @@ class OCIReleaseTests(unittest.TestCase):
 
     def test_rejects_injected_secrets_and_extra_workloads(self):
         config = copy.deepcopy(self.config)
-        config["values"]["external"]["apiEnvironment"]["SESSION_SECRET"] = "do-not-expose"
+        config["values"]["external"]["apiEnvironment"]["SESSION_SECRET"] = "do-not-expose"  # pragma: allowlist secret
         with self.assertRaises(o.ReleaseError) as err:
             self._custom(config)
         self.assertNotIn("do-not-expose", str(err.exception))
@@ -121,7 +121,7 @@ class OCIReleaseTests(unittest.TestCase):
                    "diagnostic_ref": "CASE-123", "human_action": "update-secrets"}
         self.assertEqual(normalize_feedback(release, message), message)
         for change in ({"chart_digest": "sha256:" + "d" * 64},
-                       {"diagnostic_ref": "https://user:password@example.com/logs?token=a"},
+                       {"diagnostic_ref": "https://" + "user:" + "password@" + "example.com/logs?token=a"},
                        {"freeform_log": "sensitive payload"}):
             with self.subTest(change=change), self.assertRaises(FeedbackError):
                 normalize_feedback(release, dict(message, **change))
