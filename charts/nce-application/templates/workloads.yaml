@@ -86,14 +86,14 @@ spec:
           {{- else if eq $component "api" }}
           env:
             - name: DATABASE_URL
-              valueFrom: {secretKeyRef: {name: {{ required "databaseSecret required" $root.Values.external.databaseSecret | quote }}, key: DATABASE_URL}}
+              valueFrom: {secretKeyRef: {name: {{ required "databaseCredentialRef required" $root.Values.external.databaseCredentialRef | quote }}, key: DATABASE_URL}}
             - name: SESSION_SECRET
-              valueFrom: {secretKeyRef: {name: {{ required "runtimeSecret required" $root.Values.external.runtimeSecret | quote }}, key: SESSION_SECRET}}
+              valueFrom: {secretKeyRef: {name: {{ required "runtimeCredentialRef required" $root.Values.external.runtimeCredentialRef | quote }}, key: SESSION_SECRET}}
             - name: SAM_BROWSER_URL
               value: {{ printf "http://%s-browser:8010" $name | quote }}
-            {{- range $key := $root.Values.external.apiSecretKeys }}
+            {{- range $key := $root.Values.external.apiCredentialKeys }}
             - name: {{ $key | quote }}
-              valueFrom: {secretKeyRef: {name: {{ $root.Values.external.runtimeSecret | quote }}, key: {{ $key | quote }}}}
+              valueFrom: {secretKeyRef: {name: {{ $root.Values.external.runtimeCredentialRef | quote }}, key: {{ $key | quote }}}}
             {{- end }}
             {{- range $key, $value := $root.Values.external.apiEnvironment }}
             - name: {{ $key | quote }}
