@@ -21,7 +21,6 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: Never
-      serviceAccountName: {{ $name }}-api
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
