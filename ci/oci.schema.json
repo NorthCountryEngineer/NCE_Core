@@ -180,7 +180,7 @@
             "runtimeCredentialRef",
             "pullSecrets",
             "apiEnvironment",
-            "apiCredentialKeys",
+            "apiEnvFromKeys",
             "externalEgressCIDRs"
           ],
           "properties": {
@@ -204,7 +204,7 @@
                 "type": "string"
               }
             },
-            "apiCredentialKeys": {
+            "apiEnvFromKeys": {
               "type": "array",
               "items": {
                 "type": "string"
