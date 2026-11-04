@@ -57,6 +57,10 @@ class OCIReleaseTests(unittest.TestCase):
             self.assertEqual(values["images"], self.images)
             self.assertEqual(values["releaseIdentity"]["sourceCommit"], APP)
             self.assertNotIn("SESSION_SECRET", json.dumps(values["external"]["apiEnvironment"]))
+            self.assertEqual(values["external"]["apiEnvironment"], {})
+            self.assertEqual(values["external"]["databaseCredentialRef"], "")
+            self.assertFalse(values["ingress"]["enabled"])
+            self.assertNotIn("proposal.example.invalid", (chart / "values.yaml").read_text())
         bad = dict(self.images, api=self.config["images"]["api"]["repository"] + ":latest")
         with tempfile.TemporaryDirectory() as folder, self.assertRaises(o.ReleaseError):
             o.generate_chart(self.config, bad, APP, CORE, folder)
@@ -65,7 +69,7 @@ class OCIReleaseTests(unittest.TestCase):
         source = (o.CHART_SOURCE / "templates" / "workloads.yaml").read_text()
         for token in ("runAsNonRoot: true", "readOnlyRootFilesystem: true",
                       'capabilities: {drop: ["ALL"]}', "automountServiceAccountToken: false",
-                      "seccompProfile: {type: RuntimeDefault}", "readinessProbe:", "livenessProbe:"):
+                      "seccompProfile: {type: RuntimeDefault}", "fsGroupChangePolicy: OnRootMismatch", "readinessProbe:, "livenessProbe:"):
             self.assertIn(token, source)
         migration = (o.CHART_SOURCE / "templates" / "migration.yaml").read_text()
         self.assertIn("argocd.argoproj.io/hook: PreSync", migration)
