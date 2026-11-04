@@ -187,10 +187,12 @@
           "type": "boolean"
         },
         "ingressNamespaceSelector": {
-          "type": "object"
+          "type": "object",
+          "minProperties": 1
         },
         "ingressPodSelector": {
-          "type": "object"
+          "type": "object",
+          "minProperties": 1
         },
         "browserPublicEgress": {
           "type": "boolean"
