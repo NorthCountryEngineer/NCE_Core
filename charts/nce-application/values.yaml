@@ -7,7 +7,7 @@ external:
   runtimeCredentialRef: ""
   pullSecrets: []
   apiEnvironment: {}
-  apiCredentialKeys: []
+  apiEnvFromKeys: []
   externalEgressCIDRs: []
 ingress:
   enabled: false
