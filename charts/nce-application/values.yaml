@@ -1,0 +1,21 @@
+# Release-specific values.yaml is generated from the NCE Core release contract.
+images: {}
+releaseIdentity: {}
+workloads: {}
+external:
+  databaseSecret: ""
+  runtimeSecret: ""
+  pullSecrets: []
+  apiEnvironment: {}
+  apiSecretKeys: []
+  externalEgressCIDRs: []
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tlsSecret: ""
+networkPolicy:
+  enabled: true
+  ingressNamespaceSelector: {}
+  ingressPodSelector: {}
+  browserPublicEgress: false
