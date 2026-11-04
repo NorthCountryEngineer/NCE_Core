@@ -8,6 +8,8 @@ external:
   pullSecrets: []
   apiEnvironment: {}
   apiEnvFromKeys: []
+  apiServiceAccountAnnotations: {}
+  migrationServiceAccountAnnotations: {}
   externalEgressCIDRs: []
 ingress:
   enabled: false

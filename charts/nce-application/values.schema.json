@@ -214,6 +214,36 @@
           "minLength": 1,
           "maxLength": 253,
           "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$"
+        },
+        "apiServiceAccountAnnotations": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 317,
+            "not": {
+              "pattern": "^(helm\\.sh|argocd\\.argoproj\\.io)/"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        },
+        "migrationServiceAccountAnnotations": {
+          "type": "object",
+          "maxProperties": 16,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 317,
+            "not": {
+              "pattern": "^(helm\\.sh|argocd\\.argoproj\\.io)/"
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 1024
+          }
         }
       }
     },

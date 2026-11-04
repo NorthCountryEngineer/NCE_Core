@@ -97,6 +97,43 @@ class ChartRuntimeTests(unittest.TestCase):
         self.assertIn("backoffLimit: 0", migration)
         self.assertIn('command: ["python", "-m", "studio.migrate"]', migration)
 
+    def test_destination_workload_identity_is_limited_to_api_and_migration_accounts(self):
+        values = deepcopy(self.values)
+        api_role = "arn:aws:iam::111111111111:role/destination-api"
+        migration_role = "arn:aws:iam::111111111111:role/destination-migration"
+        values["external"]["apiServiceAccountAnnotations"] = {"eks.amazonaws.com/role-arn": api_role}
+        values["external"]["migrationServiceAccountAnnotations"] = {"eks.amazonaws.com/role-arn": migration_role}
+        self.validator.validate(values)
+        documents = self._render(values=values)
+        api = self._resource(documents, "ServiceAccount", "proposal-studio-api")
+        migration = self._resource(documents, "ServiceAccount", "proposal-studio-migrate")
+        self.assertIn(api_role, api)
+        self.assertNotIn(migration_role, api)
+        self.assertIn(migration_role, migration)
+        self.assertNotIn(api_role, migration)
+        self.assertIn("argocd.argoproj.io/hook: PreSync", migration)
+        for component in ("web", "browser"):
+            account = self._resource(documents, "ServiceAccount", "proposal-studio-" + component)
+            self.assertNotIn("eks.amazonaws.com/role-arn", account)
+            self.assertNotIn(api_role, account)
+            self.assertNotIn(migration_role, account)
+        for component in ("api", "migrate", "web", "browser"):
+            account = self._resource(documents, "ServiceAccount", "proposal-studio-" + component)
+            self.assertIn("automountServiceAccountToken: false", account)
+        defaults = json.loads((self.chart / "values.yaml").read_text())
+        self.assertEqual(defaults["external"].get("apiServiceAccountAnnotations", {}), {})
+        self.assertEqual(defaults["external"].get("migrationServiceAccountAnnotations", {}), {})
+
+    def test_identity_annotations_cannot_change_release_hooks_or_use_nonstring_values(self):
+        for name in ("apiServiceAccountAnnotations", "migrationServiceAccountAnnotations"):
+            for key, value in (("helm.sh/hook", "post-install"),
+                               ("argocd.argoproj.io/sync-wave", "10"),
+                               ("eks.amazonaws.com/role-arn", 123)):
+                with self.subTest(name=name, key=key):
+                    values = deepcopy(self.values)
+                    values["external"][name] = {key: value}
+                    self.assertFalse(self.validator.is_valid(values))
+
     def test_external_database_egress_never_reaches_browser_policy(self):
         values = deepcopy(self.values)
         values["external"]["externalEgressCIDRs"] = ["10.20.30.40/32"]

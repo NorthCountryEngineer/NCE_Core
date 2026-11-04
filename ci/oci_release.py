@@ -377,6 +377,7 @@ def generate_chart(config, images, app_commit, core_commit, destination):
         "releaseIdentity": {"sourceCommit": app_commit, "runnerCommit": core_commit},
         "workloads": deepcopy(config["values"]["workloads"]),
         "external": {"databaseCredentialRef": "", "runtimeCredentialRef": "",
+                     "apiServiceAccountAnnotations": {}, "migrationServiceAccountAnnotations": {},
                      "pullSecrets": [], "apiEnvironment": {}, "apiEnvFromKeys": [],
                      "externalEgressCIDRs": []},
         "ingress": {"enabled": False, "className": "", "host": "", "tlsRef": ""},

@@ -8,6 +8,14 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ $name }}-{{ $component }}
+  {{- if eq $component "api" }}
+  {{- with $root.Values.external.apiServiceAccountAnnotations }}
+  annotations:
+    {{- range $key, $value := . }}
+    {{ $key | quote }}: {{ $value | quote }}
+    {{- end }}
+  {{- end }}
+  {{- end }}
   labels:
     {{- include "nce.labels" $root | nindent 4 }}
 automountServiceAccountToken: false
