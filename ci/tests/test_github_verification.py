@@ -25,10 +25,16 @@ class GitHubVerificationTests(unittest.TestCase):
         self.assertNotIn('if', self.job)
         self.assertNotIn('continue-on-error', self.job)
         steps = self.job['steps']
-        self.assertEqual([step['run'] for step in steps if 'run' in step], [
+        commands = [step['run'] for step in steps if 'run' in step]
+        self.assertEqual(commands[1:3], [
             'python3 deployment/aws-platform/check_template.py',
             'python3 ci/verify_with_postgres.py',
         ])
+        self.assertEqual(len(commands), 4)
+        self.assertIn('ci/install_oci_tools.py --validation-only', commands[0])
+        self.assertIn('validate_chart(c, chart, version)', commands[3])
+        self.assertNotIn('skip-schema', commands[3])
+        self.assertNotIn('ignore-missing', commands[3])
         for step in steps:
             self.assertNotIn('if', step)
             self.assertNotIn('continue-on-error', step)

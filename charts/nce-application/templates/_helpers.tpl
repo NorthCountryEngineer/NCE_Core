@@ -1,5 +1,5 @@
 {{- define "nce.name" -}}
-{{- .Release.Name | trunc 45 | trimSuffix "-" -}}
+{{- .Release.Name | trunc 41 | trimSuffix "-" -}}
 {{- end -}}
 {{- define "nce.labels" -}}
 app.kubernetes.io/name: {{ include "nce.name" . }}

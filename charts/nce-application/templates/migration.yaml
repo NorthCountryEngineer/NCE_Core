@@ -1,10 +1,26 @@
 {{- $name := include "nce.name" . -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}-migrate
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    helm.sh/hook-delete-policy: before-hook-creation
+  labels:
+    {{- include "nce.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ $name }}-migrate-{{ .Values.releaseIdentity.sourceCommit | trunc 12 }}
   annotations:
     argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-10"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-weight: "-10"
@@ -21,11 +37,15 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: Never
+      serviceAccountName: {{ $name }}-migrate
       automountServiceAccountToken: false
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
+        fsGroup: 10001
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile: {type: RuntimeDefault}
       {{- with .Values.external.pullSecrets }}
       imagePullSecrets:

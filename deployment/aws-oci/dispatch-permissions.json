@@ -1,0 +1,159 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RunFixedBuilder",
+      "Effect": "Allow",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release"
+    },
+    {
+      "Sid": "InspectFixedBuilder",
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StopBuild"
+      ],
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release"
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "ForAnyValue:StringNotEquals": {
+          "codebuild:environment.environmentVariables.name": [
+            "NCE_RELEASE_MODE",
+            "NCE_APPLICATION_COMMIT"
+          ]
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "StringNotEquals": {
+          "codebuild:environment.environmentVariables/NCE_RELEASE_MODE.value": [
+            "verify",
+            "publish"
+          ]
+        },
+        "Null": {
+          "codebuild:environment.environmentVariables/NCE_RELEASE_MODE.value": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:source.buildspec": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:source.location": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:source.auth.resource": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:serviceRole": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:environment.image": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:environment.privilegedMode": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:environment.computeType": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:environment.type": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:logsConfig": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:artifacts": "false"
+        }
+      }
+    },
+    {
+      "Effect": "Deny",
+      "Action": "codebuild:StartBuild",
+      "Resource": "arn:aws:codebuild:us-east-1:015454941623:project/nce-proposal-oci-release",
+      "Condition": {
+        "Null": {
+          "codebuild:secondarySources": "false"
+        }
+      }
+    }
+  ]
+}

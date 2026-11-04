@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "application": {
+    "name": "proposal-studio",
+    "repository": "NorthCountryEngineer/Proposal_Studio"
+  },
+  "runner_release_branch": "main",
+  "registry": {
+    "account_id": "015454941623",
+    "region": "us-east-1",
+    "chart_repository": "015454941623.dkr.ecr.us-east-1.amazonaws.com/nce/proposal-studio",
+    "release_bucket": "nce-family-cloud-platform-artifacts-u7go6eehrq5w"
+  },
+  "chart": {
+    "name": "proposal-studio",
+    "base_version": "0.1.0"
+  },
+  "images": {
+    "web": {
+      "repository": "015454941623.dkr.ecr.us-east-1.amazonaws.com/nce-proposal-web",
+      "dockerfile": "apps/web/Dockerfile"
+    },
+    "api": {
+      "repository": "015454941623.dkr.ecr.us-east-1.amazonaws.com/nce-family-proposal-api",
+      "dockerfile": "apps/api/Dockerfile"
+    },
+    "browser": {
+      "repository": "015454941623.dkr.ecr.us-east-1.amazonaws.com/nce-family-proposal-browser",
+      "dockerfile": "apps/browser/Dockerfile"
+    }
+  },
+  "values": {
+    "workloads": {
+      "web": {
+        "port": 8080,
+        "replicas": 1,
+        "readinessPath": "/health",
+        "memory": "256Mi",
+        "cpu": "100m"
+      },
+      "api": {
+        "port": 8000,
+        "replicas": 1,
+        "readinessPath": "/api/health",
+        "memory": "1Gi",
+        "cpu": "200m"
+      },
+      "browser": {
+        "port": 8010,
+        "replicas": 1,
+        "readinessPath": "/health",
+        "memory": "1Gi",
+        "cpu": "200m"
+      }
+    },
+    "external": {
+      "databaseCredentialRef": "destination-database",
+      "runtimeCredentialRef": "destination-runtime",
+      "pullSecrets": [],
+      "apiEnvironment": {},
+      "apiEnvFromKeys": [],
+      "externalEgressCIDRs": []
+    },
+    "ingress": {
+      "enabled": false,
+      "className": "",
+      "host": "",
+      "tlsRef": ""
+    },
+    "networkPolicy": {
+      "enabled": true,
+      "ingressNamespaceSelector": {
+        "kubernetes.io/metadata.name": "ingress-nginx"
+      },
+      "ingressPodSelector": {
+        "app.kubernetes.io/name": "ingress-nginx"
+      },
+      "browserPublicEgress": false
+    }
+  },
+  "validation_values_file": "ci/applications/proposal-studio.validation.json",
+  "require_signatures": true,
+  "require_sbom": true,
+  "environment": "production",
+  "builder_project": "nce-proposal-oci-release",
+  "signing": {
+    "key_uri": "awskms:///arn:aws:kms:us-east-1:015454941623:key/808040ff-0728-4996-b3bd-757609d6b943"
+  }
+}

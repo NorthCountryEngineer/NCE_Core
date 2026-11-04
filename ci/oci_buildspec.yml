@@ -1,0 +1,12 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+    commands:
+      - python3 ci/install_oci_tools.py
+      - python3 -m pip install 'jsonschema==4.26.0'
+      - docker info >/dev/null
+  build:
+    commands:
+      - python3 ci/run_oci_build.py
