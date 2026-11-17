@@ -113,8 +113,12 @@ def index(request, slug):
             continue
         releases.append(release)
     native = installation.service.applications.filter(name='NCE Robotics iOS', client_type='public', active=True).first()
+    development_native = installation.service.applications.filter(native_development=True, client_type='public', active=True).first()
+    can_register_development = request.user.is_superuser or organization.memberships.filter(
+        user=request.user, active=True, kind='administrator').exists()
     return render(request, 'platform_services/edge_dashboard.html', {'organization': organization,
         'installation': installation, 'devices': devices, 'releases': releases, 'native': native,
+        'development_native': development_native, 'can_register_development': can_register_development,
         'can_enroll': 'admin' in permissions or 'device-manage' in permissions,
         'can_release': 'admin' in permissions or 'release-manage' in permissions})
 
@@ -133,6 +137,26 @@ def register(request, slug):
         edge.register_application(organization, actor=request.user)
     except ValidationError as error:
         return HttpResponseBadRequest(error.messages[0])
+    return redirect('edge_dashboard', slug=slug)
+
+
+@login_required
+@never_cache
+@require_POST
+def register_development(request, slug):
+    organization = get_object_or_404(Organization, slug=slug, active=True)
+    request.organization = organization
+    principal = request_principal(request)
+    require_access(principal, organization, 'edge.development_registration')
+    if not (request.user.is_superuser or organization.memberships.filter(user=request.user, active=True, kind='administrator').exists()):
+        raise PermissionDenied
+    installation = edge.installation_for_organization(organization)
+    edge.authorize(principal, installation, 'device-manage')
+    try:
+        edge.register_development_client(organization, request.user)
+    except ValidationError as error:
+        return HttpResponseBadRequest(error.messages[0])
+    messages.success(request, 'The separate Personal Team development client is registered. Use its development client ID in the local-testing build.')
     return redirect('edge_dashboard', slug=slug)
 
 

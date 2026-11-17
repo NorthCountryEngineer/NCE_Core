@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/edge/v1/agent/artifacts/<uuid:pk>/', edge_api.artifact),
     path('organizations/<slug:slug>/platform/robotics/', edge_portal.index, name='edge_dashboard'),
     path('organizations/<slug:slug>/platform/robotics/register/', edge_portal.register, name='edge_register'),
+    path('organizations/<slug:slug>/platform/robotics/development-client/', edge_portal.register_development, name='edge_register_development'),
     path('organizations/<slug:slug>/platform/robotics/enroll/', edge_portal.enroll, name='edge_enroll'),
     path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/revoke/', edge_portal.revoke, name='edge_revoke'),
     path('organizations/<slug:slug>/platform/robotics/releases/', edge_portal.upload, name='edge_release_upload'),

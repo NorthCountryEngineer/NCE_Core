@@ -9,6 +9,9 @@
 <form method="post" action="{% url 'edge_register' organization.slug %}">{% csrf_token %}<button type="submit">Register application</button></form></section>
 {% else %}
 {% if native %}<section><h2>iOS connection</h2><p>Use this Core origin and public client ID when setting up the iOS app.</p><p>Client ID: <code>{{ native.client_id }}</code></p><p>Callback: <code>{{ native.redirect_uris }}</code></p></section>{% endif %}
+{% if development_native or can_register_development %}<section><h2>Personal Team local testing</h2><p>This separate sign-in registration supports the development build installed with a free Apple Personal Team. Use the production client above for the production app.</p>
+{% if development_native %}<p>Development client ID: <code>{{ development_native.client_id }}</code></p><p>Development callback: <code>{{ development_native.redirect_uris }}</code></p>
+{% elif can_register_development %}<form method="post" action="{% url 'edge_register_development' organization.slug %}">{% csrf_token %}<button type="submit">Register Personal Team development client</button></form>{% endif %}</section>{% endif %}
 {% if can_enroll %}<section><h2>Connect a device</h2><form method="post" action="{% url 'edge_enroll' organization.slug %}">{% csrf_token %}<label>Device name <input name="name" required maxlength="100" value="JudeyBot"></label><button type="submit">Create enrollment code</button></form><p>Codes can be used once and expire after ten minutes.</p></section>{% endif %}
 <section><h2>Software releases</h2>
 {% if can_release %}<form method="post" enctype="multipart/form-data" action="{% url 'edge_release_upload' organization.slug %}">{% csrf_token %}<label>Application release <input type="file" name="artifact" accept=".tar.gz,.tgz" required></label><button type="submit">Upload release</button></form>{% endif %}

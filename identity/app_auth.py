@@ -45,7 +45,9 @@ def authorization_context(request, value=None):
     if not app or not app.is_usable(request) or params.get("redirect_uri") not in app.redirect_uris.split():
         return None
     origin = urlparse(params["redirect_uri"])
-    if (not origin.netloc or not origin.hostname or origin.username is not None or origin.fragment or
+    from .native_clients import robotics_development_callback
+    development_callback = robotics_development_callback(app, params['redirect_uri'])
+    if not development_callback and (not origin.netloc or not origin.hostname or origin.username is not None or origin.fragment or
             origin.scheme not in {"https", "http"} or
             origin.scheme == "http" and not (settings.DEBUG and origin.hostname in {"localhost", "127.0.0.1", "::1"})):
         return None
@@ -57,7 +59,7 @@ def authorization_context(request, value=None):
         theme = "axolotl" if app.service.slug == "axolotl-news" else "core"
     return {"application": app, "next": value, "name": app.service.auth_name or app.service.name,
             "theme": theme,
-            "home": f"{origin.scheme}://{origin.netloc}",
+            "home": settings.ISSUER if development_callback else f"{origin.scheme}://{origin.netloc}",
             "signup_url": reverse("app_signup") + "?" + urlencode({"next": value}),
             "login_url": reverse("login") + "?" + urlencode({"next": value})}
 

@@ -58,6 +58,20 @@ The `/.well-known/apple-app-site-association` response uses the exact app ID for
 
 Core manages authorization and device jobs. Building and installing the native iOS binary still requires Xcode and Apple-supported signing/distribution. The source project's build scripts distinguish Foundation checks from an actual iOS build.
 
+### Free Apple Personal Team local testing
+
+The companion iOS project's **PersonalTeam** configuration uses a separate bundle, `ai.nnytech.NCERobotics.Development`, and the exact private-use callback `ai.nnytech.ncerobotics.dev:/oauth/callback`. It does not require the Associated Domains entitlement or the production AASA association. Core's authorization and token endpoints still use the configured HTTPS issuer.
+
+After deploying this Core version and applying its migrations, an organization administrator can select **Register Personal Team development client** in the Robotics page. The page then shows a distinct **Development client ID**. The equivalent operator command is:
+
+```sh
+python manage.py register_robotics --organization EXISTING_ORGANIZATION_SLUG --development-client
+```
+
+Copy that public ID into the development build's `NCE_PERSONAL_TEAM_CLIENT_ID`. Keep the production client ID in the production build configuration. The command creates or reuses only the marked development registration; it does not convert the HTTPS client, change its callback, or grant users additional roles.
+
+The private-use callback is allowed only for this explicit public-client registration bound to the active `nce-robotics` installation. Other applications, different schemes/paths/query strings, and confidential clients cannot use the exception. Generic registration forms cannot enable it. S256 PKCE, unpredictable state, explicit consent, tenant membership, service permissions, and live revocation remain enforced. Personal Team signing and device-installation limits still apply; this is a local testing route, not App Store distribution.
+
 ## API and validation
 
 Versioned APIs are under `/api/edge/v1/`. Human requests use a current service-bound Core OAuth bearer. Agent routes use a separate per-device bearer and cannot become a human session. Artifact downloads require a current job lease and are limited to that device's approved release.

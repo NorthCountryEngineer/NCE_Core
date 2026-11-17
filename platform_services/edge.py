@@ -147,6 +147,29 @@ def register_application(organization, actor=None):
     return installation, app
 
 
+@transaction.atomic
+def register_development_client(organization, actor=None):
+    """Create a separate opt-in Personal Team client; never edit the HTTPS client."""
+    from identity.models import Application
+    from identity.native_clients import ROBOTICS_DEVELOPMENT_CLIENT_NAME, ROBOTICS_DEVELOPMENT_REDIRECT
+    installation, _ = register_application(organization, actor)
+    app = Application.objects.filter(service=installation.service, native_development=True).first()
+    if app:
+        app.full_clean()
+        if not app.active:
+            raise ValidationError('This development registration is revoked. Review it before reusing it.')
+        return installation, app
+    app = Application(service=installation.service, name=ROBOTICS_DEVELOPMENT_CLIENT_NAME,
+        client_type=Application.CLIENT_PUBLIC, authorization_grant_type=Application.GRANT_AUTHORIZATION_CODE,
+        algorithm=Application.RS256_ALGORITHM, redirect_uris=ROBOTICS_DEVELOPMENT_REDIRECT,
+        allowed_origins='', native_development=True)
+    app.full_clean()
+    app.save()
+    audit(installation, 'edge.development_client_registered',
+        principal=Principal(user=actor) if actor else None, target=app.pk)
+    return installation, app
+
+
 def device_values(device, permissions=None):
     value = {'id': str(device.pk), 'name': device.name, 'active': device.active, 'online': device.online,
         'last_seen_at': device.last_seen_at.isoformat() if device.last_seen_at else None,
