@@ -82,3 +82,11 @@ python manage.py --local makemigrations --check --dry-run
 ```
 
 The companion project also runs the actual Core HTTP contract through the agent and a temporary helper, including deployment/rollback, lost acknowledgements, reboot recovery, and revocation. Live Pi installation, a production Core rollout, and a signed iPhone build are separate acceptance steps.
+
+## Live command console
+
+Agent 0.2.0 advertises `app.command` in its report. Authorized device readers can submit a bounded command string with a UUID request ID through the existing jobs API, the native Console, or the CSRF-protected device console linked from the robotics dashboard. Command requests expire after two minutes and require current authority again at claim and start. Older agents do not receive command jobs.
+
+The agent uses a fixed loopback application endpoint as an unprivileged user; it never forwards these commands to the root helper. The first application supports machine diagnostics and literal echo receipts. Its output includes the actual hostname, observation timestamp, application version, process ID, and matching command/job UUID. Unknown commands and unavailable readings return explicit device errors. Core records returned results; it does not generate replacement responses.
+
+Watch the device with `journalctl -fu nce-robotics.service -o cat` over SSH. Application command receipts survive restarts and reject reuse of an ID with different input. The console does not install an AI model or operate actuators.

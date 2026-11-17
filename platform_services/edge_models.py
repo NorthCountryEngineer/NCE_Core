@@ -101,7 +101,7 @@ class EdgeRelease(TaggedResource):
 
 
 class EdgeJob(TaggedResource):
-    KINDS = [(value, value) for value in ['status.refresh', 'app.deploy', 'app.rollback', 'os.update.check', 'os.update.apply', 'os.reboot']]
+    KINDS = [(value, value) for value in ['status.refresh', 'app.command', 'app.deploy', 'app.rollback', 'os.update.check', 'os.update.apply', 'os.reboot']]
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     device = models.ForeignKey(EdgeDevice, on_delete=models.PROTECT, related_name='jobs')
     kind = models.CharField(max_length=32, choices=KINDS)

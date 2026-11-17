@@ -1,0 +1,33 @@
+{% extends "identity/base.html" %}
+{% block title %}{{ device.name }} console{% endblock %}
+{% block extra_head %}{% if has_pending %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<p><a href="{% url 'edge_dashboard' organization.slug %}">NCE Robotics</a></p>
+<h1>{{ device.name }} console</h1>
+<p>{% if device.online %}Online{% else %}Offline{% endif %} · Last contact {{ device.last_seen_at|default:"never" }}</p>
+<section>
+<h2>Send a command</h2>
+<p>Responses come from the application running on your Orange Pi. Try <code>hello</code>, <code>status</code>, <code>hostname</code>, <code>uptime</code>, <code>temperature</code>, <code>memory</code>, <code>network</code>, or <code>help</code>.</p>
+{% if can_command and device.online and not has_pending %}
+<form method="post" action="{% url 'edge_job_request' organization.slug device.pk %}">{% csrf_token %}
+<input type="hidden" name="kind" value="app.command"><input type="hidden" name="request_id" value="{{ request_id }}">
+<label for="robot-command">Command</label><input id="robot-command" name="command" maxlength="240" required autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="status">
+<button type="submit">Send to {{ device.name }}</button>
+</form>
+{% elif has_pending %}<p>The next command can be sent when the current request completes.</p>
+{% elif not can_command %}<p>This device needs the command-capable edge agent before the console can send commands.</p>
+{% else %}<p>The device is offline. Refresh after it reconnects.</p>{% endif %}
+<p><code>echo iPad test</code> writes that message into the Pi’s command journal.</p>
+<p><a href="{% url 'edge_console' organization.slug device.pk %}">Refresh responses</a></p>
+</section>
+{% if has_pending %}<p role="status">Waiting for the Orange Pi. This page refreshes in three seconds.</p>{% endif %}
+<section><h2>Command history</h2>
+{% for job in jobs %}<article>
+<h3><code>{{ job.arguments.command }}</code> · {{ job.status }}</h3>
+{% if job.console_output %}<pre>{{ job.console_output }}</pre><p>From {{ job.result.hostname }} · {{ job.result.observed_at }} · Application {{ job.result.application_version }}</p>
+{% elif job.status == 'failed' or job.status == 'cancelled' or job.status == 'uncertain' %}<p>{{ job.error|default:"No device response was received." }}</p>
+{% else %}<p>Awaiting a response from the device.</p>{% endif %}
+<p>Command ID: <code>{{ job.pk }}</code> · Requested {{ job.created_at }}</p>
+</article>{% empty %}<p>No commands sent yet.</p>{% endfor %}</section>
+<details><summary>Watch this activity over SSH</summary><pre>journalctl -fu nce-robotics.service -o cat</pre><p>Run this in an SSH session on the Orange Pi. Match the command ID above with command.started and command.completed in the Pi’s journal.</p></details>
+{% endblock %}

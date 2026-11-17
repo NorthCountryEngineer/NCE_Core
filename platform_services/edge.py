@@ -31,7 +31,7 @@ PERMISSIONS = {
     'release-manage': 'Upload robot software releases', 'software-deploy': 'Request robot software deployments',
     'os-manage': 'Request robot OS maintenance', 'job-approve': 'Approve robot changes',
 }
-OPERATIONS = {'status.refresh': 'device-read', 'app.deploy': 'software-deploy', 'app.rollback': 'software-deploy',
+OPERATIONS = {'status.refresh': 'device-read', 'app.command': 'device-read', 'app.deploy': 'software-deploy', 'app.rollback': 'software-deploy',
               'os.update.check': 'os-manage', 'os.update.apply': 'os-manage', 'os.reboot': 'os-manage'}
 MUTATIONS = {'app.deploy', 'app.rollback', 'os.update.apply', 'os.reboot'}
 TERMINAL = {'succeeded', 'failed', 'cancelled', 'uncertain'}
@@ -170,13 +170,19 @@ def register_development_client(organization, actor=None):
     return installation, app
 
 
+def command_capable(device):
+    capabilities = device.report.get('capabilities')
+    return isinstance(capabilities, list) and 'app.command' in capabilities
+
+
 def device_values(device, permissions=None):
     value = {'id': str(device.pk), 'name': device.name, 'active': device.active, 'online': device.online,
         'last_seen_at': device.last_seen_at.isoformat() if device.last_seen_at else None,
         'agent_version': device.agent_version, 'report': device.report, 'installation_id': str(device.installation_id)}
     if permissions is not None:
         value['allowed_actions'] = [kind for kind, permission in OPERATIONS.items()
-            if device.active and ('admin' in permissions or permission in permissions)]
+            if device.active and ('admin' in permissions or permission in permissions)
+            and (kind != 'app.command' or command_capable(device))]
     return value
 
 
@@ -381,6 +387,14 @@ def upload_release(installation, principal, content):
 def validated_arguments(device, kind, arguments):
     if kind not in OPERATIONS or not isinstance(arguments, dict):
         raise ValidationError('Unsupported edge operation.')
+    if kind == 'app.command':
+        if not command_capable(device):
+            raise ValidationError('This device needs the command-capable edge agent before using the console.')
+        command = arguments.get('command')
+        if (set(arguments) != {'command'} or not isinstance(command, str) or not 1 <= len(command) <= 240
+                or command != command.strip() or not command.isprintable()):
+            raise ValidationError('Use a command of 1–240 printable characters.')
+        return {'command': command}
     if kind == 'app.deploy':
         if set(arguments) != {'release_id'}:
             raise ValidationError('app.deploy requires only release_id.')
@@ -439,7 +453,7 @@ def request_job(device, principal, kind, arguments, request_id):
     job = EdgeJob.objects.create(device=device, kind=kind, arguments=arguments, request_id=request_id, request_digest=digest,
         requested_by=principal.user, request_evidence=principal.evidence, request_application=principal.application,
         purpose=principal.purpose, status='awaiting_approval' if kind in MUTATIONS else 'queued',
-        expires_at=timezone.now()+timedelta(hours=1))
+        expires_at=timezone.now()+(timedelta(minutes=2) if kind == 'app.command' else timedelta(hours=1)))
     audit(device.installation, 'edge.job_requested', principal=principal, device=device, target=job.pk)
     return job, True
 
