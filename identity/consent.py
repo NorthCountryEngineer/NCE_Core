@@ -82,6 +82,8 @@ def registration_fingerprint(application, redirect_uri, claims=None):
         "deployment_id": str(deployment.pk) if deployment else None,
         "environment_id": str(deployment.environment_id) if deployment else None,
     }
+    if application.native_development:
+        registration['native_development'] = True
     return hashlib.sha256(json.dumps(registration, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 

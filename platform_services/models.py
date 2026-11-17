@@ -665,3 +665,4 @@ from .rule_models import AIRulePolicy, AIRuleRevision, AIUsageMeter, AIUsageRese
 from .development_models import DevelopmentObject, DevelopmentRevision, DevelopmentRun  # noqa: E402,F401
 from .cloud_models import CloudPlatform, CloudApplication, CloudRelease, CloudHostingAssignment  # noqa: E402,F401
 from .transfer_models import ApplicationTransfer, TransferReceipt, ApplicationPlacementReference  # noqa: E402,F401
+from .edge_models import EdgeDevice, EdgeEnrollment, EdgeCredential, EdgeRelease, EdgeJob  # noqa: E402,F401

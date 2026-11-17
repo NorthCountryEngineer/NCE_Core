@@ -1,0 +1,36 @@
+{% extends "identity/base.html" %}
+{% block title %}NCE Robotics{% endblock %}
+{% block content %}
+<p><a href="{% url 'platform_dashboard' organization.slug %}">Core applications</a></p>
+<h1>NCE Robotics</h1>
+<p>Manage robot software and OS maintenance. Local robot functions continue when Core is unavailable.</p>
+{% if not installation %}
+<section><h2>Register NCE Robotics</h2><p>Create this organization’s application, service permissions, and native iOS sign-in registration.</p>
+<form method="post" action="{% url 'edge_register' organization.slug %}">{% csrf_token %}<button type="submit">Register application</button></form></section>
+{% else %}
+{% if native %}<section><h2>iOS connection</h2><p>Use this Core origin and public client ID when setting up the iOS app.</p><p>Client ID: <code>{{ native.client_id }}</code></p><p>Callback: <code>{{ native.redirect_uris }}</code></p></section>{% endif %}
+{% if development_native or can_register_development %}<section><h2>Personal Team local testing</h2><p>This separate sign-in registration supports the development build installed with a free Apple Personal Team. Use the production client above for the production app.</p>
+{% if development_native %}<p>Development client ID: <code>{{ development_native.client_id }}</code></p><p>Development callback: <code>{{ development_native.redirect_uris }}</code></p>
+{% elif can_register_development %}<form method="post" action="{% url 'edge_register_development' organization.slug %}">{% csrf_token %}<button type="submit">Register Personal Team development client</button></form>{% endif %}</section>{% endif %}
+{% if can_enroll %}<section><h2>Connect a device</h2><form method="post" action="{% url 'edge_enroll' organization.slug %}">{% csrf_token %}<label>Device name <input name="name" required maxlength="100" value="JudeyBot"></label><button type="submit">Create enrollment code</button></form><p>Codes can be used once and expire after ten minutes.</p></section>{% endif %}
+<section><h2>Software releases</h2>
+{% if can_release %}<form method="post" enctype="multipart/form-data" action="{% url 'edge_release_upload' organization.slug %}">{% csrf_token %}<label>Application release <input type="file" name="artifact" accept=".tar.gz,.tgz" required></label><button type="submit">Upload release</button></form>{% endif %}
+<ul>{% for release in releases %}<li><strong>{{ release.version }}</strong> · {{ release.size_bytes }} bytes · <code>{{ release.sha256 }}</code></li>{% empty %}<li>No application releases uploaded.</li>{% endfor %}</ul></section>
+<section><h2>Devices</h2>
+{% for device in devices %}<article><h3>{{ device.name }}</h3>
+<p>{% if not device.active %}Revoked{% elif device.online %}Online{% else %}Offline or awaiting enrollment{% endif %} · Agent {{ device.agent_version|default:"not reported" }} · Last seen {{ device.last_seen_at|default:"never" }}</p>
+<details><summary>Device status</summary><pre>{{ device.report }}</pre></details>
+{% if device.active %}<form method="post" action="{% url 'edge_job_request' organization.slug device.pk %}">{% csrf_token %}
+<label>Operation <select name="kind">{% for value,label in device.operations %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label>
+<label>Release for software deployment <select name="release_id"><option value="">Choose a release</option>{% for release in releases %}<option value="{{ release.pk }}">{{ release.version }}</option>{% endfor %}</select></label>
+<button type="submit">Request operation</button></form><p>Software changes, OS update application, and reboot require a separate approval. Check for OS updates before requesting an update.</p>{% endif %}
+{% if device.can_manage and device.active %}<form method="post" action="{% url 'edge_revoke' organization.slug device.pk %}">{% csrf_token %}<button type="submit">Revoke device access</button></form>{% endif %}
+<h4>Recent jobs</h4><ul>{% for job in device.recent_jobs %}<li><strong>{{ job.operation_label }}</strong> · {{ job.status }} · {{ job.created_at }}
+{% if job.review_release %}<p>Target release: <strong>{{ job.review_release.version }}</strong><br>SHA-256: <code>{{ job.review_release.sha256 }}</code></p>{% endif %}
+{% if job.review_plan %}<details {% if job.can_approve %}open{% endif %}><summary>Reviewed package plan ({{ job.review_plan.packages|length }} packages)</summary><p>Plan SHA-256: <code>{{ job.review_plan.sha256 }}</code></p><table><thead><tr><th>Package</th><th>Approved version</th></tr></thead><tbody>{% for package in job.review_plan.packages %}<tr><td>{{ package.name }}</td><td>{{ package.version }}</td></tr>{% empty %}<tr><td colspan="2">No packages need an update.</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+<details><summary>Request details and result</summary><p>Operation: <code>{{ job.kind }}</code></p><p>Arguments</p><pre>{{ job.arguments }}</pre><p>Result</p><pre>{{ job.result }}</pre>{% if job.error %}<p>{{ job.error }}</p>{% endif %}</details>
+{% if job.can_approve %}<form method="post" action="{% url 'edge_job_approve' organization.slug job.pk %}">{% csrf_token %}<button type="submit">Approve this change</button></form>{% endif %}
+{% if job.can_cancel %}<form method="post" action="{% url 'edge_job_cancel' organization.slug job.pk %}">{% csrf_token %}<button type="submit">Cancel job</button></form>{% endif %}</li>{% empty %}<li>No jobs requested.</li>{% endfor %}</ul>
+</article>{% empty %}<p>No devices enrolled.</p>{% endfor %}</section>
+{% endif %}
+{% endblock %}

@@ -26,6 +26,7 @@
 <a href="{% url 'platform_environments' organization.slug %}">Environments</a>
 <a href="{% url 'modernize_application' organization.slug %}">Connect an existing application</a>
 <a href="{% url 'runtime_add' organization.slug %}">Connect Kubernetes</a>
+<a href="{% url 'edge_dashboard' organization.slug %}">NCE Robotics</a>
 </div></nav>
 <div class="admin-content">
 {% if billing %}<p class="muted">Billing: {{ billing.get_provider_display }} · {{ billing.status }}. Payments are not enabled.</p>{% endif %}

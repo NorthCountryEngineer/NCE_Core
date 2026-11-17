@@ -6,6 +6,7 @@ from platform_services.models import Deployment
 from platform_services.workflows import process_one
 from platform_services.training import process_one as process_training
 from platform_services.cloud_deployments import process_one as process_cloud
+from platform_services.edge import expire_jobs
 
 
 def heartbeat_embedded():
@@ -28,6 +29,7 @@ class Command(BaseCommand):
             while True:
                 close_old_connections()
                 heartbeat_embedded()
+                expire_jobs()
                 for _ in range(20):
                     workflow_work = process_one()
                     training_work = process_training()

@@ -150,11 +150,30 @@ class Role(TaggedResource):
 class Application(AbstractApplication, TaggedResource):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="applications")
     active = models.BooleanField(default=True)
+    native_development = models.BooleanField(default=False, db_default=False, editable=False,
+        help_text='Explicit NCE Robotics Personal Team local-testing registration. Never a production callback exception.')
+
+    def get_allowed_schemes(self):
+        from .native_clients import robotics_development_callback, ROBOTICS_DEVELOPMENT_REDIRECT
+        schemes = super().get_allowed_schemes()
+        if robotics_development_callback(self, self.redirect_uris):
+            return [*schemes, urlparse(ROBOTICS_DEVELOPMENT_REDIRECT).scheme]
+        return schemes
+
+    def redirect_uri_allowed(self, uri):
+        if self.native_development:
+            from .native_clients import robotics_development_callback
+            return robotics_development_callback(self, uri)
+        return super().redirect_uri_allowed(uri)
 
     @policy_evaluation()
     def is_usable(self, request):
         if not (self.active and self.service.active and self.service.organization.active):
             return False
+        if self.native_development:
+            from .native_clients import robotics_development_callback
+            if not robotics_development_callback(self, self.redirect_uris):
+                return False
         from platform_services.external_apps import application_deployment, external_available
         deployment = application_deployment(self)
         if deployment:
@@ -168,6 +187,11 @@ class Application(AbstractApplication, TaggedResource):
 
     def clean(self):
         super().clean()
+        from .native_clients import robotics_development_callback
+        old = type(self).objects.filter(pk=self.pk).values('native_development', 'service_id').first() if self.pk else None
+        if old and (old['native_development'] != self.native_development or
+                    old['native_development'] and old['service_id'] != self.service_id):
+            raise ValidationError('Native development registration and service binding are immutable. Register a separate client.')
         if self.authorization_grant_type != self.GRANT_AUTHORIZATION_CODE:
             raise ValidationError("Only the authorization code flow is supported.")
         if self.algorithm != self.RS256_ALGORITHM or not self.hash_client_secret or self.skip_authorization:
@@ -175,12 +199,16 @@ class Application(AbstractApplication, TaggedResource):
         if not self.redirect_uris.strip():
             raise ValidationError({"redirect_uris": "Register at least one exact redirect URL."})
         for uri in self.redirect_uris.split():
+            if robotics_development_callback(self, uri):
+                continue
             parsed = urlparse(uri)
             if (not parsed.netloc or parsed.username or parsed.fragment or "*" in uri or
                 (parsed.scheme != "https" and not (
                     settings.DEBUG and parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
                 ))):
                 raise ValidationError({"redirect_uris": "Use exact HTTPS URLs; HTTP loopback is allowed in development."})
+        if self.native_development and not robotics_development_callback(self, self.redirect_uris):
+            raise ValidationError('This development client must use the exact NCE Robotics local-testing callback and service.')
         from platform_services.external_apps import application_deployment
         deployment = application_deployment(self)
         if deployment and deployment.target == 'external':

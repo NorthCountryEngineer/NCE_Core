@@ -1,0 +1,9 @@
+{% extends "identity/base.html" %}
+{% block title %}Connect {{ device.name }}{% endblock %}
+{% block content %}
+<h1>Connect {{ device.name }}</h1>
+<p>Enter this one-use enrollment code in the device’s local setup prompt. It expires at {{ expires_at }}.</p>
+<pre>{{ code }}</pre>
+<p>This is the only time Core displays this code. Do not add it to scripts, screenshots, or source control.</p>
+<a href="{% url 'edge_dashboard' organization.slug %}">Return to NCE Robotics</a>
+{% endblock %}

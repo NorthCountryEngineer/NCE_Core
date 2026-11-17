@@ -218,6 +218,8 @@ def revoke_key(request, organization, pk):
 @organization_admin
 def deploy(request, organization, pk):
     installation = get_object_or_404(organization.installations.select_related("package"), pk=pk, enabled=True)
+    if installation.manifest.get('external_runtime') == 'edge-device':
+        return redirect('edge_dashboard', slug=organization.slug)
     if installation.manifest.get('external_runtime'):
         return register_external(request, organization, installation)
     config = getattr(organization, "deployment_configuration", None)

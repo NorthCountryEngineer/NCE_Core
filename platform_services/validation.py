@@ -43,8 +43,8 @@ def validate_manifest(manifest):
     if not isinstance(manifest, dict) or set(manifest) - {"image", "port", "capabilities", "dependencies", "callback_path", "health_path", 'existing_workload', 'external_runtime', 'permissions', 'account_roles'}:
         raise ValidationError("Unsupported manifest fields.")
     if 'external_runtime' in manifest:
-        if manifest['external_runtime'] != 'aws-amplify' or any(field in manifest for field in ['image', 'existing_workload', 'port']):
-            raise ValidationError('External AWS Amplify packages cannot declare a Kubernetes image, workload, or port.')
+        if manifest['external_runtime'] not in {'aws-amplify', 'edge-device'} or any(field in manifest for field in ['image', 'existing_workload', 'port']):
+            raise ValidationError('External runtimes must be AWS Amplify or edge-device and cannot declare a Kubernetes workload.')
     permissions = manifest.get('permissions', [])
     if not isinstance(permissions, list) or len(permissions) > 50:
         raise ValidationError('Declare at most 50 application permissions.')

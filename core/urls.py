@@ -7,6 +7,7 @@ from identity import federation
 from identity import app_auth
 from identity import consent
 from identity import application_contexts
+from platform_services import edge_native
 
 oauth_patterns = [
     path("authorize/", views.TenantAuthorizationView.as_view(), name="authorize"),
@@ -18,6 +19,8 @@ oauth_patterns = [
     path("jwks/", oauth_views.JwksInfoView.as_view(), name="jwks-info"),
 ]
 urlpatterns = [
+    path('.well-known/apple-app-site-association', edge_native.association, name='robotics_native_association'),
+    path('apps/nce-robotics/oauth/callback', edge_native.callback, name='robotics_native_callback'),
     path("platform-admin/", admin.site.urls),
     path("accounts/login/", federation.ProviderLoginView.as_view(), name="login"),
     path("accounts/app-signup/", app_auth.signup, name="app_signup"),

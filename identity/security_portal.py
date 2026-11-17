@@ -49,7 +49,7 @@ def resource_types():
         'AgentAccount', 'AgentBinding', 'AgentCredential', 'AgentTask',
         'TrainingScenario', 'TrainingRun', 'TrainingEvent', 'TrainingFeedback', 'DeploymentEnvironment',
         'IntegrationDefinition', 'IntegrationConnection', 'ApplicationIntegration', 'AppProject', 'DocumentationPage', 'AIRulePolicy', 'AIUsageReservation',
-        'DevelopmentObject', 'DevelopmentRevision', 'DevelopmentRun', 'CloudPlatform', 'CloudApplication']})
+        'DevelopmentObject', 'DevelopmentRevision', 'DevelopmentRun', 'CloudPlatform', 'CloudApplication', 'EdgeDevice', 'EdgeRelease', 'EdgeJob']})
     from core_chat.models import Conversation, FederationConnection, Message, Participant
     result.update({'chatconversation': Conversation, 'chatconnection': FederationConnection, 'chatmessage': Message, 'chatparticipant': Participant})
     from core_fabric.models import FabricContract, FabricPeer
@@ -70,6 +70,8 @@ def tenant_filter(model, organization):
         return {"service__organization": organization}
     if "installation" in fields:
         return {"installation__organization": organization}
+    if 'device' in fields:
+        return {'device__installation__organization': organization}
     if "conversation" in fields:
         return {"conversation__organization": organization}
     if 'binding' in fields:

@@ -1,4 +1,5 @@
 from django.urls import path
+from . import edge_api, edge_portal
 from . import agent_api, agent_portal, api, onboarding, portal, training_api, training_portal, environment_portal
 from . import integration_api, integration_portal
 from . import app_factory_api, app_factory_portal
@@ -10,6 +11,30 @@ from . import cloud_portal
 from . import transfer_portal
 
 urlpatterns = [
+    path('api/edge/v1/context/', edge_api.context),
+    path('api/edge/v1/devices/', edge_api.devices),
+    path('api/edge/v1/devices/<uuid:pk>/', edge_api.device),
+    path('api/edge/v1/enrollments/', edge_api.enrollments),
+    path('api/edge/v1/devices/<uuid:pk>/revoke/', edge_api.revoke_device),
+    path('api/edge/v1/releases/', edge_api.releases),
+    path('api/edge/v1/devices/<uuid:pk>/jobs/', edge_api.jobs),
+    path('api/edge/v1/jobs/<uuid:pk>/approve/', edge_api.approve_job),
+    path('api/edge/v1/jobs/<uuid:pk>/cancel/', edge_api.cancel_job),
+    path('api/edge/v1/agent/enroll/', edge_api.enroll_agent),
+    path('api/edge/v1/agent/heartbeat/', edge_api.heartbeat),
+    path('api/edge/v1/agent/jobs/claim/', edge_api.claim),
+    path('api/edge/v1/agent/jobs/<uuid:pk>/start/', edge_api.start),
+    path('api/edge/v1/agent/jobs/<uuid:pk>/result/', edge_api.result),
+    path('api/edge/v1/agent/artifacts/<uuid:pk>/', edge_api.artifact),
+    path('organizations/<slug:slug>/platform/robotics/', edge_portal.index, name='edge_dashboard'),
+    path('organizations/<slug:slug>/platform/robotics/register/', edge_portal.register, name='edge_register'),
+    path('organizations/<slug:slug>/platform/robotics/development-client/', edge_portal.register_development, name='edge_register_development'),
+    path('organizations/<slug:slug>/platform/robotics/enroll/', edge_portal.enroll, name='edge_enroll'),
+    path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/revoke/', edge_portal.revoke, name='edge_revoke'),
+    path('organizations/<slug:slug>/platform/robotics/releases/', edge_portal.upload, name='edge_release_upload'),
+    path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/jobs/', edge_portal.request_job, name='edge_job_request'),
+    path('organizations/<slug:slug>/platform/robotics/jobs/<uuid:pk>/approve/', edge_portal.approve, name='edge_job_approve'),
+    path('organizations/<slug:slug>/platform/robotics/jobs/<uuid:pk>/cancel/', edge_portal.cancel, name='edge_job_cancel'),
     path('application-transfer/receive/', transfer_portal.pairing_help, name='application_transfer_pairing_help'),
     path('application-transfer/clear-fragment.js', transfer_portal.clear_fragment),
     path('organizations/<slug:slug>/platform/installations/<uuid:pk>/transfer/', transfer_portal.application_transfer, name='application_transfer'),
