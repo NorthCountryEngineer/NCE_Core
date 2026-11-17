@@ -129,7 +129,7 @@ def _resource_chain(resource):
                             # mutations; it cannot confer cross-tenant tag authority.
                             continue
                     visit(parent)
-        for field in ["organization", "service", "installation", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
+        for field in ["organization", "service", "installation", "device", "dataset", "node", "run", "conversation", "connection", "account", "binding", "task",
                 'scenario', 'pipeline', 'workflow', 'runner_binding', 'training_run', 'peer', 'contract', 'environment', 'deployment', 'provider', 'policy', 'development_object', 'object_revision']:
             if field == 'connection' and item._meta.label_lower == 'platform_services.applicationintegration' and item.mode != 'platform':
                 continue

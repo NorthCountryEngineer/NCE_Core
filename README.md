@@ -37,6 +37,9 @@ These are deployment definitions, not provisioned resources. Running them incurs
 
 ## Core services and central administration
 
+The [NCE Robotics edge runtime](docs/robotics.md) registers Orange Pi devices, native iOS clients, reviewed software releases, and audited OS-maintenance jobs. Its outbound device agent is separate from the Kubernetes connector.
+
+
 [Development operations](docs/development-objects.md) provides versioned, composable
 connections, pipelines, data fusions, ML models, agents, and cross-application workflow
 graphs through Core Workflows. Review and share recipes in Central admin → Development
