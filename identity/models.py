@@ -150,7 +150,7 @@ class Role(TaggedResource):
 class Application(AbstractApplication, TaggedResource):
     service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="applications")
     active = models.BooleanField(default=True)
-    native_development = models.BooleanField(default=False, editable=False,
+    native_development = models.BooleanField(default=False, db_default=False, editable=False,
         help_text='Explicit NCE Robotics Personal Team local-testing registration. Never a production callback exception.')
 
     def get_allowed_schemes(self):

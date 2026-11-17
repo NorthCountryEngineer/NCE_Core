@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.db import connection
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from oauth2_provider.models import get_grant_model
@@ -75,6 +76,25 @@ class NativeDevelopmentTests(TestCase):
         self.assertEqual(self.development.client_type, 'public')
         self.assertEqual(self.development.redirect_uris, ROBOTICS_DEVELOPMENT_REDIRECT)
         self.assertEqual(self.production.service_id, self.development.service_id)
+
+    def test_prior_core_can_insert_application_without_new_column(self):
+        # An image rollback retains additive schema. Simulate the old writer's
+        # actual INSERT, omitting the field that its model does not know about.
+        fields = [field for field in Application._meta.concrete_fields
+                  if not field.primary_key and field.name != 'native_development']
+        quote = connection.ops.quote_name
+        columns = ', '.join(quote(field.column) for field in fields)
+        values = ', '.join('%s' if field.name == 'client_id' else quote(field.column) for field in fields)
+        client_id = 'old-core-' + secrets.token_hex(16)
+        table = quote(Application._meta.db_table)
+        pk = quote(Application._meta.pk.column)
+        with connection.cursor() as cursor:
+            cursor.execute(f'INSERT INTO {table} ({columns}) SELECT {values} FROM {table} WHERE {pk} = %s',
+                           [client_id, self.production.pk])
+        legacy = Application.objects.get(client_id=client_id)
+        self.assertIs(legacy.native_development, False)
+        self.assertEqual(legacy.service_id, self.production.service_id)
+        self.assertEqual(legacy.redirect_uris, self.production.redirect_uris)
 
     def test_only_exact_explicit_development_callback_is_allowed(self):
         for uri in [ROBOTICS_DEVELOPMENT_REDIRECT + '/', ROBOTICS_DEVELOPMENT_REDIRECT + '?x=1',

@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='application',
             name='native_development',
-            field=models.BooleanField(default=False, editable=False, help_text='Explicit NCE Robotics Personal Team local-testing registration. Never a production callback exception.'),
+            field=models.BooleanField(default=False, db_default=False, editable=False, help_text='Explicit NCE Robotics Personal Team local-testing registration. Never a production callback exception.'),
         ),
     ]
