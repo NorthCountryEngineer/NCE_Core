@@ -232,7 +232,7 @@ class EdgeTests(TestCase):
         with self.assertRaises(PermissionDenied):
             edge.heartbeat(self.credential, '0.1.0', {}, job.pk, 'wrong-' * 8)
         with self.assertRaises(ValidationError):
-            edge.heartbeat(self.credential, '0.1.0', {'password': 'not allowed'})
+            edge.heartbeat(self.credential, '0.1.0', {'password': str(uuid4())})
 
     def test_os_apply_requires_exact_recent_plan(self):
         with self.assertRaises(ValidationError):
