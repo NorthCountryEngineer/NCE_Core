@@ -2,6 +2,7 @@ import hashlib
 import gzip
 import io
 import json
+import jwt
 from pathlib import Path
 import tarfile
 import tempfile
@@ -110,6 +111,61 @@ class EdgeTests(TestCase):
             'command_id': str(job.pk), 'source': 'device', 'output': 'actual-reported-hostname'})
         job.refresh_from_db()
         self.assertEqual(job.result['source'], 'device')
+
+    def control_ready(self):
+        self.device.report = {'local_control': {'protocol': 'nce-local-v1', 'available': True,
+            'device_id': str(self.device.pk), 'addresses': ['10.0.0.36'], 'tls_port': 8767,
+            'udp_port': 8768, 'certificate_sha256': 'a' * 64}}
+        self.device.save(update_fields=['report'])
+
+    def test_direct_authority_is_short_lived_bound_and_separate_from_read_permission(self):
+        self.control_ready()
+        sid = str(uuid4())
+        path = f'/devices/{self.device.pk}/control-ticket/'
+        self.assertEqual(self.api(path, {'session_id': sid}, token=self.reader_token).status_code, 403)
+        result = self.api(path, {'session_id': sid})
+        self.assertEqual(result.status_code, 200, result.content)
+        value = result.json()
+        trust = self.api('/agent/control-trust/', token=self.agent_token).json()
+        self.assertNotIn('d', trust['jwks']['keys'][0])
+        claims = jwt.decode(value['ticket'], jwt.PyJWK.from_dict(trust['jwks']['keys'][0]).key,
+                            algorithms=['RS256'], audience='nce-robotics-local-control', issuer='https://core.example.test')
+        self.assertEqual(claims['device_id'], str(self.device.pk))
+        self.assertEqual(claims['sid'], sid)
+        self.assertEqual(claims['exp'] - claims['iat'], 30)
+        self.assertEqual(claims['actions'], ['diagnostics', 'stop'])
+        self.assertEqual(claims['certificate_sha256'], 'a' * 64)
+        self.assertEqual(jwt.get_unverified_header(value['ticket'])['typ'], 'nce-control+jwt')
+        self.assertFalse(self.device.jobs.exists(), 'Direct packets must not become queued management jobs')
+        second = self.api(path, {'session_id': sid}).json()
+        self.assertNotEqual(jwt.get_unverified_header(second['ticket']), {})
+        self.assertNotEqual(second['ticket'], value['ticket'])
+
+    def test_direct_descriptor_rejects_nonlocal_or_unpinned_destinations(self):
+        from platform_services.edge_control import local_descriptor
+        self.control_ready()
+        for patch in ({'addresses': ['8.8.8.8']}, {'addresses': ['127.0.0.1']},
+                      {'tls_port': 22}, {'certificate_sha256': 'not-a-fingerprint'},
+                      {'device_id': str(uuid4())}, {'available': False}):
+            old = dict(self.device.report['local_control'])
+            self.device.report['local_control'].update(patch)
+            with self.subTest(patch=patch), self.assertRaises(ValidationError):
+                local_descriptor(self.device)
+            self.device.report['local_control'] = old
+
+    def test_direct_authority_rechecks_revocation_and_tenant_boundary(self):
+        self.control_ready()
+        path = f'/devices/{self.device.pk}/control-ticket/'
+        self.device.active = False
+        self.device.save(update_fields=['active'])
+        self.assertEqual(self.api(path, {'session_id': str(uuid4())}).status_code, 400)
+        self.device.active = True
+        self.device.save(update_fields=['active'])
+        tag = PermissionTag.objects.create(organization=self.organization, slug='direct-restricted', name='Restricted')
+        self.device.permission_tags.add(tag)
+        # Existing resource access policy remains in force for direct authority.
+        self.assertEqual(self.api(path, {'session_id': str(uuid4())}, token=self.reader_token).status_code, 403)
+        self.assertEqual(self.api('/agent/control-trust/', token=self.user_token).status_code, 401)
 
     def test_console_is_tenant_scoped_csrf_protected_and_escapes_output(self):
         self.device.report = {'capabilities': ['app.command']}
