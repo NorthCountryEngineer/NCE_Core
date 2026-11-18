@@ -19,6 +19,7 @@ from .edge_models import EdgeDevice, EdgeJob, EdgeRelease
 from .models import Installation
 
 OPERATION_LABELS = {
+    'app.command': 'Robot command',
     'status.refresh': 'Refresh device status', 'app.deploy': 'Deploy software',
     'app.rollback': 'Restore previous software', 'os.update.check': 'Check for OS updates',
     'os.update.apply': 'Apply reviewed OS updates', 'os.reboot': 'Restart device',
@@ -92,7 +93,7 @@ def index(request, slug):
             continue
         device.can_manage = 'admin' in permissions or 'device-manage' in permissions
         device.operations = [(kind, OPERATION_LABELS[kind]) for kind, permission in edge.OPERATIONS.items()
-                             if 'admin' in permissions or permission in permissions]
+                             if kind != 'app.command' and ('admin' in permissions or permission in permissions)]
         device.recent_jobs = []
         for job in device.jobs.order_by('-created_at')[:20]:
             try:
@@ -121,6 +122,24 @@ def index(request, slug):
         'development_native': development_native, 'can_register_development': can_register_development,
         'can_enroll': 'admin' in permissions or 'device-manage' in permissions,
         'can_release': 'admin' in permissions or 'release-manage' in permissions})
+
+
+@portal()
+def console(request, organization, installation, principal, pk):
+    device = get_object_or_404(EdgeDevice, installation=installation, pk=pk)
+    permissions = edge.authorize(principal, installation, resource=device)
+    jobs = []
+    for job in device.jobs.filter(kind='app.command').order_by('-created_at')[:30]:
+        try:
+            edge.authorize(principal, installation, resource=job)
+        except PermissionDenied:
+            continue
+        job.console_output = job.result.get('output', '')
+        jobs.append(job)
+    can_command = 'app.command' in edge.device_values(device, permissions).get('allowed_actions', [])
+    return render(request, 'platform_services/edge_console.html', {'organization': organization,
+        'device': device, 'jobs': jobs, 'can_command': can_command, 'request_id': str(uuid.uuid4()),
+        'has_pending': any(job.status not in edge.TERMINAL for job in jobs)})
 
 
 @login_required
@@ -196,11 +215,15 @@ def request_job(request, organization, installation, principal, pk):
     arguments = {}
     if kind == 'app.deploy':
         arguments = {'release_id': request.POST.get('release_id', '')}
+    elif kind == 'app.command':
+        arguments = {'command': request.POST.get('command', '').strip()}
     elif kind == 'os.update.apply':
         check = device.jobs.filter(kind='os.update.check', status='succeeded').order_by('-completed_at').first()
         plan = check.result.get('plan', check.result) if check else {}
         arguments = {key: plan.get(key, '') for key in ['plan_id', 'sha256']}
     job, _ = edge.request_job(device, principal, kind, arguments, request.POST.get('request_id') or str(uuid.uuid4()))
+    if kind == 'app.command':
+        return redirect('edge_console', slug=organization.slug, pk=device.pk)
     messages.success(request, 'Review and approve the requested change below.' if job.status == 'awaiting_approval' else 'Read-only job queued.')
     return redirect('edge_dashboard', slug=organization.slug)
 

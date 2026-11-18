@@ -90,6 +90,63 @@ class EdgeTests(TestCase):
         edge.start_job(job, self.credential, delivered['lease_token'])
         return job, delivered['lease_token']
 
+    def test_command_capability_arguments_and_short_lifetime(self):
+        self.assertNotIn('app.command', edge.device_values(self.device, {'admin'})['allowed_actions'])
+        with self.assertRaises(ValidationError):
+            self.make_job('app.command', {'command': 'hostname'})
+        self.device.report = {'capabilities': ['app.command']}
+        self.device.save(update_fields=['report'])
+        job = self.make_job('app.command', {'command': 'hostname'}, principal=self.reader_principal)
+        self.assertEqual(job.status, 'queued')
+        self.assertLessEqual(job.expires_at, timezone.now() + timedelta(minutes=2))
+        for args in ({'command': ''}, {'command': 'x' * 241}, {'command': 'status\nreboot'},
+                     {'command': 'status', 'shell': True}, {'command': ['status']}):
+            with self.subTest(arguments=args), self.assertRaises(ValidationError):
+                self.make_job('app.command', args)
+        delivered = edge.claim_job(self.credential)
+        self.assertEqual(delivered['arguments'], {'command': 'hostname'})
+        edge.start_job(job, self.credential, delivered['lease_token'])
+        edge.complete_job(job, self.credential, delivered['lease_token'], 'succeeded', {
+            'command_id': str(job.pk), 'source': 'device', 'output': 'actual-reported-hostname'})
+        job.refresh_from_db()
+        self.assertEqual(job.result['source'], 'device')
+
+    def test_console_is_tenant_scoped_csrf_protected_and_escapes_output(self):
+        self.device.report = {'capabilities': ['app.command']}
+        self.device.save(update_fields=['report'])
+        self.client.force_login(self.admin)
+        url = reverse('edge_console', args=[self.organization.slug, self.device.pk])
+        response = self.client.get(url)
+        self.assertContains(response, 'Send to JudeyBot')
+        post_url = reverse('edge_job_request', args=[self.organization.slug, self.device.pk])
+        response = self.client.post(post_url, {'kind': 'app.command', 'command': 'echo <script>alert(1)</script>', 'request_id': str(uuid4())})
+        self.assertRedirects(response, url)
+        job = self.device.jobs.get(kind='app.command')
+        delivered = edge.claim_job(self.credential)
+        edge.start_job(job, self.credential, delivered['lease_token'])
+        edge.complete_job(job, self.credential, delivered['lease_token'], 'succeeded', {
+            'command_id': str(job.pk), 'source': 'device', 'output': '<script>alert(1)</script>'})
+        page = self.client.get(url)
+        self.assertContains(page, '&lt;script&gt;alert(1)&lt;/script&gt;')
+        self.assertNotContains(page, '<script>alert(1)</script>')
+        protected = Client(enforce_csrf_checks=True)
+        protected.force_login(self.admin)
+        self.assertEqual(protected.post(post_url, {'kind': 'app.command', 'command': 'status'}).status_code, 403)
+        self.assertEqual(self.client.get(reverse('edge_console', args=[self.other_org.slug, self.device.pk])).status_code, 404)
+        self.device.active = False
+        self.device.save(update_fields=['active'])
+        self.assertNotContains(self.client.get(url), 'Send to JudeyBot')
+
+    def test_command_rechecks_authority_at_start(self):
+        self.device.report = {'capabilities': ['app.command']}
+        self.device.save(update_fields=['report'])
+        job = self.make_job('app.command', {'command': 'status'}, principal=self.reader_principal)
+        delivered = edge.claim_job(self.credential)
+        self.reader_member.active = False
+        self.reader_member.save(update_fields=['active'])
+        with self.assertRaises(PermissionDenied):
+            edge.start_job(job, self.credential, delivered['lease_token'])
+
     def test_registration_is_idempotent_public_and_not_aws_or_kubernetes(self):
         installation, app = edge.register_application(self.organization, self.admin)
         self.assertEqual(installation.pk, self.installation.pk)

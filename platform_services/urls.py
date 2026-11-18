@@ -33,6 +33,7 @@ urlpatterns = [
     path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/revoke/', edge_portal.revoke, name='edge_revoke'),
     path('organizations/<slug:slug>/platform/robotics/releases/', edge_portal.upload, name='edge_release_upload'),
     path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/jobs/', edge_portal.request_job, name='edge_job_request'),
+    path('organizations/<slug:slug>/platform/robotics/devices/<uuid:pk>/console/', edge_portal.console, name='edge_console'),
     path('organizations/<slug:slug>/platform/robotics/jobs/<uuid:pk>/approve/', edge_portal.approve, name='edge_job_approve'),
     path('organizations/<slug:slug>/platform/robotics/jobs/<uuid:pk>/cancel/', edge_portal.cancel, name='edge_job_cancel'),
     path('application-transfer/receive/', transfer_portal.pairing_help, name='application_transfer_pairing_help'),

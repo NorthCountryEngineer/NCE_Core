@@ -18,6 +18,7 @@
 <ul>{% for release in releases %}<li><strong>{{ release.version }}</strong> · {{ release.size_bytes }} bytes · <code>{{ release.sha256 }}</code></li>{% empty %}<li>No application releases uploaded.</li>{% endfor %}</ul></section>
 <section><h2>Devices</h2>
 {% for device in devices %}<article><h3>{{ device.name }}</h3>
+{% if device.active %}<p><a href="{% url 'edge_console' organization.slug device.pk %}">Open {{ device.name }} command console</a></p>{% endif %}
 <p>{% if not device.active %}Revoked{% elif device.online %}Online{% else %}Offline or awaiting enrollment{% endif %} · Agent {{ device.agent_version|default:"not reported" }} · Last seen {{ device.last_seen_at|default:"never" }}</p>
 <details><summary>Device status</summary><pre>{{ device.report }}</pre></details>
 {% if device.active %}<form method="post" action="{% url 'edge_job_request' organization.slug device.pk %}">{% csrf_token %}
