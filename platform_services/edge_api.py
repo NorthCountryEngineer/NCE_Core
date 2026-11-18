@@ -133,6 +133,20 @@ def device(request, pk):
 
 
 @human_api(('POST',))
+def control_ticket(request, pk):
+    from .edge_control import issue_ticket
+    values = fields(body(request), {'session_id'}, {'session_id'})
+    return response(issue_ticket(device_for(request, pk), request.access_principal, values['session_id']))
+
+
+@agent_api()
+def control_trust(request):
+    from .edge_control import trust_configuration
+    fields(body(request), set())
+    return response(trust_configuration(request.edge_credential.device))
+
+
+@human_api(('POST',))
 def enrollments(request):
     values = fields(body(request), {'name'}, {'name'})
     device, enrollment, code = edge.create_enrollment(request.edge_installation, request.access_principal, values['name'])

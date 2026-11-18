@@ -30,6 +30,7 @@ PERMISSIONS = {
     'device-read': 'View robot devices and jobs', 'device-manage': 'Enroll and revoke robot devices',
     'release-manage': 'Upload robot software releases', 'software-deploy': 'Request robot software deployments',
     'os-manage': 'Request robot OS maintenance', 'job-approve': 'Approve robot changes',
+    'device-control': 'Open authenticated direct robot connections',
 }
 OPERATIONS = {'status.refresh': 'device-read', 'app.command': 'device-read', 'app.deploy': 'software-deploy', 'app.rollback': 'software-deploy',
               'os.update.check': 'os-manage', 'os.update.apply': 'os-manage', 'os.reboot': 'os-manage'}
