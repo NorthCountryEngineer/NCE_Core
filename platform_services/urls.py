@@ -13,6 +13,9 @@ from . import transfer_portal
 urlpatterns = [
     path('api/edge/v1/context/', edge_api.context),
     path('api/edge/v1/devices/', edge_api.devices),
+    path('api/edge/v1/people/', edge_api.people),
+    path('api/edge/v1/people/<uuid:pk>/', edge_api.person),
+    path('api/edge/v1/people/<uuid:pk>/samples/<uuid:sample_pk>/', edge_api.person_sample),
     path('api/edge/v1/devices/<uuid:pk>/', edge_api.device),
     path('api/edge/v1/devices/<uuid:pk>/control-ticket/', edge_api.control_ticket),
     path('api/edge/v1/enrollments/', edge_api.enrollments),
@@ -23,6 +26,7 @@ urlpatterns = [
     path('api/edge/v1/jobs/<uuid:pk>/cancel/', edge_api.cancel_job),
     path('api/edge/v1/agent/enroll/', edge_api.enroll_agent),
     path('api/edge/v1/agent/heartbeat/', edge_api.heartbeat),
+    path('api/edge/v1/agent/people/sync/', edge_api.sync_people),
     path('api/edge/v1/agent/control-trust/', edge_api.control_trust),
     path('api/edge/v1/agent/jobs/claim/', edge_api.claim),
     path('api/edge/v1/agent/jobs/<uuid:pk>/start/', edge_api.start),

@@ -83,6 +83,53 @@ python manage.py --local makemigrations --check --dry-run
 
 The companion project also runs the actual Core HTTP contract through the agent and a temporary helper, including deployment/rollback, lost acknowledgements, reboot recovery, and revocation. Live Pi installation, a production Core rollout, and a signed iPhone build are separate acceptance steps.
 
+## People registry
+
+The registry uses one mutable `DataRecord` per person in the organization-scoped
+Core Data dataset `nce-robotics-people`, with immutable installation ownership.
+It requires no new infrastructure or schema migration. Generic data, pipeline,
+AI-query, federation and dataset-editing paths cannot expose or alter this managed
+biometric state; use the dedicated edge APIs.
+
+| Endpoint | Authority and result |
+| --- | --- |
+| `GET /api/edge/v1/people/?after=<cursor>&limit=50` | Current human OAuth, `device-read` and source-device access policy. Returns `people`, integer/null `next_cursor`, `limit` and `max_limit`; at most 50 rows per page. |
+| `GET /api/edge/v1/people/<id>/samples/<sample-id>/` | Same read policy. Returns a private, `no-store` JPEG with its SHA-256 header. |
+| `PATCH /api/edge/v1/people/<id>/` | `device-manage`; body `{name, expected_revision}`. Returns `{person}`. A repeated accepted name is idempotent; a stale revision for a different name returns 409. |
+| `DELETE /api/edge/v1/people/<id>/` | `device-manage`; body `{expected_revision}`. Clears samples/embeddings and retains an idempotent tombstone. |
+| `POST /api/edge/v1/agent/people/sync/` | Current active device credential; body `{people, cursor}`. Accepts at most five updates and returns accepted IDs, canonical cache items, integer/null `next_cursor` and `has_more`. |
+
+The total limit is **500 people per organization, including tombstones**. Each
+person has at most three immutable JPEG samples, each at most 32 KiB (32,768 bytes)
+and 320 pixels per side, and zero to three finite unit-length 128-value `sface-v1`
+embeddings. Zero embeddings represents a person awaiting a usable face. A sync
+request is limited to 1 MiB. New samples are additive; omitted/empty samples do
+not delete prior samples. Reusing a sample ID with different content is rejected.
+The registry-full response is HTTP 409 with `error: people_registry_full`.
+
+Human records contain UUID `id`, `name`, integer `revision`, timezone-qualified
+ISO timestamps `first_seen`, `last_seen` and `last_synced_at`, `source_device_id`,
+`named`, `face_ready`, `deleted`, and sample metadata (`id`, `sha256`, `width`,
+`height`). Human JSON never includes embeddings or image bytes. Device cache
+responses add embeddings/model information but never JPEG bytes. The sync page
+also includes canonical versions of its accepted IDs if they lie outside that
+page, so it contains at most 55 distinct people. Cursors scan the full registry
+by record ID; devices restart from an empty cursor after the final page to receive
+later renames and tombstones.
+
+New automatic candidates receive `Unknown-<full UUID>`. Core returns authoritative
+names to robot caches; devices cannot rename existing people or overwrite another
+device's person UUID. Optional `legacy_name` (1–80 characters) is accepted only
+when initially importing a previously named local person and ignored thereafter.
+Human names use the same length bound. Last-seen writes are coalesced to at most
+once per hour per person; sample/embedding additions and human edits remain
+immediate. Source observations are not evidence of identity, and no identity
+merging is performed.
+
+Run the dedicated local checks with
+`python manage.py --local test platform_services.tests.test_edge_people --noinput`.
+Passing tests do not establish a deployed Core registry or physical-device sync.
+
 ## Live command console
 
 Agent 0.2.0 advertises `app.command` in its report. Authorized device readers can submit a bounded command string with a UUID request ID through the existing jobs API, the native Console, or the CSRF-protected device console linked from the robotics dashboard. Command requests expire after two minutes and require current authority again at claim and start. Older agents do not receive command jobs.

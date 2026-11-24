@@ -216,6 +216,13 @@ def _effective_tags(resource):
 def decision(principal, resource):
     organization = resource_organization(resource)
     tags = effective_tags(resource)
+    # Biometric state is exposed only through the scoped edge registry, never
+    # generic data, AI, federation, pipeline or metadata editing surfaces.
+    if any(item._meta.label_lower == 'platform_services.dataset' and
+           (item.slug == 'nce-robotics-people' or
+            isinstance(item.schema, dict) and item.schema.get('x-nce-managed') == 'robotics-people-v1')
+           for item in resource_chain(resource)):
+        return False, 'dedicated_edge_people_api_required', tags
     from platform_services.environments import principal_environment
     environment = principal_environment(principal)
     if environment:
