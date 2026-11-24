@@ -282,6 +282,18 @@ class Dataset(TaggedResource):
             original = type(self).objects.filter(pk=self.pk).first()
             if original and original.data_class != self.data_class:
                 raise ValidationError('Dataset classification is immutable. Create a separate synthetic dataset for training.')
+            self._protect_managed_identity(original)
+
+    def _protect_managed_identity(self, original):
+        if original and (original.slug == 'nce-robotics-people' or
+                         isinstance(original.schema, dict) and original.schema.get('x-nce-managed') == 'robotics-people-v1'):
+            if any(getattr(self, field) != getattr(original, field) for field in ('organization_id', 'slug', 'schema')):
+                raise ValidationError('Managed people registry ownership and schema are immutable.')
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            self._protect_managed_identity(type(self).objects.filter(pk=self.pk).first())
+        return super().save(*args, **kwargs)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["organization", "slug"], name="unique_dataset")]

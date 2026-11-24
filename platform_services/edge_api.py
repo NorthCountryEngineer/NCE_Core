@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -268,3 +268,47 @@ def artifact(request, pk):
     result['X-Content-SHA256'] = release.sha256
     result['Content-Disposition'] = 'attachment; filename="nce-robotics-release.tar.gz"'
     return result
+
+
+def private_response(value, status=200):
+    result = response(value, status)
+    result['Cache-Control'] = 'private, no-store'
+    return result
+
+
+@human_api()
+def people(request):
+    from . import edge_people
+    if set(request.GET) - {'after', 'limit'} or any(len(values) != 1 for _, values in request.GET.lists()):
+        raise ValidationError('Use one after cursor and one limit.')
+    return private_response(edge_people.list_people(request.edge_installation, request.access_principal,
+        request.GET.get('after'), int(request.GET.get('limit', edge_people.PAGE_SIZE))))
+
+
+@human_api(('PATCH', 'DELETE'))
+def person(request, pk):
+    from . import edge_people
+    value = edge_people.request_body(request, 4096)
+    function = edge_people.rename if request.method == 'PATCH' else edge_people.delete
+    return private_response({'person': function(request.edge_installation, request.access_principal, pk, value)})
+
+
+@human_api()
+def person_sample(request, pk, sample_pk):
+    from . import edge_people
+    content, digest = edge_people.sample_bytes(request.edge_installation, request.access_principal, pk, sample_pk)
+    result = HttpResponse(content, content_type='image/jpeg')
+    result['Cache-Control'] = 'private, no-store'
+    result['X-Content-Type-Options'] = 'nosniff'
+    result['X-Content-SHA256'] = digest
+    result['Content-Length'] = str(len(content))
+    return result
+
+
+@agent_api()
+def sync_people(request):
+    from . import edge_people
+    try:
+        return private_response(edge_people.sync(request.edge_credential, edge_people.request_body(request)))
+    except edge_people.RegistryFull:
+        return private_response({'error': 'people_registry_full', 'max_people': edge_people.MAX_PEOPLE}, 409)

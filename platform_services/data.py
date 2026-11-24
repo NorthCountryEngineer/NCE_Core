@@ -1,6 +1,6 @@
 from copy import deepcopy
 import json
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, transaction
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError as SchemaValidationError
@@ -27,6 +27,9 @@ def transform(data, transforms):
 
 
 def publish(dataset, event_id, data, *, training_run_id=None, federation=None):
+    if (dataset.slug == 'nce-robotics-people' or
+            isinstance(dataset.schema, dict) and dataset.schema.get('x-nce-managed') == 'robotics-people-v1'):
+        raise PermissionDenied('Use the dedicated edge people registry API.')
     if not isinstance(event_id, str) or not 1 <= len(event_id) <= 160 or not isinstance(data, dict):
         raise ValidationError("An event ID of at most 160 characters and JSON object data are required.")
     if not dataset.active or not dataset.organization.active:
